@@ -7,7 +7,7 @@ let _token = ''
 
 export const HARDCODED_COUNTRIES = [
   { value: 'ES', label: 'España' },
-  { value: 'GB', label: 'Reino Unido' },
+  { value: 'UK', label: 'Reino Unido' },
   { value: 'US', label: 'Estados Unidos' },
   { value: 'WO', label: 'Mundial' },
 ]
@@ -129,7 +129,7 @@ function mapStreamOptions(raw: any[]): StreamOption[] {
 function mapKind(type: string): CatalogItem['kind'] {
   const t = (type ?? '').toLowerCase()
   if (t === 'movie') return 'MOVIE'
-  if (t === 'series') return 'SERIES'
+  if (t === 'series' || t === 'series_group') return 'SERIES'
   if (t === 'channel') return 'CHANNEL'
   if (t === 'event') return 'EVENT'
   return 'MOVIE'
@@ -282,13 +282,15 @@ export async function getSeriesEpisodes(name: string, page = 1) {
 }
 
 // Search
-export async function search(q: string, page = 1, filters?: { country?: string; group?: string }) {
+export async function search(q: string, page = 1, filters?: { country?: string; group?: string; types?: string; genre?: string }) {
   const qs = new URLSearchParams()
   qs.set('q', q)
   qs.set('page', String(page))
   qs.set('page_size', '50')
   if (filters?.country) qs.set('country', filters.country)
   if (filters?.group) qs.set('group', filters.group)
+  if (filters?.types) qs.set('types', filters.types)
+  if (filters?.genre) qs.set('genre', filters.genre)
   const raw = await get<{ items: any[]; total: number }>(`/api/search?${qs}`)
   return {
     results: (raw.items ?? []).map(mapItem),
