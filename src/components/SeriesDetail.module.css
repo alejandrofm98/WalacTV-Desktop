@@ -1,0 +1,248 @@
+.container {
+  width: 100%;
+  height: 100%;
+  overflow-y: auto;
+  overflow-x: hidden;
+  background: var(--bg);
+  display: flex;
+  flex-direction: column;
+}
+
+/* ── Header backdrop ─────────────────────────────── */
+.header {
+  position: relative;
+  height: 280px;
+  min-height: 240px;
+  flex-shrink: 0;
+}
+
+.headerImage {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  object-position: center 25%;
+  display: block;
+}
+
+.headerFallback {
+  width: 100%;
+  height: 100%;
+  background: var(--surface);
+}
+
+.gradientLeft {
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(
+    90deg,
+    var(--bg) 0%,
+    oklch(11% 0.024 252 / 0.85) 30%,
+    transparent 70%
+  );
+}
+
+.gradientBottom {
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(
+    180deg,
+    transparent 30%,
+    oklch(11% 0.024 252 / 0.7) 70%,
+    var(--bg) 100%
+  );
+}
+
+/* ── Back button ─────────────────────────────────── */
+.backBtn {
+  position: absolute;
+  top: 16px;
+  left: 16px;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  background: oklch(11% 0.024 252 / 0.65);
+  backdrop-filter: blur(8px);
+  color: var(--text-primary);
+  border: 1px solid var(--surface-variant);
+  border-radius: var(--radius-full);
+  padding: 7px 16px;
+  font-size: 13px;
+  font-weight: 500;
+  font-family: var(--font-body);
+  cursor: pointer;
+  z-index: 2;
+  transition: background 0.15s ease, border-color 0.15s ease;
+}
+
+.backBtn:hover {
+  background: oklch(20% 0.024 252 / 0.80);
+  border-color: oklch(35% 0.020 252);
+}
+
+/* ── Header info ─────────────────────────────────── */
+.headerInfo {
+  position: absolute;
+  bottom: 20px;
+  left: 36px;
+  max-width: 60%;
+  z-index: 1;
+}
+
+.title {
+  color: oklch(96% 0.005 252);
+  font-size: 30px;
+  font-weight: 800;
+  letter-spacing: -0.4px;
+  margin-bottom: 4px;
+  line-height: 1.15;
+}
+
+.seasonsText {
+  color: oklch(72% 0.010 252);
+  font-size: 13px;
+  font-weight: 500;
+}
+
+/* ── Season tabs ─────────────────────────────────── */
+.seasonTabs {
+  padding: 14px 32px 10px;
+  display: flex;
+  gap: 6px;
+  flex-shrink: 0;
+  flex-wrap: wrap;
+}
+
+.seasonTab {
+  border-radius: var(--radius-full);
+  padding: 5px 16px;
+  font-size: 13px;
+  font-weight: 600;
+  font-family: var(--font-body);
+  cursor: pointer;
+  transition: background 0.12s ease, color 0.12s ease;
+}
+
+.seasonTabActive {
+  background: var(--accent);
+  color: oklch(98% 0.004 252);
+  border: 1px solid var(--accent);
+}
+
+.seasonTabDefault {
+  background: var(--surface);
+  color: var(--text-muted);
+  border: 1px solid var(--surface-variant);
+}
+
+.seasonTabDefault:hover {
+  background: var(--focus-bg);
+  color: var(--text-secondary);
+}
+
+/* ── Episodes ────────────────────────────────────── */
+.episodes {
+  flex: 1;
+  overflow-y: auto;
+  padding: 0 32px 24px;
+}
+
+.loadingText {
+  color: var(--text-muted);
+  text-align: center;
+  padding: 40px;
+  font-size: 14px;
+}
+
+.episodeList {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.episodeCard {
+  display: flex;
+  gap: 16px;
+  align-items: center;
+  background: var(--surface);
+  border-radius: var(--radius-md);
+  border: 1px solid var(--surface-variant);
+  padding: 12px;
+  cursor: pointer;
+  transition: background 0.12s ease, border-color 0.12s ease;
+}
+
+.episodeCard:hover {
+  background: var(--focus-bg);
+  border-color: oklch(32% 0.020 252);
+}
+
+.episodeThumb {
+  width: 140px;
+  height: 80px;
+  object-fit: cover;
+  border-radius: var(--radius-sm);
+  flex-shrink: 0;
+  display: block;
+}
+
+.episodeThumbPlaceholder {
+  width: 140px;
+  height: 80px;
+  background: var(--surface-variant);
+  border-radius: var(--radius-sm);
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--text-muted);
+  font-size: 11px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.episodeInfo {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.episodeNumber {
+  color: var(--text-muted);
+  font-size: 11px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.4px;
+}
+
+.episodeTitle {
+  color: var(--text-primary);
+  font-size: 14px;
+  font-weight: 600;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.episodeSubtitle {
+  color: var(--text-muted);
+  font-size: 12px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.playIcon {
+  color: var(--accent);
+  font-size: 13px;
+  font-weight: 700;
+  flex-shrink: 0;
+  opacity: 0.7;
+  transition: opacity 0.12s ease;
+}
+
+.episodeCard:hover .playIcon {
+  opacity: 1;
+}

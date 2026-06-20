@@ -1,0 +1,243 @@
+.container {
+  width: 100%;
+  height: 100%;
+  overflow-y: auto;
+  overflow-x: hidden;
+  background: var(--bg);
+  display: flex;
+  flex-direction: column;
+}
+
+/* ── Backdrop ────────────────────────────────────── */
+.backdrop {
+  position: relative;
+  height: 52%;
+  min-height: 280px;
+  max-height: 420px;
+  flex-shrink: 0;
+}
+
+.backdropImage {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  object-position: center 20%;
+  display: block;
+}
+
+.backdropFallback {
+  width: 100%;
+  height: 100%;
+  background: var(--surface);
+}
+
+.gradientLeft {
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(
+    90deg,
+    var(--bg) 0%,
+    oklch(11% 0.024 252 / 0.85) 30%,
+    transparent 72%
+  );
+}
+
+.gradientBottom {
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(
+    180deg,
+    transparent 30%,
+    oklch(11% 0.024 252 / 0.65) 70%,
+    var(--bg) 100%
+  );
+}
+
+/* ── Back button ─────────────────────────────────── */
+.backBtn {
+  position: absolute;
+  top: 16px;
+  left: 16px;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  background: oklch(11% 0.024 252 / 0.65);
+  backdrop-filter: blur(8px);
+  color: var(--text-primary);
+  border: 1px solid var(--surface-variant);
+  border-radius: var(--radius-full);
+  padding: 7px 16px;
+  font-size: 13px;
+  font-weight: 500;
+  font-family: var(--font-body);
+  cursor: pointer;
+  z-index: 2;
+  transition: background 0.15s ease, border-color 0.15s ease;
+}
+
+.backBtn:hover {
+  background: oklch(20% 0.024 252 / 0.80);
+  border-color: oklch(35% 0.020 252);
+}
+
+/* ── Info overlay ────────────────────────────────── */
+.info {
+  position: absolute;
+  bottom: 28px;
+  left: 36px;
+  right: 38%;
+  z-index: 1;
+}
+
+.title {
+  color: oklch(96% 0.005 252);
+  font-size: 34px;
+  font-weight: 800;
+  margin-bottom: 10px;
+  line-height: 1.1;
+  letter-spacing: -0.5px;
+}
+
+.metaRow {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  margin-bottom: 10px;
+  flex-wrap: wrap;
+}
+
+.ratingBadge {
+  background: var(--rating-bg);
+  color: var(--rating-fg);
+  padding: 3px 10px;
+  border-radius: var(--radius-full);
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.metaSep {
+  width: 3px;
+  height: 3px;
+  border-radius: 50%;
+  background: var(--text-muted);
+  flex-shrink: 0;
+}
+
+.metaText {
+  color: oklch(80% 0.010 252);
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.genreRow {
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
+.genreTag {
+  background: var(--accent-dim);
+  color: var(--text-accent);
+  padding: 2px 10px;
+  border-radius: var(--radius-full);
+  font-size: 11px;
+  font-weight: 600;
+}
+
+/* ── Body ────────────────────────────────────────── */
+.body {
+  flex: 1;
+  padding: 24px 36px 32px;
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+  overflow-y: auto;
+}
+
+.description {
+  color: var(--text-secondary);
+  font-size: 15px;
+  line-height: 1.65;
+  max-width: 72ch;
+}
+
+/* ── Stream options ──────────────────────────────── */
+.streamSection {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.streamTitle {
+  color: var(--text-secondary);
+  font-size: 13px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.6px;
+}
+
+.streamOptions {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.streamBtn {
+  color: var(--text-primary);
+  border-radius: var(--radius-md);
+  padding: 8px 18px;
+  font-size: 13px;
+  font-weight: 500;
+  font-family: var(--font-body);
+  cursor: pointer;
+  transition: background 0.15s ease, border-color 0.15s ease;
+}
+
+.streamBtn:hover {
+  background: var(--focus-bg);
+}
+
+.streamBtnSelected {
+  background: var(--accent-dim);
+  border: 1px solid var(--accent);
+  color: var(--text-accent);
+}
+
+.streamBtnDefault {
+  background: var(--surface);
+  border: 1px solid var(--surface-variant);
+}
+
+/* ── Play button ─────────────────────────────────── */
+.playBtn {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  background: var(--accent);
+  color: oklch(98% 0.004 252);
+  border: none;
+  border-radius: var(--radius-md);
+  padding: 14px 32px;
+  font-size: 16px;
+  font-weight: 700;
+  font-family: var(--font-body);
+  cursor: pointer;
+  transition: background 0.15s ease, transform 0.12s ease;
+  align-self: flex-start;
+  min-width: 200px;
+  justify-content: center;
+}
+
+.playBtn:hover {
+  background: var(--accent-hover);
+  transform: translateY(-1px);
+}
+
+.playBtn:active {
+  transform: translateY(0);
+}
+
+.playIcon {
+  font-size: 14px;
+  line-height: 1;
+}

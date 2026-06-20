@@ -1,0 +1,199 @@
+.card {
+  border-radius: var(--radius-md);
+  overflow: hidden;
+  cursor: pointer;
+  display: flex;
+  flex-direction: column;
+  position: relative;
+  transition: transform 0.20s cubic-bezier(0.25, 0, 0, 1), box-shadow 0.20s ease;
+  outline: none;
+  background: transparent;
+  flex-shrink: 0;
+}
+
+.card:hover {
+  transform: scale(1.05);
+  z-index: 2;
+}
+
+.card:hover .image {
+  filter: brightness(1.08);
+}
+
+.cardFocus {
+  box-shadow: 0 0 0 2px var(--focus-border), var(--shadow-md);
+}
+
+.cardDefault {
+  box-shadow: none;
+}
+
+.cardVod {
+  /* VOD cards rely on poster image; no border in default state */
+}
+
+.cardNonVod {
+  background: var(--card);
+  box-shadow: 0 2px 8px oklch(0% 0 0 / 0.30);
+}
+
+.cardDimmed {
+  opacity: 0.5;
+  pointer-events: none;
+}
+
+.cardDimmed:hover {
+  transform: none;
+}
+
+.cardDimmed:hover .image {
+  filter: none;
+}
+
+/* ── Image ───────────────────────────────────────── */
+.image {
+  width: 100%;
+  object-fit: cover;
+  display: block;
+  transition: filter 0.20s ease;
+}
+
+/* ── Placeholder ─────────────────────────────────── */
+.placeholder {
+  width: 100%;
+  background: var(--surface-variant);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  color: var(--text-muted);
+}
+
+.placeholderInitial {
+  font-size: 22px;
+  font-weight: 700;
+  color: var(--text-secondary);
+  letter-spacing: -0.5px;
+  line-height: 1;
+}
+
+.placeholderType {
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.8px;
+  text-transform: uppercase;
+  color: var(--text-muted);
+}
+
+/* ── Badge ───────────────────────────────────────── */
+.badgesContainer {
+  position: absolute;
+  top: 7px;
+  left: 7px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  z-index: 2;
+  align-items: flex-start;
+}
+
+.badge {
+  position: absolute;
+  top: 7px;
+  left: 7px;
+  padding: 3px 8px;
+  border-radius: var(--radius-xs);
+  color: oklch(97% 0.005 252);
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.4px;
+  text-transform: uppercase;
+}
+
+.badgeInline {
+  position: relative !important;
+  top: auto !important;
+  left: auto !important;
+}
+
+.badgeLive {
+  background: var(--live);
+}
+
+.badgeDefault {
+  background: oklch(11% 0.024 252 / 0.80);
+  backdrop-filter: blur(4px);
+}
+
+/* ── Progress bar ────────────────────────────────── */
+.progressTrack {
+  position: absolute;
+  left: 0;
+  right: 0;
+  height: 3px;
+  background: oklch(0% 0 0 / 0.45);
+}
+
+.progressBar {
+  height: 100%;
+  background: var(--accent);
+  border-radius: 0 2px 2px 0;
+  transition: width 0.15s ease;
+}
+
+/* ── Text area ───────────────────────────────────── */
+.textArea {
+  height: 52px;
+  padding: 6px 10px;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  gap: 2px;
+}
+
+.textAreaVod {
+  background: transparent;
+}
+
+.textAreaNonVod {
+  background: var(--card);
+}
+
+.title {
+  color: var(--text-primary);
+  font-size: 12px;
+  font-weight: 600;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  line-height: 1.3;
+}
+
+.subtitle {
+  color: var(--text-muted);
+  font-size: 11px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* ── Desktop ─────────────────────────────────────── */
+@media (min-width: 1024px) {
+  .title {
+    font-size: 13px;
+  }
+
+  .subtitle {
+    font-size: 12px;
+  }
+
+  .badge {
+    font-size: 10px;
+    padding: 3px 8px;
+  }
+
+  .textArea {
+    height: 54px;
+  }
+}

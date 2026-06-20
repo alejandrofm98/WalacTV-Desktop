@@ -1,0 +1,110 @@
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap');
+
+:root {
+  --app-scale: 1;
+
+  /* ── Backgrounds ─────────────────────────────── */
+  --bg:               oklch(11% 0.024 252);   /* deep navy, main surface */
+  --surface:          oklch(15.5% 0.022 252); /* cards, panels */
+  --surface-variant:  oklch(20% 0.020 252);   /* borders, dividers */
+  --surface-elevated: oklch(23% 0.018 252);   /* dropdowns, tooltips */
+  --card:             oklch(14% 0.022 252);   /* media card bg */
+  --sidebar-bg:       oklch(10% 0.022 252);   /* side rail */
+  --sidebar-selected: oklch(20% 0.030 252);   /* selected nav bg */
+  --focus-bg:         oklch(22% 0.034 252);   /* hover surfaces */
+
+  /* ── Accent ──────────────────────────────────── */
+  --accent:           oklch(63% 0.20 255);    /* primary blue, vivid */
+  --accent-dim:       oklch(63% 0.20 255 / 0.18); /* accent tinted bg */
+  --accent-hover:     oklch(68% 0.18 255);    /* lighter on hover */
+  --focus-border:     oklch(63% 0.20 255);    /* keyboard focus ring */
+
+  /* ── Status ──────────────────────────────────── */
+  --live:             oklch(56% 0.22 27);     /* live / error: warm red */
+  --live-dim:         oklch(56% 0.22 27 / 0.18);
+  --success:          oklch(62% 0.17 155);    /* green */
+  --success-dim:      oklch(62% 0.17 155 / 0.18);
+
+  /* ── Text ────────────────────────────────────── */
+  --text-primary:     oklch(93% 0.008 252);
+  --text-secondary:   oklch(70% 0.012 252);
+  --text-muted:       oklch(51% 0.013 252);
+  --text-accent:      oklch(63% 0.20 255);
+
+  /* ── Badges ──────────────────────────────────── */
+  --movie-badge:      oklch(64% 0.22 355);    /* warm pink */
+  --series-badge:     oklch(65% 0.18 252);    /* blue */
+  --rating-bg:        oklch(76% 0.16 74);     /* gold */
+  --rating-fg:        oklch(18% 0.02 74);
+
+  /* ── Radius ──────────────────────────────────── */
+  --radius-xs: 4px;
+  --radius-sm: 6px;
+  --radius-md: 10px;
+  --radius-lg: 14px;
+  --radius-xl: 20px;
+  --radius-full: 9999px;
+
+  /* ── Typography ──────────────────────────────── */
+  --font-body: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif;
+
+  /* ── Shadows ─────────────────────────────────── */
+  --shadow-sm:  0 2px 8px oklch(0% 0 0 / 0.35);
+  --shadow-md:  0 8px 24px oklch(0% 0 0 / 0.45);
+  --shadow-lg:  0 24px 64px oklch(0% 0 0 / 0.55);
+  --shadow-accent: 0 0 0 3px oklch(63% 0.20 255 / 0.30);
+}
+
+* {
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+}
+
+html, body, #root {
+  width: 100%;
+  height: 100%;
+  overflow: hidden;
+  background: var(--bg);
+  color: var(--text-primary);
+  font-family: var(--font-body);
+  font-size: calc(15px * var(--app-scale));
+  line-height: 1.5;
+  user-select: none;
+  -webkit-user-select: none;
+}
+
+/* ── Scrollbar ───────────────────────────────────── */
+::-webkit-scrollbar {
+  width: 5px;
+  height: 5px;
+}
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+::-webkit-scrollbar-thumb {
+  background: oklch(40% 0.015 252 / 0.7);
+  border-radius: var(--radius-full);
+}
+::-webkit-scrollbar-thumb:hover {
+  background: oklch(50% 0.015 252 / 0.9);
+}
+
+/* ── Focus ring ──────────────────────────────────── */
+*:focus {
+  outline: none;
+}
+
+*:focus-visible {
+  outline: 2px solid var(--focus-border);
+  outline-offset: 2px;
+  border-radius: var(--radius-xs);
+}
+
+/* ── Video player ────────────────────────────────── */
+video {
+  background: oklch(0% 0 0);
+}
+video::-webkit-media-controls {
+  display: none !important;
+}

@@ -1,0 +1,32 @@
+node_modules/
+dist/
+src-tauri/target/
+*.log
+.DS_Store
+
+# Environment files
+.env
+.env.*
+!.env.example
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# AI tools
+.opencode/
+
+# Certificates and keys
+*.pem
+*.key
+*.cert
+*.p12
+*.pfx
+*.jks
+
+# Credentials store (encrypted, user-specific)
+credentials.dat
+
+.opencode

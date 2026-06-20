@@ -1,0 +1,119 @@
+.wrap {
+  position: relative;
+}
+
+.trigger {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  width: 100%;
+  min-width: 140px;
+  background: var(--surface);
+  color: var(--text-primary);
+  border: 1px solid var(--surface-variant);
+  border-radius: var(--radius-sm);
+  padding: 6px 10px;
+  font-size: 13px;
+  font-weight: 500;
+  font-family: var(--font-body);
+  cursor: pointer;
+  text-align: left;
+  transition: background 0.12s ease, color 0.12s ease, border-color 0.12s ease;
+}
+
+.trigger:hover {
+  border-color: oklch(35% 0.020 252);
+  background: var(--focus-bg);
+}
+
+.triggerActive {
+  background: var(--accent-dim);
+  color: var(--text-accent);
+  border-color: oklch(63% 0.20 255 / 0.40);
+}
+
+.triggerLabel {
+  flex: 1;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.triggerArrow {
+  flex-shrink: 0;
+  font-size: 10px;
+  color: var(--text-muted);
+  line-height: 1;
+}
+
+.dropdown {
+  position: absolute;
+  top: calc(100% + 6px);
+  left: 0;
+  background: var(--surface-elevated);
+  border: 1px solid var(--surface-variant);
+  border-radius: var(--radius-md);
+  padding: 4px;
+  z-index: 10;
+  min-width: 180px;
+  box-shadow: var(--shadow-md);
+}
+
+.searchInput {
+  width: 100%;
+  background: var(--surface);
+  color: var(--text-primary);
+  border: 1px solid var(--surface-variant);
+  border-radius: var(--radius-sm);
+  padding: 6px 10px;
+  font-size: 13px;
+  font-family: var(--font-body);
+  outline: none;
+  margin-bottom: 4px;
+  box-sizing: border-box;
+}
+
+.searchInput:focus {
+  border-color: var(--accent);
+}
+
+.searchInput::placeholder {
+  color: var(--text-muted);
+}
+
+.optionsList {
+  max-height: 200px;
+  overflow-y: auto;
+}
+
+.option {
+  padding: 7px 12px;
+  cursor: pointer;
+  font-size: 13px;
+  border-radius: var(--radius-sm);
+  color: var(--text-primary);
+  transition: background 0.10s ease;
+}
+
+.option:hover {
+  background: var(--focus-bg);
+}
+
+.optionSelected {
+  background: var(--accent-dim);
+  color: var(--text-accent);
+}
+
+.optionMuted {
+  color: var(--text-muted);
+  cursor: default;
+}
+
+.optionMuted:hover {
+  background: transparent;
+}
+
+.optionHighlighted {
+  background: var(--focus-bg);
+}

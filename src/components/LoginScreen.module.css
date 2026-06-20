@@ -1,0 +1,147 @@
+.container {
+  width: 100%;
+  height: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--bg);
+  /* Subtle radial glow from center — gives depth without imagery */
+  background-image:
+    radial-gradient(
+      ellipse 70% 60% at 50% 50%,
+      oklch(20% 0.040 252 / 0.35) 0%,
+      transparent 70%
+    );
+}
+
+.form {
+  width: 400px;
+  background: var(--surface);
+  border-radius: var(--radius-lg);
+  border: 1px solid var(--surface-variant);
+  padding: 36px 32px 32px;
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+  box-shadow: var(--shadow-lg);
+}
+
+/* ── Logotype in form header ─────────────────────── */
+.formHeader {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin-bottom: 4px;
+}
+
+.logoRow {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 4px;
+}
+
+.logoMark {
+  width: 36px;
+  height: 36px;
+  border-radius: var(--radius-sm);
+  background: var(--accent);
+  color: oklch(98% 0.004 252);
+  font-size: 18px;
+  font-weight: 800;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  letter-spacing: -0.5px;
+  flex-shrink: 0;
+}
+
+.appName {
+  color: var(--text-primary);
+  font-size: 18px;
+  font-weight: 700;
+  letter-spacing: -0.2px;
+}
+
+.title {
+  color: var(--text-primary);
+  font-size: 22px;
+  font-weight: 700;
+  letter-spacing: -0.3px;
+}
+
+.subtitle {
+  color: var(--text-muted);
+  font-size: 14px;
+  line-height: 1.5;
+}
+
+/* ── Error ───────────────────────────────────────── */
+.error {
+  color: var(--live);
+  font-size: 13px;
+  background: var(--live-dim);
+  border-radius: var(--radius-sm);
+  padding: 8px 12px;
+  line-height: 1.4;
+}
+
+/* ── Submit ──────────────────────────────────────── */
+.submitBtn {
+  background: var(--accent);
+  color: oklch(98% 0.004 252);
+  border: none;
+  border-radius: var(--radius-md);
+  padding: 13px 0;
+  font-size: 15px;
+  font-weight: 600;
+  font-family: var(--font-body);
+  cursor: pointer;
+  transition: background 0.15s ease, transform 0.12s ease;
+  margin-top: 2px;
+}
+
+.submitBtn:hover:not(:disabled) {
+  background: var(--accent-hover);
+  transform: translateY(-1px);
+}
+
+.submitBtn:active:not(:disabled) {
+  transform: translateY(0);
+}
+
+.submitBtn:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+/* ── Field ───────────────────────────────────────── */
+.fieldLabel {
+  display: block;
+  color: var(--text-secondary);
+  font-size: 13px;
+  font-weight: 500;
+  margin-bottom: 6px;
+}
+
+.fieldInput {
+  width: 100%;
+  background: var(--card);
+  color: var(--text-primary);
+  border: 1px solid var(--surface-variant);
+  border-radius: var(--radius-md);
+  padding: 11px 14px;
+  font-size: 15px;
+  font-family: var(--font-body);
+  outline: none;
+  transition: border-color 0.15s ease, box-shadow 0.15s ease;
+}
+
+.fieldInput:focus {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px oklch(63% 0.20 255 / 0.18);
+}
+
+.fieldInput::placeholder {
+  color: var(--text-muted);
+}

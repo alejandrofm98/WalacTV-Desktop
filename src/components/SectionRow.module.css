@@ -1,0 +1,111 @@
+.container {
+  padding: 0 32px;
+  margin-bottom: 28px;
+}
+
+/* ── Section header ──────────────────────────────── */
+.sectionHeader {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 12px;
+}
+
+.sectionTitle {
+  color: var(--text-primary);
+  font-size: 17px;
+  font-weight: 700;
+  letter-spacing: -0.1px;
+}
+
+.badge {
+  padding: 2px 8px;
+  border-radius: var(--radius-full);
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.6px;
+  text-transform: uppercase;
+}
+
+.badgeMovies {
+  background: oklch(64% 0.22 355 / 0.16);
+  color: var(--movie-badge);
+}
+
+.badgeSeries {
+  background: oklch(65% 0.18 252 / 0.16);
+  color: var(--series-badge);
+}
+
+/* ── Scroll track ────────────────────────────────── */
+.scrollContainer {
+  position: relative;
+}
+
+.scrollTrack {
+  display: flex;
+  gap: 12px;
+  overflow-x: auto;
+  overflow-y: hidden;
+  scroll-behavior: smooth;
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+  padding-bottom: 6px;
+  /* Extra side padding so scale(1.05) on first/last card isn't clipped */
+  padding-left: 2px;
+  padding-right: 2px;
+}
+
+.scrollTrack::-webkit-scrollbar {
+  display: none;
+}
+
+/* ── Scroll buttons ──────────────────────────────── */
+.scrollBtn {
+  position: absolute;
+  top: 0;
+  bottom: 6px;
+  width: 52px;
+  border: none;
+  color: var(--text-primary);
+  font-size: 20px;
+  font-weight: 300;
+  cursor: pointer;
+  z-index: 2;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: opacity 0.15s ease;
+  font-family: var(--font-body);
+}
+
+.scrollBtnLeft {
+  left: 0;
+  background: linear-gradient(90deg, var(--bg) 40%, transparent 100%);
+  padding-right: 8px;
+}
+
+.scrollBtnRight {
+  right: 0;
+  background: linear-gradient(270deg, var(--bg) 40%, transparent 100%);
+  padding-left: 8px;
+}
+
+.scrollBtn:hover {
+  opacity: 0.85;
+}
+
+/* ── Desktop ─────────────────────────────────────── */
+@media (min-width: 1024px) {
+  .container {
+    margin-bottom: 32px;
+  }
+
+  .sectionTitle {
+    font-size: 19px;
+  }
+
+  .scrollTrack {
+    gap: 14px;
+  }
+}
