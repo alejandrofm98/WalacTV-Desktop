@@ -21,7 +21,7 @@
       }
     ],
     "security": {
-      "csp": "default-src 'self'; img-src 'self' https://image.tmdb.org https:* data:; media-src 'self' https: http: blob:; style-src 'self' 'unsafe-inline'; script-src 'self'"
+      "csp": "default-src 'self'; connect-src 'self' https://iptv.walerike.com https:; img-src 'self' https://image.tmdb.org https:* data:; media-src 'self' https: http: blob:; style-src 'self' 'unsafe-inline'; script-src 'self'"
     }
   },
   "bundle": {
