@@ -22,9 +22,7 @@ jobs:
           version: latest
 
       - name: Install frontend deps
-        run: |
-          pnpm approve-builds esbuild
-          pnpm install --frozen-lockfile
+        run: pnpm install --frozen-lockfile
 
       - name: Build Tauri app
         uses: tauri-apps/tauri-action@v0.6.2
