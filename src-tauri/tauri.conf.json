@@ -24,5 +24,15 @@
       "csp": "default-src 'self'; img-src 'self' https://image.tmdb.org https:* data:; media-src 'self' https: http: blob:; style-src 'self' 'unsafe-inline'; script-src 'self'"
     }
   },
+  "bundle": {
+    "active": true,
+    "targets": ["deb", "appimage"],
+    "icon": ["icons/icon.png"],
+    "linux": {
+      "deb": {
+        "depends": []
+      }
+    }
+  },
   "plugins": {}
 }
