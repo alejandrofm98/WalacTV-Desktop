@@ -5,6 +5,7 @@ export interface StreamOption {
   url: string
   rawUrl: string
   providerId?: string
+  quality?: string | null
   headers?: Record<string, string>
 }
 
@@ -55,6 +56,8 @@ export interface WatchProgressItem {
   normalizedTitle: string
   title: string
   imageUrl: string
+  tmdbPosterUrl?: string | null
+  backdropUrl?: string | null
   seriesName?: string | null
   seriesProviderId?: string | null
   seasonNumber?: number | null

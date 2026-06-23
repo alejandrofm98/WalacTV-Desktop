@@ -123,6 +123,7 @@ function mapStreamOptions(raw: any[]): StreamOption[] {
     url: resolveUrl(o.url ?? ''),
     rawUrl: o.url ?? '',
     providerId: o.provider_id ?? o.providerId ?? undefined,
+    quality: o.quality ?? null,
   }))
 }
 
@@ -199,6 +200,7 @@ function mapSection(raw: any, contentType: string): BrowseSection {
 }
 
 function mapWatchProgress(raw: any): WatchProgressItem {
+  const tmdbPosterUrlVal = buildTmdbImageUrl(raw.poster_path, 'w500')
   return {
     contentId: String(raw.content_id ?? ''),
     contentType: raw.content_type ?? '',
@@ -206,7 +208,9 @@ function mapWatchProgress(raw: any): WatchProgressItem {
     durationMs: raw.duration_ms ?? 0,
     normalizedTitle: raw.normalized_title ?? raw.series_name ?? '',
     title: raw.title ?? '',
-    imageUrl: normalizeRemoteImageUrl(raw.image_url) || buildTmdbImageUrl(raw.poster_path, 'w500') || '',
+    imageUrl: normalizeRemoteImageUrl(raw.image_url) || tmdbPosterUrlVal || '',
+    tmdbPosterUrl: tmdbPosterUrlVal || null,
+    backdropUrl: raw.backdrop_path ? buildTmdbImageUrl(raw.backdrop_path, 'w1280') : null,
     seriesName: raw.series_name ?? null,
     seasonNumber: raw.season_number ?? null,
     episodeNumber: raw.episode_number ?? null,

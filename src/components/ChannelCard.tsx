@@ -75,14 +75,14 @@ export function ChannelCard({
         {hasImage ? (
           <img
             src={item.imageUrl}
-            alt={item.title}
+            alt={item.tmdbTitle ?? item.title}
             className={styles.logo}
             onError={() => setImageError(true)}
             loading="lazy"
           />
         ) : (
           <span className={styles.fallbackIcon} aria-hidden="true">
-            📺
+            TV
           </span>
         )}
 
@@ -103,8 +103,8 @@ export function ChannelCard({
       </div>
 
       <div className={styles.info}>
-        <div className={styles.name} title={item.title}>
-          {item.title}
+        <div className={styles.name} title={item.tmdbTitle ?? item.title}>
+          {item.tmdbTitle ?? item.title}
         </div>
         <div className={styles.group} title={item.group}>
           {item.group}

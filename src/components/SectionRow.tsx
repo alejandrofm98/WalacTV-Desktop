@@ -6,10 +6,11 @@ import styles from './SectionRow.module.css'
 interface Props {
   section: BrowseSection
   onCardClick: (item: CatalogItem) => void
+  onCardHover?: (item: CatalogItem) => void
   continueWatching?: Map<string, { positionMs: number; durationMs: number; isWatched?: boolean; seasonNumber?: number | null; episodeNumber?: number | null }>
 }
 
-export function SectionRow({ section, onCardClick, continueWatching }: Props) {
+export function SectionRow({ section, onCardClick, onCardHover, continueWatching }: Props) {
   const scrollRef = useRef<HTMLDivElement>(null)
   const [canScrollLeft, setCanScrollLeft] = useState(false)
   const [canScrollRight, setCanScrollRight] = useState(true)
@@ -87,6 +88,7 @@ export function SectionRow({ section, onCardClick, continueWatching }: Props) {
                 progressPercent={progress}
                 topBadges={topBadges}
                 onClick={() => onCardClick(item)}
+                onHover={onCardHover}
               />
             )
           })}

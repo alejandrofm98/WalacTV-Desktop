@@ -49,7 +49,7 @@ export function SeriesDetail({ item }: Props) {
         <div className={styles.gradientBottom} />
         <button onClick={closeDetail} className={styles.backBtn}>← Volver</button>
         <div className={styles.headerInfo}>
-          <h1 className={styles.title}>{item.title}</h1>
+          <h1 className={styles.title}>{item.tmdbTitle ?? item.title}</h1>
           {item.totalSeasons && (
             <span className={styles.seasonsText}>
               {item.totalSeasons === 1 ? '1 temporada' : `${item.totalSeasons} temporadas`}
@@ -94,14 +94,14 @@ export function SeriesDetail({ item }: Props) {
                 {(ep.stillPath || ep.imageUrl) ? (
                   <img src={ep.stillPath || ep.imageUrl} alt="" className={styles.episodeThumb} />
                 ) : (
-                  <div className={styles.episodeThumbPlaceholder}>📺</div>
+                  <div className={styles.episodeThumbPlaceholder}>TV</div>
                 )}
 
                 <div className={styles.episodeInfo}>
                   <div className={styles.episodeNumber}>
                     T{ep.seasonNumber ?? '?'} E{ep.episodeNumber ?? '?'}
                   </div>
-                  <div className={styles.episodeTitle}>{ep.title}</div>
+                  <div className={styles.episodeTitle}>{ep.tmdbTitle ?? ep.title}</div>
                   {ep.subtitle && (
                     <div className={styles.episodeSubtitle}>{ep.subtitle}</div>
                   )}

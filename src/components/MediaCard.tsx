@@ -11,12 +11,13 @@ interface Props {
   progressPercent?: number
   topBadges?: string[]
   onClick: () => void
+  onHover?: (item: CatalogItem) => void
 }
 
 const CARD_W = 170
 const CARD_H = 240
 
-export function MediaCard({ item, width = CARD_W, height = CARD_H, showText = false, progressPercent, topBadges, onClick }: Props) {
+export function MediaCard({ item, width = CARD_W, height = CARD_H, showText = false, progressPercent, topBadges, onClick, onHover }: Props) {
   const [focused, setFocused] = useState(false)
   const [imgError, setImgError] = useState(false)
   const playerOpening = useAppStore((s) => s.playerOpening)
@@ -25,12 +26,13 @@ export function MediaCard({ item, width = CARD_W, height = CARD_H, showText = fa
   const isEvent = item.kind === 'EVENT'
   const isChannel = item.kind === 'CHANNEL'
   const isDimmed = playerOpening && playerItem?.stableId === item.stableId
+  const displayTitle = item.tmdbTitle ?? item.title
 
   const displayImage = item.tmdbPosterUrl || item.imageUrl || ''
   const imgFailed = imgError || !displayImage
 
   // Placeholder: first word of title, uppercase
-  const placeholderInitial = item.title?.split(' ')[0]?.slice(0, 4).toUpperCase() ?? '?'
+  const placeholderInitial = displayTitle?.split(' ')[0]?.slice(0, 4).toUpperCase() ?? '?'
   const placeholderType = isChannel ? 'Canal' : isEvent ? 'Evento' : item.kind === 'SERIES' ? 'Serie' : 'Película'
 
   const cardClass = [
@@ -48,9 +50,10 @@ export function MediaCard({ item, width = CARD_W, height = CARD_H, showText = fa
     <div
       tabIndex={0}
       role="button"
-      aria-label={item.title}
-      onFocus={() => setFocused(true)}
+      aria-label={displayTitle}
+      onFocus={() => { setFocused(true); onHover?.(item) }}
       onBlur={() => setFocused(false)}
+      onMouseEnter={() => onHover?.(item)}
       onClick={onClick}
       onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); onClick() } }}
       className={cardClass}
@@ -60,7 +63,7 @@ export function MediaCard({ item, width = CARD_W, height = CARD_H, showText = fa
       {!imgFailed ? (
         <img
           src={displayImage}
-          alt={item.title}
+          alt={displayTitle}
           className={styles.image}
           style={{ height: imgHeight }}
           loading="lazy"
@@ -98,7 +101,7 @@ export function MediaCard({ item, width = CARD_W, height = CARD_H, showText = fa
       {/* Text area */}
       {showText && (
         <div className={`${styles.textArea} ${isVod ? styles.textAreaVod : styles.textAreaNonVod}`}>
-          <div className={styles.title}>{item.title}</div>
+          <div className={styles.title}>{displayTitle}</div>
           {item.subtitle && (
             <div className={styles.subtitle}>{item.subtitle}</div>
           )}

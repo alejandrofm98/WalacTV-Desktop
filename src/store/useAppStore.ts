@@ -45,7 +45,7 @@ interface AppState {
 export const useAppStore = create<AppState>((set, get) => ({
   mode: 'Home',
   previousMode: 'Home',
-  setMode: (mode) => set((state) => ({ mode, previousMode: state.mode })),
+  setMode: (mode) => set((state) => ({ mode, previousMode: state.mode, detailItem: null })),
 
   signedIn: false,
   username: '',

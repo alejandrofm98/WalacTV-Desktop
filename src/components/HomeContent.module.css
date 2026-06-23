@@ -22,6 +22,7 @@
   height: 100%;
   object-fit: cover;
   object-position: center 20%;
+  transition: opacity 0.35s ease, transform 0.5s ease;
 }
 
 .heroFallback {
@@ -59,6 +60,7 @@
   left: 36px;
   right: 52%;
   z-index: 1;
+  transition: opacity 0.25s ease;
 }
 
 .heroTitle {

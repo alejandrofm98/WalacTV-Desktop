@@ -1,10 +1,16 @@
 import { useState, useEffect, useRef, useCallback } from 'react'
 import type { CatalogItem } from '../api/types'
-import { getCatalogPage, getGenres, HARDCODED_COUNTRIES } from '../api/client'
+import { getCatalogPage, getGenres, search } from '../api/client'
 import { MediaCard } from './MediaCard'
 import { SearchableSelect } from './SearchableSelect'
+import { SearchInput } from './SearchInput'
 import { useAppStore } from '../store/useAppStore'
 import styles from './DiscoverContent.module.css'
+
+const LANGUAGES = [
+  { value: 'ES', label: 'Español' },
+  { value: 'EN', label: 'Inglés' },
+]
 
 export function DiscoverContent() {
   const [type, setType] = useState<'movies' | 'series'>('movies')
@@ -18,6 +24,8 @@ export function DiscoverContent() {
   const [loadingMore, setLoadingMore] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [loadError, setLoadError] = useState(false)
+  const [query, setQuery] = useState('')
+  const searchTimeout = useRef<ReturnType<typeof setTimeout> | null>(null)
   const openDetail = useAppStore((s) => s.openDetail)
   const observerTarget = useRef<HTMLDivElement>(null)
 
@@ -27,14 +35,34 @@ export function DiscoverContent() {
   }, [type, country])
 
   useEffect(() => {
+    if (searchTimeout.current) clearTimeout(searchTimeout.current)
     setLoading(true)
     setPage(1)
     setError(null)
-    getCatalogPage({ content_type: type, country, genre, page: 1, page_size: 48 })
-      .then((r) => { setItems(r.items); setHasNext(r.has_next) })
-      .catch((e) => setError(e.message ?? 'Error'))
-      .finally(() => setLoading(false))
-  }, [type, country, genre])
+
+    if (!query.trim()) {
+      getCatalogPage({ content_type: type, country, genre, page: 1, page_size: 48 })
+        .then((r) => { setItems(r.items); setHasNext(r.has_next) })
+        .catch((e) => setError(e.message ?? 'Error'))
+        .finally(() => setLoading(false))
+      return
+    }
+
+    searchTimeout.current = setTimeout(() => {
+      search(query.trim(), 1, { country, types: type, genre })
+        .then((r) => {
+          setItems(r.results)
+          setHasNext(false)
+          setPage(1)
+        })
+        .catch((e) => setError(e.message ?? 'Error buscando'))
+        .finally(() => setLoading(false))
+    }, 350)
+
+    return () => {
+      if (searchTimeout.current) clearTimeout(searchTimeout.current)
+    }
+  }, [type, country, genre, query])
 
   const loadMore = useCallback(() => {
     if (loadingMore || !hasNext) return
@@ -86,8 +114,13 @@ export function DiscoverContent() {
               onClick={() => setType('series')}
             >Series</button>
           </div>
-          <SearchableSelect label="País" options={HARDCODED_COUNTRIES} value={country} onChange={setCountry} />
+          <SearchableSelect label="Idioma" options={LANGUAGES} value={country} onChange={setCountry} />
           <SearchableSelect label="Género" options={genres} value={genre} onChange={setGenre} />
+          <SearchInput
+            placeholder={type === 'movies' ? 'Buscar peliculas...' : 'Buscar series...'}
+            value={query}
+            onChange={setQuery}
+          />
         </div>
 
         {loading ? (

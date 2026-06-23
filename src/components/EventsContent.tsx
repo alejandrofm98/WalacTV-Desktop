@@ -3,6 +3,7 @@ import type { CalendarEvent, CatalogItem } from '../api/types'
 import { getCalendarEvents, getMpvUrl, normalizeRemoteImageUrl, IPTV_BASE } from '../api/client'
 import { useAppStore } from '../store/useAppStore'
 import { MediaCard } from './MediaCard'
+import { SearchInput } from './SearchInput'
 import styles from './EventsContent.module.css'
 
 function todayStr() {
@@ -40,6 +41,7 @@ export function EventsContent() {
   const [events, setEvents] = useState<CatalogItem[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
+  const [query, setQuery] = useState('')
   const openPlayer = useAppStore((s) => s.openPlayer)
 
   useEffect(() => {
@@ -50,11 +52,25 @@ export function EventsContent() {
       .finally(() => setLoading(false))
   }, [])
 
+  const filteredEvents = query.trim()
+    ? events.filter((ev) => {
+        const q = query.toLowerCase()
+        return (
+          ev.title.toLowerCase().includes(q) ||
+          ev.subtitle?.toLowerCase().includes(q) ||
+          ev.description?.toLowerCase().includes(q) ||
+          ev.badgeText?.toLowerCase().includes(q) ||
+          ev.group?.toLowerCase().includes(q)
+        )
+      })
+    : events
+
   return (
     <div className={styles.container}>
       <div className={styles.header}>
         <h2 className={styles.title}>Eventos de hoy</h2>
         <span className={styles.date}>{todayStr()}</span>
+        <SearchInput placeholder="Buscar eventos..." value={query} onChange={setQuery} />
       </div>
 
       {loading ? (
@@ -63,9 +79,11 @@ export function EventsContent() {
         <div className={styles.center}>{error}</div>
       ) : events.length === 0 ? (
         <div className={styles.center}>No hay eventos para hoy</div>
+      ) : filteredEvents.length === 0 ? (
+        <div className={styles.center}>Sin resultados</div>
       ) : (
         <div className={styles.grid}>
-          {events.map((item) => (
+          {filteredEvents.map((item) => (
             <MediaCard
               key={item.stableId}
               item={item}

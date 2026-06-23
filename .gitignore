@@ -28,5 +28,3 @@ src-tauri/target/
 
 # Credentials store (encrypted, user-specific)
 credentials.dat
-
-.opencode

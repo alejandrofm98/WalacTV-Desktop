@@ -16,7 +16,7 @@ import { MovieDetail } from './components/MovieDetail'
 import { SeriesDetail } from './components/SeriesDetail'
 import { LoadingScreen } from './components/LoadingScreen'
 import { ErrorScreen } from './components/ErrorScreen'
-import type { WatchProgressItem } from './api/types'
+import type { CatalogItem, WatchProgressItem } from './api/types'
 import styles from './App.module.css'
 
 export default function App() {
@@ -56,12 +56,12 @@ export default function App() {
         getWatchProgress(20).catch(() => ({ items: [] })),
       ])
 
+      let hero: CatalogItem | null = null
       if (home) {
         setHomeSections(home.sections)
-        const hero = home.sections
+        hero = home.sections
           .flatMap((s) => s.items)
-          .find((i) => i.kind === 'MOVIE' || i.kind === 'SERIES')
-        setSelectedHero(hero ?? null)
+          .find((i) => i.kind === 'MOVIE' || i.kind === 'SERIES') ?? null
       }
 
       if (cw?.items) {
@@ -70,7 +70,28 @@ export default function App() {
           map.set(item.contentId, item)
         }
         setContinueWatching(map)
+        if (!hero && cw.items.length > 0) {
+          const e = cw.items[0]
+          hero = {
+            stableId: e.contentId,
+            title: e.title,
+            subtitle: e.seriesName || '',
+            description: '',
+            imageUrl: e.imageUrl,
+            tmdbPosterUrl: e.tmdbPosterUrl,
+            backdropUrl: e.backdropUrl,
+            kind: (e.contentType === 'series' ? 'SERIES' : 'MOVIE') as CatalogItem['kind'],
+            group: '',
+            badgeText: '',
+            streamOptions: [],
+            genres: [],
+            seasonNumber: e.seasonNumber,
+            episodeNumber: e.episodeNumber,
+          }
+        }
       }
+
+      setSelectedHero(hero)
     } catch (e: any) {
       setError(e.message ?? 'Error cargando datos')
     } finally {

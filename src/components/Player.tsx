@@ -69,13 +69,13 @@ export function Player() {
           {spawned ? (
             <>
               <div>Reproduciendo en mpv...</div>
-              <div style={{ fontSize: 14, opacity: 0.7, marginTop: 8 }}>{item.title}</div>
+              <div style={{ fontSize: 14, opacity: 0.7, marginTop: 8 }}>{item.tmdbTitle ?? item.title}</div>
               <div style={{ fontSize: 12, opacity: 0.5, marginTop: 12 }}>Presiona Escape para cerrar</div>
             </>
           ) : (
             <>
               <div>Abriendo en mpv...</div>
-              <div style={{ fontSize: 14, opacity: 0.7, marginTop: 8 }}>{item.title}</div>
+              <div style={{ fontSize: 14, opacity: 0.7, marginTop: 8 }}>{item.tmdbTitle ?? item.title}</div>
             </>
           )}
         </div>

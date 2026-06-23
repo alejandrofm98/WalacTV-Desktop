@@ -3,6 +3,7 @@ import type { CatalogItem } from '../api/types'
 import { getCatalogPage, getGroups, getFavorites, addFavorite, removeFavorite, search, HARDCODED_COUNTRIES } from '../api/client'
 import { ChannelCard } from './ChannelCard'
 import { SearchableSelect } from './SearchableSelect'
+import { SearchInput } from './SearchInput'
 import { useAppStore } from '../store/useAppStore'
 import styles from './TVGuide.module.css'
 
@@ -67,10 +68,9 @@ export function TVGuide({ contentType }: Props) {
 
     setSearching(true)
     searchTimeout.current = setTimeout(() => {
-      search(query.trim(), 1, { country, group })
+      search(query.trim(), 1, { country, group, types: 'channels' })
         .then((r) => {
-          const filtered = r.results.filter((item) => item.kind === 'CHANNEL')
-          setItems(filtered)
+          setItems(r.results)
           setHasNext(false)
           setPage(1)
         })
@@ -157,24 +157,7 @@ export function TVGuide({ contentType }: Props) {
             ⭐ Favoritos
           </button>
         )}
-        <div className={styles.searchBox}>
-          <svg className={styles.searchIcon} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-            <circle cx="11" cy="11" r="8" />
-            <line x1="21" y1="21" x2="16.65" y2="16.65" />
-          </svg>
-          <input
-            type="text"
-            className={styles.searchInput}
-            placeholder="Buscar canales..."
-            value={query}
-            onChange={(e) => setQuery(e.target.value)}
-          />
-          {query && (
-            <button className={styles.searchClear} onClick={() => setQuery('')} aria-label="Limpiar búsqueda">
-              ✕
-            </button>
-          )}
-        </div>
+        <SearchInput placeholder="Buscar canales..." value={query} onChange={setQuery} />
       </div>
 
       {/* Grid */}

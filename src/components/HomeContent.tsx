@@ -1,4 +1,4 @@
-import { useMemo, useCallback } from 'react'
+import { useMemo, useCallback, useEffect, useRef, useState } from 'react'
 import { useAppStore } from '../store/useAppStore'
 import { SectionRow } from './SectionRow'
 import { getContentById, getSeriesEpisodes } from '../api/client'
@@ -7,6 +7,39 @@ import styles from './HomeContent.module.css'
 
 export function HomeContent() {
   const { homeSections, selectedHero, continueWatchingEntries, openPlayer, openDetail } = useAppStore()
+
+  const [hoveredHero, setHoveredHero] = useState<CatalogItem | null>(null)
+  const hoverTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+
+  const defaultHero = useMemo(() => {
+    const allVod = homeSections
+      .flatMap((s) => s.items)
+      .filter((i) => i.kind === 'MOVIE' || i.kind === 'SERIES')
+    return allVod.length > 0 ? allVod[Math.floor(Math.random() * allVod.length)] : null
+  }, [homeSections])
+
+  useEffect(() => {
+    return () => {
+      if (hoverTimeoutRef.current) clearTimeout(hoverTimeoutRef.current)
+    }
+  }, [])
+
+  const handleCardHover = useCallback((item: CatalogItem) => {
+    if (item.kind !== 'MOVIE' && item.kind !== 'SERIES') return
+    if (hoverTimeoutRef.current) clearTimeout(hoverTimeoutRef.current)
+    hoverTimeoutRef.current = setTimeout(() => {
+      setHoveredHero(item)
+    }, 150)
+  }, [])
+
+  const handleCardHoverEnd = useCallback(() => {
+    if (hoverTimeoutRef.current) clearTimeout(hoverTimeoutRef.current)
+    hoverTimeoutRef.current = setTimeout(() => {
+      setHoveredHero(null)
+    }, 150)
+  }, [])
+
+  const displayHero = hoveredHero ?? defaultHero ?? selectedHero
 
   const handleCardClick = useCallback(async (item: CatalogItem) => {
     const cw = continueWatchingEntries.get(item.stableId)
@@ -46,6 +79,8 @@ export function HomeContent() {
       subtitle: e.seriesName || '',
       description: '',
       imageUrl: e.imageUrl,
+      tmdbPosterUrl: e.tmdbPosterUrl,
+      backdropUrl: e.backdropUrl,
       kind: (e.contentType === 'series' ? 'SERIES' : 'MOVIE') as CatalogItem['kind'],
       group: '',
       badgeText: '',
@@ -64,10 +99,10 @@ export function HomeContent() {
     <div className={styles.container}>
       {/* Hero backdrop */}
       <div className={styles.hero}>
-        {selectedHero?.backdropUrl ? (
-          <img src={selectedHero.backdropUrl} alt="" className={styles.heroImage} />
-        ) : selectedHero?.tmdbPosterUrl || selectedHero?.imageUrl ? (
-          <img src={selectedHero.tmdbPosterUrl || selectedHero.imageUrl} alt="" className={styles.heroImage} />
+        {displayHero?.backdropUrl ? (
+          <img src={displayHero.backdropUrl} alt="" className={styles.heroImage} />
+        ) : displayHero?.tmdbPosterUrl || displayHero?.imageUrl ? (
+          <img src={displayHero.tmdbPosterUrl || displayHero.imageUrl} alt="" className={styles.heroImage} />
         ) : (
           <div className={styles.heroFallback} />
         )}
@@ -79,66 +114,67 @@ export function HomeContent() {
         {/* Hero text */}
         <div className={styles.heroText}>
           <h1 className={styles.heroTitle}>
-            {selectedHero?.title || 'WalacTV'}
+            {(displayHero?.tmdbTitle ?? displayHero?.title) || 'WalacTV'}
           </h1>
 
-          {(selectedHero?.voteAverage ?? 0) > 0 && (
+          {(displayHero?.voteAverage ?? 0) > 0 && (
             <div className={styles.metaRow}>
               <span className={styles.ratingBadge}>
-                ★ {selectedHero!.voteAverage!.toFixed(1)}
+                ★ {displayHero!.voteAverage!.toFixed(1)}
               </span>
-              {selectedHero!.year && (
+              {displayHero!.year && (
                 <>
                   <span className={styles.metaSep} />
-                  <span className={styles.metaText}>{selectedHero!.year}</span>
+                  <span className={styles.metaText}>{displayHero!.year}</span>
                 </>
               )}
-              {selectedHero!.runtimeMinutes && (
+              {displayHero!.runtimeMinutes && (
                 <>
                   <span className={styles.metaSep} />
                   <span className={styles.metaText}>
-                    {Math.floor(selectedHero!.runtimeMinutes / 60)}h {selectedHero!.runtimeMinutes % 60}min
+                    {Math.floor(displayHero!.runtimeMinutes / 60)}h {displayHero!.runtimeMinutes % 60}min
                   </span>
                 </>
               )}
-              {selectedHero!.kind === 'SERIES' && selectedHero!.totalSeasons && (
+              {displayHero!.kind === 'SERIES' && displayHero!.totalSeasons && (
                 <>
                   <span className={styles.metaSep} />
                   <span className={styles.metaText}>
-                    {selectedHero!.totalSeasons === 1 ? '1 temporada' : `${selectedHero!.totalSeasons} temporadas`}
+                    {displayHero!.totalSeasons === 1 ? '1 temporada' : `${displayHero!.totalSeasons} temporadas`}
                   </span>
                 </>
               )}
             </div>
           )}
 
-          {selectedHero && selectedHero.genres.length > 0 && (
+          {displayHero && displayHero.genres.length > 0 && (
             <div className={styles.genreRow}>
-              {selectedHero.genres.slice(0, 5).map((g) => (
+              {displayHero.genres.slice(0, 5).map((g) => (
                 <span key={g} className={styles.genreTag}>{g}</span>
               ))}
             </div>
           )}
 
-          {selectedHero?.description && (
+          {displayHero?.description && (
             <p className={styles.heroDescription}>
-              {selectedHero.description}
+              {displayHero.description}
             </p>
           )}
         </div>
       </div>
 
       {/* Sections */}
-      <div className={styles.sections}>
+      <div className={styles.sections} onMouseLeave={handleCardHoverEnd}>
         {activeCwSection && (
           <SectionRow
             section={activeCwSection}
             onCardClick={handleCardClick}
+            onCardHover={handleCardHover}
             continueWatching={continueWatchingEntries}
           />
         )}
         {otherSections.map((s, i) => (
-          <SectionRow key={`${s.title}-${i}`} section={s} onCardClick={handleCardClick} />
+          <SectionRow key={`${s.title}-${i}`} section={s} onCardClick={handleCardClick} onCardHover={handleCardHover} />
         ))}
       </div>
     </div>
