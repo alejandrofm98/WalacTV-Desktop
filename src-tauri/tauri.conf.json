@@ -27,7 +27,7 @@
   "bundle": {
     "active": true,
     "targets": ["deb", "appimage", "msi"],
-    "icon": ["icons/icon.png"],
+    "icon": ["icons/icon.png", "icons/icon.ico"],
     "linux": {
       "deb": {
         "depends": []
