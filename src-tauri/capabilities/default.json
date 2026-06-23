@@ -4,7 +4,10 @@
   "windows": ["main"],
   "permissions": [
     "core:default",
-    "http:default",
+    {
+      "identifier": "http:default",
+      "allow": [{ "url": "https://iptv.walerike.com" }]
+    },
     "http:allow-fetch",
     "http:allow-fetch-cancel",
     "http:allow-fetch-read-body",
