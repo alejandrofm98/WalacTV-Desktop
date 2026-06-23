@@ -1,0 +1,36 @@
+name: Build Windows
+on:
+  push:
+    tags: ['v[0-9]*']
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: latest
+
+      - name: Install frontend deps
+        run: pnpm install --frozen-lockfile
+
+      - name: Build Tauri app
+        uses: tauri-apps/tauri-action@v2
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          VITE_API_URL: ${{ vars.VITE_API_URL || 'https://iptv.walerike.com' }}
+        with:
+          tagName: ${{ github.ref_name }}
+          releaseName: WalacTV ${{ github.ref_name }}
+          releaseBody: 'Build automatico para Windows.'
+          includeDebug: false
+          includeRelease: true
