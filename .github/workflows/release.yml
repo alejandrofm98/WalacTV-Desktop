@@ -29,6 +29,10 @@ jobs:
       - name: Install frontend deps
         run: pnpm install --frozen-lockfile
 
+      - name: Download mpv for bundling
+        shell: bash
+        run: scripts/fetch-mpv-windows.sh
+
       - name: Build Tauri app
         uses: tauri-apps/tauri-action@v0.6.2
         env:

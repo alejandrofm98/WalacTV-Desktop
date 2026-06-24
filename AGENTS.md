@@ -212,3 +212,32 @@ pnpm rimraf dist src-tauri/target  # Limpiar builds
 - Si la private key se pierde, el updater se rompe para todos los usuarios existentes.
 - Para regenerar: `pnpm tauri signer generate --ci --write-keys ~/.tauri/walactv-desktop.key`.
 - La private key se pasa al CI via secret `TAURI_SIGNING_PRIVATE_KEY`.
+
+### mpv bundled (Windows)
+
+En Windows, mpv se empaqueta dentro del installer NSIS via `bundled.resources`
+para evitar el error "program not found" si el usuario no tiene mpv en el PATH.
+
+**Fuente**: shinchiro/mpv-winbuild-cmake - builds x86_64 genericas (no v3).
+**Tag actual**: `20260610` (ver `scripts/fetch-mpv-windows.sh`).
+
+**Como actualizar**:
+1. Ir a https://github.com/shinchiro/mpv-winbuild-cmake/releases
+2. Elegir el ultimo tag (formato `YYYYMMDD`)
+3. Actualizar `TAG` y `ASSET` en `scripts/fetch-mpv-windows.sh`
+4. Ejecutar `scripts/fetch-mpv-windows.sh` localmente
+5. Verificar que `src-tauri/resources/mpv/mpv.exe` y DLLs se actualizaron
+6. Hacer build de prueba en Windows
+
+**Flujo en build**:
+- Local: `scripts/fetch-mpv-windows.sh` (requiere `curl` y `7z`)
+- CI: se ejecuta automaticamente en el job de Windows de `release.yml`
+- Linux/Mac: no se ejecuta el script; `open_in_mpv` usa `mpv` del PATH
+
+**En runtime** (`main.rs`):
+1. Busca `resource_dir/resources/mpv/mpv.exe` (bundled)
+2. Si no existe, fallback a `mpv` en PATH del sistema
+
+**Licencia**: mpv se distribuye bajo GPLv2+. El binario se descarga de shinchiro
+y se redistribuye como parte del installer. El archivo `LICENSE.mpv.txt` se
+incluye en `src-tauri/resources/mpv/`.

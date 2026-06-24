@@ -1,7 +1,11 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
+use std::path::PathBuf;
+use std::io;
 use serde::Serialize;
 use tauri::Manager;
+
+const MPV_ERR_NO_BINARY: &str = "MPV_NO_BINARY";
 
 #[derive(Serialize)]
 struct ScaleInfo {
@@ -18,17 +22,34 @@ fn adaptive_scale(monitor_height: u32) -> f64 {
     }
 }
 
+fn resolve_mpv(app: &tauri::AppHandle) -> PathBuf {
+    if let Ok(dir) = app.path().resource_dir() {
+        let bundled = dir.join("resources").join("mpv").join("mpv.exe");
+        if bundled.exists() {
+            return bundled;
+        }
+    }
+    PathBuf::from("mpv")
+}
+
 #[tauri::command]
-fn open_in_mpv(url: String, start_seconds: Option<u64>) -> Result<(), String> {
+fn open_in_mpv(app: tauri::AppHandle, url: String, start_seconds: Option<u64>) -> Result<(), String> {
+    let mpv = resolve_mpv(&app);
     let mut args = vec!["--fullscreen".to_string(), "--vo=gpu".to_string(), "--hwdec=auto-safe".to_string()];
     if let Some(secs) = start_seconds {
         args.push(format!("--start={}", secs));
     }
     args.push(url);
-    std::process::Command::new("mpv")
+    std::process::Command::new(mpv)
         .args(&args)
         .spawn()
-        .map_err(|e| e.to_string())?;
+        .map_err(|e| {
+            if e.kind() == io::ErrorKind::NotFound {
+                MPV_ERR_NO_BINARY.to_string()
+            } else {
+                e.to_string()
+            }
+        })?;
     Ok(())
 }
 

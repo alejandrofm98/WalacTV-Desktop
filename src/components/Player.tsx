@@ -38,7 +38,20 @@ export function Player() {
     if (typeof window !== 'undefined' && '__TAURI_INTERNALS__' in window) {
       invoke('open_in_mpv', { url, startSeconds: playerStartPosition > 0 ? Math.floor(playerStartPosition / 1000) : undefined })
         .then(() => setSpawned(true))
-        .catch((e) => setError(String(e)))
+        .catch((e) => {
+          const msg = String(e)
+          if (msg === 'MPV_NO_BINARY') {
+            setError(
+              'mpv no esta instalado.\n\n' +
+              'WalacTV incluye una copia de mpv para Windows, pero no se encontro.\n' +
+              'Reinstala WalacTV o descarga mpv desde:\n' +
+              'https://mpv.io/installation/\n\n' +
+              'Asegurate de anadir mpv al PATH o colocar mpv.exe en el directorio de instalacion.'
+            )
+          } else {
+            setError(msg)
+          }
+        })
     } else {
       navigator.clipboard.writeText(url).catch(() => {})
       setError(`mpv no disponible en dev. URL copiada al portapapeles.\n\nmpv "${url}"`)
