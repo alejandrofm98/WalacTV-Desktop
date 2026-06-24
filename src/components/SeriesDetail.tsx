@@ -15,17 +15,17 @@ export function SeriesDetail({ item }: Props) {
   const [error, setError] = useState<string | null>(null)
   const [selectedSeason, setSelectedSeason] = useState<number | null>(null)
 
-  const seriesName = item.seriesName ?? item.normalizedTitle ?? item.title
+  const seriesId = item.stableId || item.seriesName || item.normalizedTitle || item.title
 
   useEffect(() => {
-    if (!seriesName) return
+    if (!seriesId) return
     setLoading(true)
     setError(null)
-    getSeriesEpisodes(seriesName)
+    getSeriesEpisodes(seriesId)
       .then((r) => setEpisodes(r.episodes ?? []))
       .catch((e) => setError(e.message ?? 'Error cargando episodios'))
       .finally(() => setLoading(false))
-  }, [seriesName])
+  }, [seriesId])
 
   const seasons = [...new Set(episodes.map((e) => e.seasonNumber).filter(Boolean))].sort((a, b) => a! - b!)
   const filteredEpisodes = selectedSeason != null

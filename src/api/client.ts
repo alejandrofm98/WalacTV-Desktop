@@ -98,15 +98,10 @@ export function normalizeRemoteImageUrl(url: string | null | undefined): string 
   return `${IPTV_BASE}/${trimmed}`
 }
 
-function resolveUrl(url: string, forceFull = false): string {
-  const resolved = url
+function resolveUrl(url: string): string {
+  return url
     .replace(/\{\{USERNAME\}\}/g, getUsername())
     .replace(/\{\{PASSWORD\}\}/g, getPassword())
-  if (!forceFull && import.meta.env.DEV) {
-    const escaped = API_URL.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
-    return resolved.replace(new RegExp(`^https?://${escaped}`), '')
-  }
-  return resolved
 }
 
 export function getMpvUrl(url: string): string {
@@ -278,8 +273,8 @@ export async function getCatalogPage(params: {
 }
 
 // Series
-export async function getSeriesEpisodes(name: string, page = 1) {
-  const raw = await get<{ episodes: any[]; total: number }>(`/api/series/${encodeURIComponent(name)}/episodes?page=${page}&page_size=100`)
+export async function getSeriesEpisodes(identifier: string, page = 1) {
+  const raw = await get<{ episodes: any[]; total: number }>(`/api/series/${encodeURIComponent(identifier)}/episodes?page=${page}&page_size=100`)
   return {
     episodes: (raw.episodes ?? []).map(mapItem),
     total: raw.total,
