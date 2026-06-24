@@ -194,3 +194,21 @@ pnpm rimraf dist src-tauri/target  # Limpiar builds
 5. Sin emojis en codigo ni comentarios.
 6. Si tocaste endpoints de la API, verificar compatibilidad con `iptv-api/AGENTS.md` 4.1-4.2.
 7. Si agregaste componentes, verificar que tienen `.module.css` asociado.
+
+## 9. Release y actualizaciones
+
+### Flujo de release
+1. Actualizar version en `src/version.ts`, `package.json`, y `src-tauri/tauri.conf.json`.
+2. Commitear y pushear tag `vX.Y.Z`.
+3. El workflow `release.yml` construye y firma los bundles para Windows (NSIS) y Linux (AppImage).
+4. `tauri-action` genera `latest.json` con las firmas y lo sube como asset de la release.
+5. Los usuarios reciben la actualizacion via `tauri-plugin-updater`.
+6. En Windows la app se cierra al instalar (NSIS).
+7. En Linux el AppImage se reemplaza en caliente.
+
+### Keypair de firma
+- Private key: `~/.tauri/walactv-desktop.key` (NUNCA commiteada, NUNCA compartida).
+- Public key: en `tauri.conf.json` `plugins.updater.pubkey`.
+- Si la private key se pierde, el updater se rompe para todos los usuarios existentes.
+- Para regenerar: `pnpm tauri signer generate --ci --write-keys ~/.tauri/walactv-desktop.key`.
+- La private key se pasa al CI via secret `TAURI_SIGNING_PRIVATE_KEY`.

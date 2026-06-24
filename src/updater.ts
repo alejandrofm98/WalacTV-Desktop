@@ -1,37 +1,34 @@
+import { check } from '@tauri-apps/plugin-updater'
+import { relaunch } from '@tauri-apps/plugin-process'
 import { APP_VERSION } from './version'
-import { GITHUB_REPO } from './config'
+
+export { APP_VERSION }
 
 export interface UpdateInfo {
   available: boolean
   version?: string
   body?: string
-  downloadUrl?: string
 }
 
 export async function checkForUpdates(): Promise<UpdateInfo> {
   try {
-    const r = await fetch(
-      `https://api.github.com/repos/${GITHUB_REPO}/releases/latest`,
-      { headers: { Accept: 'application/vnd.github.v3+json' } },
-    )
-    if (!r.ok) return { available: false }
-    const release = await r.json()
-    const latest = (release.tag_name ?? '').replace(/^v/, '')
-    if (latest && latest !== APP_VERSION) {
-      const asset = (release.assets ?? []).find((a: { name: string }) =>
-        a.name.includes('.deb') || a.name.includes('.exe') || a.name.includes('.AppImage'),
-      )
-      return {
-        available: true,
-        version: latest,
-        body: release.body ?? '',
-        downloadUrl: asset?.browser_download_url ?? release.html_url,
-      }
+    const update = await check()
+    if (!update) return { available: false }
+    return {
+      available: true,
+      version: update.version,
+      body: update.body,
     }
-    return { available: false }
   } catch {
     return { available: false }
   }
 }
 
-export { APP_VERSION }
+export async function downloadAndInstall(
+  onProgress?: (event: { event: string; data?: unknown }) => void
+): Promise<void> {
+  const update = await check()
+  if (!update) return
+  await update.downloadAndInstall(onProgress)
+  await relaunch()
+}

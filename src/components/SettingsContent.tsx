@@ -1,6 +1,5 @@
 import { useState, useEffect } from 'react'
-import { APP_VERSION } from '../version'
-import { checkForUpdates, type UpdateInfo } from '../updater'
+import { APP_VERSION, checkForUpdates, downloadAndInstall, type UpdateInfo } from '../updater'
 import { setPreferredLanguage } from '../api/client'
 import { API_URL } from '../config'
 import styles from './SettingsContent.module.css'
@@ -73,10 +72,10 @@ export function SettingsContent({ onSignOut }: Props) {
             <span className={styles.rowLabel}>
               {updateInfo.body?.slice(0, 100) ?? 'Nueva version disponible'}
             </span>
-            {updateInfo.downloadUrl && (
-              <a href={updateInfo.downloadUrl} target="_blank" rel="noopener" className={styles.updateBtn}>
-                Descargar
-              </a>
+            {(
+              <button onClick={() => downloadAndInstall()} className={styles.updateBtn}>
+                Descargar e instalar
+              </button>
             )}
           </div>
         )}

@@ -1,0 +1,112 @@
+.banner {
+  display: flex;
+  align-items: center;
+  padding: 8px 20px;
+  background: var(--accent-dim);
+  border-bottom: 1px solid var(--accent);
+  color: var(--text-primary);
+  font-size: 13px;
+  flex-shrink: 0;
+  animation: slideDown 0.22s ease;
+}
+
+@keyframes slideDown {
+  from { opacity: 0; transform: translateY(-100%); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
+.content {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex: 1;
+}
+
+.info {
+  flex: 1;
+  font-weight: 500;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.divider {
+  margin: 0 8px;
+  opacity: 0.4;
+}
+
+.downloadBtn,
+.retryBtn {
+  display: inline-flex;
+  align-items: center;
+  background: var(--accent);
+  color: oklch(98% 0.004 252);
+  border: none;
+  border-radius: var(--radius-sm);
+  padding: 5px 14px;
+  font-size: 12px;
+  font-weight: 700;
+  font-family: var(--font-body);
+  cursor: pointer;
+  white-space: nowrap;
+  transition: background 0.15s ease;
+}
+
+.downloadBtn:hover,
+.retryBtn:hover {
+  background: var(--accent-hover);
+}
+
+.progressArea {
+  display: flex;
+  align-items: center;
+}
+
+.progressBar {
+  width: 120px;
+  height: 6px;
+  background: oklch(0% 0 0 / 0.25);
+  border-radius: 3px;
+  overflow: hidden;
+}
+
+.progressFill {
+  height: 100%;
+  background: var(--accent);
+  border-radius: 3px;
+  transition: width 0.2s ease;
+}
+
+.installingText {
+  font-size: 12px;
+  font-weight: 600;
+  animation: pulse 1.2s ease-in-out infinite;
+}
+
+@keyframes pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.5; }
+}
+
+.errorText {
+  color: var(--live);
+}
+
+.closeBtn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  background: transparent;
+  color: var(--text-secondary);
+  border: none;
+  border-radius: var(--radius-xs);
+  cursor: pointer;
+  transition: background 0.15s ease, color 0.15s ease;
+}
+
+.closeBtn:hover {
+  background: oklch(0% 0 0 / 0.18);
+  color: var(--text-primary);
+}

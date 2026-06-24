@@ -3,6 +3,7 @@ import { invoke } from '@tauri-apps/api/core'
 import { useAppStore } from './store/useAppStore'
 import { login as apiLogin, setToken, getToken, getHomeCatalog, getWatchProgress, getPreferredLanguage } from './api/client'
 import { loadCredentials } from './credentials'
+import { checkForUpdates } from './updater'
 import { LoginScreen } from './components/LoginScreen'
 import { SideRail } from './components/SideRail'
 import { HomeContent } from './components/HomeContent'
@@ -16,6 +17,7 @@ import { MovieDetail } from './components/MovieDetail'
 import { SeriesDetail } from './components/SeriesDetail'
 import { LoadingScreen } from './components/LoadingScreen'
 import { ErrorScreen } from './components/ErrorScreen'
+import { UpdateBanner } from './components/UpdateBanner/UpdateBanner'
 import type { CatalogItem, WatchProgressItem } from './api/types'
 import styles from './App.module.css'
 
@@ -45,6 +47,14 @@ export default function App() {
       useAppStore.setState({ signedIn: true, token: saved, username: savedUser })
       loadData()
     }
+  }, [])
+
+  // Check for app updates on startup (non-blocking, independent of auth/data)
+  useEffect(() => {
+    useAppStore.setState({ updateChecking: true })
+    checkForUpdates()
+      .then((info) => useAppStore.setState({ updateInfo: info }))
+      .finally(() => useAppStore.setState({ updateChecking: false }))
   }, [])
 
   async function loadData() {
@@ -131,24 +141,27 @@ export default function App() {
   if (error) return <ErrorScreen message={error} onRetry={loadData} />
 
   return (
-    <div className={styles.root}>
-      <SideRail
-        mode={mode}
-        onModeChange={(m) => { setMode(m); setRailExpanded(false) }}
-        expanded={railExpanded}
-        onSetExpanded={setRailExpanded}
-      />
-      <main className={styles.main}>
-        {detailItem?.kind === 'MOVIE' && <MovieDetail item={detailItem} />}
-        {detailItem?.kind === 'SERIES' && <SeriesDetail item={detailItem} />}
-        {!detailItem && mode === 'Home' && <HomeContent />}
-        {!detailItem && mode === 'TV' && <TVGuide contentType="CHANNEL" />}
-        {!detailItem && mode === 'Events' && <EventsContent />}
-        {!detailItem && mode === 'Discover' && <DiscoverContent />}
-        {!detailItem && mode === 'Search' && <SearchContent />}
-        {!detailItem && mode === 'Settings' && <SettingsContent onSignOut={signOut} />}
-      </main>
-      {playerItem && <Player />}
+    <div className={styles.shell}>
+      <UpdateBanner />
+      <div className={styles.root}>
+        <SideRail
+          mode={mode}
+          onModeChange={(m) => { setMode(m); setRailExpanded(false) }}
+          expanded={railExpanded}
+          onSetExpanded={setRailExpanded}
+        />
+        <main className={styles.main}>
+          {detailItem?.kind === 'MOVIE' && <MovieDetail item={detailItem} />}
+          {detailItem?.kind === 'SERIES' && <SeriesDetail item={detailItem} />}
+          {!detailItem && mode === 'Home' && <HomeContent />}
+          {!detailItem && mode === 'TV' && <TVGuide contentType="CHANNEL" />}
+          {!detailItem && mode === 'Events' && <EventsContent />}
+          {!detailItem && mode === 'Discover' && <DiscoverContent />}
+          {!detailItem && mode === 'Search' && <SearchContent />}
+          {!detailItem && mode === 'Settings' && <SettingsContent onSignOut={signOut} />}
+        </main>
+        {playerItem && <Player />}
+      </div>
     </div>
   )
 }

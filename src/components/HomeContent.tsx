@@ -47,7 +47,7 @@ export function HomeContent() {
       let fullItem: CatalogItem | null = null
       if (item.kind === 'SERIES' && (cw.contentId || cw.seriesName)) {
         try {
-          const { episodes } = await getSeriesEpisodes(cw.contentId || cw.seriesName)
+          const { episodes } = await getSeriesEpisodes(cw.contentId || cw.seriesName || '')
           fullItem = episodes.find(
             (ep) => ep.seasonNumber === cw.seasonNumber && ep.episodeNumber === cw.episodeNumber
           ) ?? null

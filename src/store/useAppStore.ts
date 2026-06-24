@@ -2,6 +2,7 @@ import { create } from 'zustand'
 import type { CatalogItem, WatchProgressItem, BrowseSection, MainMode } from '../api/types'
 import { setToken } from '../api/client'
 import { clearCredentials } from '../credentials'
+import type { UpdateInfo } from '../updater'
 
 interface AppState {
   mode: MainMode
@@ -40,6 +41,13 @@ interface AppState {
 
   railExpanded: boolean
   setRailExpanded: (e: boolean) => void
+
+  updateInfo: UpdateInfo | null
+  updateChecking: boolean
+  updateDismissed: boolean
+  setUpdateInfo: (info: UpdateInfo | null) => void
+  setUpdateChecking: (v: boolean) => void
+  dismissUpdate: () => void
 }
 
 export const useAppStore = create<AppState>((set, get) => ({
@@ -95,4 +103,11 @@ export const useAppStore = create<AppState>((set, get) => ({
 
   railExpanded: true,
   setRailExpanded: (railExpanded) => set({ railExpanded }),
+
+  updateInfo: null,
+  updateChecking: false,
+  updateDismissed: false,
+  setUpdateInfo: (updateInfo) => set({ updateInfo }),
+  setUpdateChecking: (updateChecking) => set({ updateChecking }),
+  dismissUpdate: () => set({ updateDismissed: true }),
 }))
