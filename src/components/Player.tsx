@@ -7,6 +7,53 @@ import styles from './Player.module.css'
 // ponytail: mpv handles everything — HLS, MKV, MP4, hardware accel, subtitles, OSD
 // No <video>, no hls.js, no custom controls needed
 
+type Platform = 'windows' | 'linux' | 'macos' | 'unknown'
+
+function detectPlatform(): Platform {
+  const p = (navigator.platform || '').toLowerCase()
+  if (p.startsWith('win')) return 'windows'
+  if (p.startsWith('mac')) return 'macos'
+  if (p.startsWith('linux')) return 'linux'
+  const ua = (navigator.userAgent || '').toLowerCase()
+  if (ua.includes('windows')) return 'windows'
+  if (ua.includes('mac')) return 'macos'
+  if (ua.includes('linux')) return 'linux'
+  return 'unknown'
+}
+
+function mpvInstallMessage(): string {
+  switch (detectPlatform()) {
+    case 'linux':
+      return [
+        'mpv no esta instalado. Instalalo con tu gestor de paquetes:',
+        '',
+        '  Ubuntu/Debian:  sudo apt install mpv',
+        '  Fedora:         sudo dnf install mpv',
+        '  Arch:           sudo pacman -S mpv',
+        '',
+        'O descargalo desde https://mpv.io/installation/',
+      ].join('\n')
+    case 'macos':
+      return [
+        'mpv no esta instalado. Instalalo con:',
+        '',
+        '  brew install mpv',
+        '',
+        'O descargalo desde https://mpv.io/installation/',
+      ].join('\n')
+    default:
+      return [
+        'mpv no esta instalado.',
+        '',
+        'WalacTV incluye una copia de mpv para Windows, pero no se encontro.',
+        'Reinstala WalacTV o descarga mpv desde:',
+        'https://mpv.io/installation/',
+        '',
+        'Asegurate de anadir mpv al PATH o colocar mpv.exe en el directorio de instalacion.',
+      ].join('\n')
+  }
+}
+
 export function Player() {
   const { playerItem: item, playerStreamIndex, playerStartPosition, closePlayer } = useAppStore()
   const [error, setError] = useState<string | null>(null)
@@ -41,13 +88,7 @@ export function Player() {
         .catch((e) => {
           const msg = String(e)
           if (msg === 'MPV_NO_BINARY') {
-            setError(
-              'mpv no esta instalado.\n\n' +
-              'WalacTV incluye una copia de mpv para Windows, pero no se encontro.\n' +
-              'Reinstala WalacTV o descarga mpv desde:\n' +
-              'https://mpv.io/installation/\n\n' +
-              'Asegurate de anadir mpv al PATH o colocar mpv.exe en el directorio de instalacion.'
-            )
+            setError(mpvInstallMessage())
           } else {
             setError(msg)
           }
