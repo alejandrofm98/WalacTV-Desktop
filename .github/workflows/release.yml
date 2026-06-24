@@ -29,6 +29,14 @@ jobs:
       - name: Install frontend deps
         run: pnpm install --frozen-lockfile
 
+      - name: Debug secret lengths
+        env:
+          K: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          P: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+        run: |
+          echo "private key length = ${#K} (expected 348)"
+          echo "password length   = ${#P} (expected 20)"
+
       - name: Build Tauri app
         uses: tauri-apps/tauri-action@v0.6.2
         env:
