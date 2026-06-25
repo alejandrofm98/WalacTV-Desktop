@@ -46,6 +46,7 @@ export interface CatalogItem {
   airDate?: string | null
   titleEn?: string | null
   episodeType?: string | null
+  imdbId?: string | null
 }
 
 export interface WatchProgressItem {
@@ -69,6 +70,7 @@ export interface WatchProgressItem {
   runtimeMinutes?: number | null
   genres?: string[]
   year?: number | null
+  imdbId?: string | null
 }
 
 export interface BrowseSection {

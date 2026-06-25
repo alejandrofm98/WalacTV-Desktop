@@ -161,3 +161,32 @@
 .streamOptionsBadge:hover {
   background: var(--focus-bg);
 }
+
+.skipContainer {
+  position: absolute;
+  bottom: 120px;
+  right: 32px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  z-index: 10;
+}
+
+.skipBtn {
+  background: oklch(15% 0.02 252 / 0.85);
+  color: oklch(92% 0.005 252);
+  border: 1px solid oklch(60% 0.01 252 / 0.4);
+  padding: 10px 20px;
+  border-radius: var(--radius-sm);
+  font-size: 13px;
+  font-family: var(--font-body);
+  cursor: pointer;
+  backdrop-filter: blur(4px);
+  transition: background 0.15s ease, border-color 0.15s ease;
+  white-space: nowrap;
+}
+
+.skipBtn:hover {
+  background: oklch(25% 0.03 252 / 0.9);
+  border-color: var(--accent);
+}

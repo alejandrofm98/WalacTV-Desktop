@@ -179,6 +179,7 @@ function mapItem(raw: any): CatalogItem {
     tmdbTitle: raw.tmdb_title ?? null,
     totalSeasons: raw.total_seasons ?? null,
     stillPath: stillPath || null,
+    imdbId: raw.imdb_id ?? null,
   }
 }
 
@@ -212,6 +213,7 @@ function mapWatchProgress(raw: any): WatchProgressItem {
     episodeNumber: raw.episode_number ?? null,
     lastWatchedAt: raw.last_watched_at ?? '',
     isWatched: raw.is_watched ?? false,
+    imdbId: raw.imdb_id ?? null,
   }
 }
 
@@ -369,4 +371,28 @@ export function getPreferredLanguage(): string {
 
 export function setPreferredLanguage(lang: string) {
   localStorage.setItem('walactv_language', lang)
+}
+
+// ── IntroDB skip segments ─────────────────────────
+
+export interface IntroDbSegments {
+  intro: { startMs: number; endMs: number } | null
+  recap: { startMs: number; endMs: number } | null
+  outro: { startMs: number; endMs: number } | null
+}
+
+export async function fetchIntroDbSegments(
+  imdbId: string,
+  season: number,
+  episode: number,
+): Promise<IntroDbSegments | null> {
+  try {
+    const resp = await globalThis.fetch(
+      `https://api.introdb.app/segments?imdb_id=${imdbId}&season=${season}&episode=${episode}`,
+    )
+    if (!resp.ok) return null
+    return await resp.json()
+  } catch {
+    return null
+  }
 }
