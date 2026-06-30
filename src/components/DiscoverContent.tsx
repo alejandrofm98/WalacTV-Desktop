@@ -27,6 +27,7 @@ export function DiscoverContent() {
   const [query, setQuery] = useState('')
   const searchTimeout = useRef<ReturnType<typeof setTimeout> | null>(null)
   const openDetail = useAppStore((s) => s.openDetail)
+  const detailOpen = useAppStore((s) => !!s.detailItem)
   const observerTarget = useRef<HTMLDivElement>(null)
 
   // Reload genres when country changes, reload items on any filter change
@@ -78,7 +79,7 @@ export function DiscoverContent() {
   useEffect(() => {
     const observer = new IntersectionObserver(
       (entries) => {
-        if (entries[0].isIntersecting && hasNext && !loading && !loadingMore && !loadError) {
+        if (entries[0].isIntersecting && hasNext && !loading && !loadingMore && !loadError && !detailOpen) {
           loadMore()
         }
       },
@@ -95,7 +96,7 @@ export function DiscoverContent() {
         observer.unobserve(target)
       }
     }
-  }, [loadMore, hasNext, loading, loadingMore, loadError])
+  }, [loadMore, hasNext, loading, loadingMore, loadError, detailOpen])
 
   return (
     <div className={styles.container}>

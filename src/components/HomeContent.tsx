@@ -1,12 +1,12 @@
 import { useMemo, useCallback, useEffect, useRef, useState } from 'react'
 import { useAppStore } from '../store/useAppStore'
 import { SectionRow } from './SectionRow'
-import { getContentById, getSeriesEpisodes } from '../api/client'
-import type { CatalogItem, BrowseSection } from '../api/types'
+import { getContentById, getSeriesEpisodes, cwGroupKey, removeWatchProgress } from '../api/client'
+import type { CatalogItem, BrowseSection, WatchProgressItem } from '../api/types'
 import styles from './HomeContent.module.css'
 
 export function HomeContent() {
-  const { homeSections, selectedHero, continueWatchingEntries, openPlayer, openDetail } = useAppStore()
+  const { homeSections, selectedHero, continueWatchingEntries, openPlayer, openDetail, removeContinueWatchingEntry } = useAppStore()
 
   const [hoveredHero, setHoveredHero] = useState<CatalogItem | null>(null)
   const hoverTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null)
@@ -42,19 +42,26 @@ export function HomeContent() {
   const displayHero = hoveredHero ?? defaultHero ?? selectedHero
 
   const handleCardClick = useCallback(async (item: CatalogItem) => {
-    const cw = continueWatchingEntries.get(item.stableId)
+    const cwKey = cwGroupKey(
+      item.kind === 'SERIES' ? 'series' : 'movie',
+      item.seriesName,
+      item.stableId,
+    )
+    const cw = continueWatchingEntries.get(cwKey)
+      ?? continueWatchingEntries.get(item.stableId)
+      ?? continueWatchingEntries.get(item.providerId ?? '')
     if (cw) {
       let fullItem: CatalogItem | null = null
-      if (item.kind === 'SERIES' && (cw.contentId || cw.seriesName)) {
+      if (item.kind === 'SERIES' && cw.seriesName) {
         try {
-          const { episodes } = await getSeriesEpisodes(cw.contentId || cw.seriesName || '')
+          const { episodes } = await getSeriesEpisodes(cw.contentId)
           fullItem = episodes.find(
             (ep) => ep.seasonNumber === cw.seasonNumber && ep.episodeNumber === cw.episodeNumber
           ) ?? null
         } catch {}
       }
       if (!fullItem) {
-        fullItem = await getContentById(item.stableId)
+        fullItem = await getContentById(cw.contentId)
       }
       if (fullItem && fullItem.streamOptions.length > 0) {
         openPlayer(fullItem, 0, cw.positionMs)
@@ -62,11 +69,28 @@ export function HomeContent() {
       }
     }
     if (item.kind === 'MOVIE' || item.kind === 'SERIES') {
-      openDetail(item)
+      const detailItem = cw ? { ...item, stableId: cw.contentId } : item
+      openDetail(detailItem)
     } else {
       openPlayer(item)
     }
   }, [continueWatchingEntries, openPlayer, openDetail])
+
+  const handleCwViewDetail = useCallback((item: CatalogItem, entry: WatchProgressItem) => {
+    if (item.kind === 'SERIES') {
+      openDetail({ ...item, stableId: entry.contentId })
+      return
+    }
+    openDetail(item)
+  }, [openDetail])
+
+  const handleCwRemove = useCallback((entry: WatchProgressItem) => {
+    const cwKey = cwGroupKey(entry.contentType, entry.seriesName, entry.contentId)
+    removeContinueWatchingEntry(cwKey)
+    removeWatchProgress(entry.contentId).catch((err) => {
+      console.error('removeWatchProgress failed', err)
+    })
+  }, [removeContinueWatchingEntry])
 
   // Build continue watching section from entries if backend doesn't provide one
   const cwSection = homeSections.find((s) => s.title === 'Continuar viendo')
@@ -74,10 +98,11 @@ export function HomeContent() {
     if (cwSection) return null
     if (continueWatchingEntries.size === 0) return null
     const items: CatalogItem[] = [...continueWatchingEntries.values()].map((e) => ({
-      stableId: e.contentId,
+      stableId: cwGroupKey(e.contentType, e.seriesName, e.contentId),
       title: e.title,
       subtitle: e.seriesName || '',
-      description: '',
+      seriesName: e.seriesName || null,
+      description: e.overview ?? '',
       imageUrl: e.imageUrl,
       tmdbPosterUrl: e.tmdbPosterUrl,
       backdropUrl: e.backdropUrl,
@@ -85,9 +110,17 @@ export function HomeContent() {
       group: '',
       badgeText: '',
       streamOptions: [],
-      genres: [],
+      genres: e.genres ?? [],
       seasonNumber: e.seasonNumber,
       episodeNumber: e.episodeNumber,
+      tmdbTitle: e.tmdbTitle,
+      voteAverage: e.voteAverage,
+      voteCount: e.voteCount,
+      runtimeMinutes: e.runtimeMinutes,
+      year: e.year,
+      totalSeasons: e.totalSeasons,
+      tagline: e.tagline,
+      releaseDate: e.releaseDate,
     }))
     return { title: 'Continuar viendo', items, currentPage: 1, hasNextPage: false }
   }, [cwSection, continueWatchingEntries])
@@ -171,6 +204,8 @@ export function HomeContent() {
             onCardClick={handleCardClick}
             onCardHover={handleCardHover}
             continueWatching={continueWatchingEntries}
+            onCwViewDetail={handleCwViewDetail}
+            onCwRemove={handleCwRemove}
           />
         )}
         {otherSections.map((s, i) => (

@@ -12,12 +12,14 @@ interface Props {
   topBadges?: string[]
   onClick: () => void
   onHover?: (item: CatalogItem) => void
+  onViewDetail?: () => void
+  onRemove?: () => void
 }
 
 const CARD_W = 170
 const CARD_H = 240
 
-export function MediaCard({ item, width = CARD_W, height = CARD_H, showText = false, progressPercent, topBadges, onClick, onHover }: Props) {
+export function MediaCard({ item, width = CARD_W, height = CARD_H, showText = false, progressPercent, topBadges, onClick, onHover, onViewDetail, onRemove }: Props) {
   const [focused, setFocused] = useState(false)
   const [imgError, setImgError] = useState(false)
   const playerOpening = useAppStore((s) => s.playerOpening)
@@ -90,6 +92,42 @@ export function MediaCard({ item, width = CARD_W, height = CARD_H, showText = fa
           {item.badgeText}
         </div>
       ))}
+
+      {(onViewDetail || onRemove) && (
+        <div className={styles.cwActions}>
+          {onViewDetail && (
+            <button
+              type="button"
+              className={`${styles.cwBtn} ${styles.cwBtnInfo}`}
+              onClick={(e) => { e.stopPropagation(); e.preventDefault(); onViewDetail() }}
+              onKeyDown={(e) => e.stopPropagation()}
+              aria-label="Ver detalle"
+              title="Ver detalle"
+            >
+              <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                <circle cx="12" cy="12" r="10" />
+                <line x1="12" y1="11" x2="12" y2="17" />
+                <circle cx="12" cy="7" r="0.6" fill="currentColor" stroke="none" />
+              </svg>
+            </button>
+          )}
+          {onRemove && (
+            <button
+              type="button"
+              className={`${styles.cwBtn} ${styles.cwBtnRemove}`}
+              onClick={(e) => { e.stopPropagation(); e.preventDefault(); onRemove() }}
+              onKeyDown={(e) => e.stopPropagation()}
+              aria-label="Eliminar de continuar viendo"
+              title="Eliminar de continuar viendo"
+            >
+              <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                <line x1="6" y1="6" x2="18" y2="18" />
+                <line x1="18" y1="6" x2="6" y2="18" />
+              </svg>
+            </button>
+          )}
+        </div>
+      )}
 
       {/* Progress bar */}
       {progressPercent != null && progressPercent > 0 && (

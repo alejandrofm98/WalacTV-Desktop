@@ -23,7 +23,7 @@ export function SeriesDetail({ item }: Props) {
     setError(null)
     getSeriesEpisodes(seriesId)
       .then((r) => setEpisodes(r.episodes ?? []))
-      .catch((e) => setError(e.message ?? 'Error cargando episodios'))
+      .catch(() => setError('No se pudieron cargar los episodios'))
       .finally(() => setLoading(false))
   }, [seriesId])
 

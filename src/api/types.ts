@@ -67,9 +67,14 @@ export interface WatchProgressItem {
   isWatched?: boolean
   overview?: string | null
   voteAverage?: number | null
+  voteCount?: number | null
   runtimeMinutes?: number | null
   genres?: string[]
   year?: number | null
+  tmdbTitle?: string | null
+  totalSeasons?: number | null
+  tagline?: string | null
+  releaseDate?: string | null
   imdbId?: string | null
 }
 

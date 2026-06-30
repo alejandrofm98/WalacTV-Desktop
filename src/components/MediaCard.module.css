@@ -126,6 +126,60 @@
   backdrop-filter: blur(4px);
 }
 
+/* ── Continue-watching actions overlay ───────────── */
+.cwActions {
+  position: absolute;
+  top: 8px;
+  right: 8px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  z-index: 4;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.18s ease;
+}
+
+.card:hover .cwActions,
+.card:focus-within .cwActions {
+  opacity: 1;
+  pointer-events: auto;
+}
+
+.cwBtn {
+  width: 32px;
+  height: 32px;
+  padding: 0;
+  border: 1px solid oklch(100% 0 0 / 0.1);
+  border-radius: 50%;
+  background: oklch(20% 0 0 / 0.45);
+  backdrop-filter: blur(8px);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  color: var(--text-primary);
+  transition: background 0.18s ease, color 0.18s ease, transform 0.18s ease;
+}
+
+.cwBtn:hover {
+  background: oklch(20% 0 0 / 0.7);
+  transform: scale(1.08);
+}
+
+.cwBtn:focus-visible {
+  outline: 2px solid var(--focus-border);
+  outline-offset: 1px;
+}
+
+.cwBtnInfo {
+  color: var(--accent);
+}
+
+.cwBtnRemove {
+  color: var(--live);
+}
+
 /* ── Progress bar ────────────────────────────────── */
 .progressTrack {
   position: absolute;

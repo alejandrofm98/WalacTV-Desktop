@@ -1,0 +1,218 @@
+.container {
+  position: relative;
+  width: 100%;
+  height: 100%;
+  overflow-y: auto;
+  overflow-x: hidden;
+}
+
+/* ── Backdrop ────────────────────────────────────── */
+.backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 0;
+}
+
+.backdropImage {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  object-position: center top;
+  display: block;
+}
+
+.backdropFallback {
+  width: 100%;
+  height: 100%;
+  background: var(--surface);
+}
+
+.backdropOverlay {
+  position: absolute;
+  inset: 0;
+  background:
+    linear-gradient(
+      90deg,
+      oklch(11% 0.024 252 / 0.92) 0%,
+      oklch(11% 0.024 252 / 0.55) 45%,
+      transparent 75%
+    ),
+    linear-gradient(
+      180deg,
+      oklch(11% 0.024 252 / 0.35) 0%,
+      oklch(11% 0.024 252 / 0.25) 40%,
+      oklch(11% 0.024 252 / 0.92) 100%
+    );
+}
+
+/* ── Back button ─────────────────────────────────── */
+.backBtn {
+  position: absolute;
+  top: 16px;
+  left: 16px;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  background: oklch(11% 0.024 252 / 0.55);
+  backdrop-filter: blur(8px);
+  color: var(--text-primary);
+  border: 1px solid var(--surface-variant);
+  border-radius: var(--radius-full);
+  padding: 8px 18px;
+  font-size: 14px;
+  font-weight: 500;
+  font-family: var(--font-body);
+  cursor: pointer;
+  z-index: 2;
+  transition: background 0.15s ease, border-color 0.15s ease;
+}
+
+.backBtn:hover {
+  background: oklch(20% 0.024 252 / 0.75);
+  border-color: oklch(35% 0.020 252);
+}
+
+/* ── Content ─────────────────────────────────────── */
+.content {
+  position: relative;
+  z-index: 1;
+  min-height: 100%;
+  display: flex;
+  flex-direction: column;
+  justify-content: flex-end;
+  padding: 80px 40px 56px;
+  box-sizing: border-box;
+}
+
+.title {
+  color: oklch(98% 0.005 252);
+  font-size: 48px;
+  font-weight: 800;
+  margin: 0 0 14px;
+  line-height: 1.05;
+  letter-spacing: -0.5px;
+  max-width: 900px;
+}
+
+.metaRow {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  margin-bottom: 22px;
+  flex-wrap: wrap;
+  color: oklch(80% 0.010 252);
+  font-size: 14px;
+  font-weight: 600;
+}
+
+.badgeText {
+  background: var(--accent-dim);
+  color: var(--text-accent);
+  padding: 4px 12px;
+  border-radius: var(--radius-full);
+  font-size: 13px;
+  font-weight: 800;
+}
+
+.metaSep {
+  width: 4px;
+  height: 4px;
+  border-radius: 50%;
+  background: var(--text-muted);
+  flex-shrink: 0;
+}
+
+.metaText {
+  color: oklch(82% 0.010 252);
+  font-size: 14px;
+  font-weight: 600;
+}
+
+.playBtn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  background: oklch(90% 0.005 252);
+  color: oklch(18% 0.024 252);
+  border: none;
+  border-radius: var(--radius-md);
+  padding: 15px 36px;
+  font-size: 17px;
+  font-weight: 700;
+  font-family: var(--font-body);
+  cursor: pointer;
+  align-self: flex-start;
+  margin-bottom: 20px;
+  transition: background 0.15s ease, transform 0.12s ease;
+}
+
+.playBtn:hover {
+  background: oklch(96% 0.005 252);
+  transform: translateY(-1px);
+}
+
+.playBtn:active {
+  transform: translateY(0);
+}
+
+.playIcon {
+  font-size: 15px;
+  line-height: 1;
+}
+
+.description {
+  color: oklch(85% 0.010 252);
+  font-size: 16px;
+  line-height: 1.65;
+  max-width: 58ch;
+  margin: 0 0 24px;
+}
+
+/* ── Stream options ──────────────────────────────── */
+.streamSection {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.streamTitle {
+  color: var(--text-secondary);
+  font-size: 13px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.6px;
+  margin: 0;
+}
+
+.streamOptions {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.streamBtn {
+  color: var(--text-primary);
+  border-radius: var(--radius-md);
+  padding: 8px 18px;
+  font-size: 13px;
+  font-weight: 500;
+  font-family: var(--font-body);
+  cursor: pointer;
+  transition: background 0.15s ease, border-color 0.15s ease;
+}
+
+.streamBtn:hover {
+  background: var(--focus-bg);
+}
+
+.streamBtnSelected {
+  background: var(--accent-dim);
+  border: 1px solid var(--accent);
+  color: var(--text-accent);
+}
+
+.streamBtnDefault {
+  background: var(--surface);
+  border: 1px solid var(--surface-variant);
+}

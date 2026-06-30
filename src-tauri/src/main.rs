@@ -1,7 +1,9 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
-use std::io::{Read, Write};
+use std::io::{Read, Write, BufRead, BufReader};
 use std::path::PathBuf;
+use std::process::Child;
+use std::sync::Mutex;
 use serde::Serialize;
 use tauri::Manager;
 
@@ -11,6 +13,8 @@ use std::os::unix::net::UnixStream;
 use std::fs::OpenOptions;
 
 const MPV_ERR_NO_BINARY: &str = "MPV_NO_BINARY";
+
+static MPV_CHILD: Mutex<Option<Child>> = Mutex::new(None);
 
 #[derive(Serialize)]
 struct ScaleInfo {
@@ -44,6 +48,13 @@ fn mpv_socket_path() -> String {
     { r"\\.\pipe\walactv-mpv".to_string() }
 }
 
+fn mpv_log_path(pid: u32) -> PathBuf {
+    #[cfg(unix)]
+    { PathBuf::from(format!("/tmp/walactv-mpv-{}.log", pid)) }
+    #[cfg(windows)]
+    { std::env::temp_dir().join(format!("walactv-mpv-{}.log", pid)) }
+}
+
 fn send_mpv_command(socket_path: &str, command: &str) -> Result<String, String> {
     let msg = format!("{}\n", command);
     let mut buf = String::new();
@@ -73,17 +84,23 @@ fn send_mpv_command(socket_path: &str, command: &str) -> Result<String, String> 
 fn open_in_mpv(app: tauri::AppHandle, url: String, start_seconds: Option<u64>) -> Result<String, String> {
     let mpv = resolve_mpv(&app);
     let socket_path = mpv_socket_path();
+    let pid = std::process::id();
+    let log_path = mpv_log_path(pid);
+    let log_arg = format!("--log-file={}", log_path.display());
+
     let mut args = vec![
         "--fullscreen".to_string(),
         "--vo=gpu".to_string(),
         "--hwdec=auto-safe".to_string(),
         format!("--input-ipc-server={}", socket_path),
+        log_arg,
     ];
     if let Some(secs) = start_seconds {
         args.push(format!("--start={}", secs));
     }
     args.push(url);
-    std::process::Command::new(mpv)
+
+    let child = std::process::Command::new(mpv)
         .args(&args)
         .spawn()
         .map_err(|e| {
@@ -93,7 +110,39 @@ fn open_in_mpv(app: tauri::AppHandle, url: String, start_seconds: Option<u64>) -
                 e.to_string()
             }
         })?;
+
+    *MPV_CHILD.lock().unwrap() = Some(child);
+
     Ok(socket_path)
+}
+
+#[tauri::command]
+fn mpv_is_running() -> bool {
+    let mut guard = MPV_CHILD.lock().unwrap();
+    if let Some(ref mut child) = *guard {
+        match child.try_wait() {
+            Ok(Some(_)) => false,
+            Ok(None) => true,
+            Err(_) => false,
+        }
+    } else {
+        false
+    }
+}
+
+#[tauri::command]
+fn mpv_get_log() -> String {
+    let pid = std::process::id();
+    let log_path = mpv_log_path(pid);
+    let file = match std::fs::File::open(&log_path) {
+        Ok(f) => f,
+        Err(_) => return String::new(),
+    };
+
+    let reader = BufReader::new(file);
+    let lines: Vec<String> = reader.lines().filter_map(|l| l.ok()).collect();
+    let start = if lines.len() > 50 { lines.len() - 50 } else { 0 };
+    lines[start..].join("\n")
 }
 
 #[tauri::command]
@@ -108,6 +157,11 @@ fn mpv_get_position(socket_path: String) -> Result<f64, String> {
     let resp = send_mpv_command(&socket_path, r#"{"command":["get_property","time-pos"]}"#)?;
     let v: serde_json::Value = serde_json::from_str(&resp).map_err(|e| e.to_string())?;
     v["data"].as_f64().ok_or_else(|| "no position data".to_string())
+}
+
+#[tauri::command]
+fn mpv_is_alive(socket_path: String) -> bool {
+    send_mpv_command(&socket_path, r#"{"command":["get_property","pause"]}"#).is_ok()
 }
 
 #[tauri::command]
@@ -140,7 +194,7 @@ fn main() {
         .plugin(tauri_plugin_store::Builder::new().build())
         .plugin(tauri_plugin_updater::Builder::new().build())
         .plugin(tauri_plugin_process::init())
-        .invoke_handler(tauri::generate_handler![open_in_mpv, mpv_seek, mpv_get_position, get_scale_info])
+        .invoke_handler(tauri::generate_handler![open_in_mpv, mpv_seek, mpv_get_position, mpv_is_alive, mpv_is_running, mpv_get_log, get_scale_info])
         .run(tauri::generate_context!())
         .expect("error while running tauri application")
 }

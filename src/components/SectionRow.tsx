@@ -1,5 +1,6 @@
 import { useRef, useState, useEffect } from 'react'
-import type { BrowseSection, CatalogItem } from '../api/types'
+import { cwGroupKey } from '../api/client'
+import type { BrowseSection, CatalogItem, WatchProgressItem } from '../api/types'
 import { MediaCard } from './MediaCard'
 import styles from './SectionRow.module.css'
 
@@ -7,10 +8,12 @@ interface Props {
   section: BrowseSection
   onCardClick: (item: CatalogItem) => void
   onCardHover?: (item: CatalogItem) => void
-  continueWatching?: Map<string, { positionMs: number; durationMs: number; isWatched?: boolean; seasonNumber?: number | null; episodeNumber?: number | null }>
+  continueWatching?: Map<string, WatchProgressItem>
+  onCwViewDetail?: (item: CatalogItem, entry: WatchProgressItem) => void
+  onCwRemove?: (entry: WatchProgressItem) => void
 }
 
-export function SectionRow({ section, onCardClick, onCardHover, continueWatching }: Props) {
+export function SectionRow({ section, onCardClick, onCardHover, continueWatching, onCwViewDetail, onCwRemove }: Props) {
   const scrollRef = useRef<HTMLDivElement>(null)
   const [canScrollLeft, setCanScrollLeft] = useState(false)
   const [canScrollRight, setCanScrollRight] = useState(true)
@@ -57,7 +60,13 @@ export function SectionRow({ section, onCardClick, onCardHover, continueWatching
         )}
         <div ref={scrollRef} className={styles.scrollTrack}>
           {section.items.map((item) => {
-            const cw = continueWatching?.get(item.stableId) ?? continueWatching?.get(item.providerId ?? '')
+            const cw = continueWatching?.get(item.stableId)
+              ?? continueWatching?.get(item.providerId ?? '')
+              ?? continueWatching?.get(cwGroupKey(
+                item.kind === 'SERIES' ? 'series' : 'movie',
+                item.seriesName,
+                item.stableId,
+              ))
             const progress = cw ? Math.round(((cw.positionMs ?? 0) * 100) / (cw.durationMs ?? 1)) : undefined
 
             const topBadges: string[] = []
@@ -89,6 +98,8 @@ export function SectionRow({ section, onCardClick, onCardHover, continueWatching
                 topBadges={topBadges}
                 onClick={() => onCardClick(item)}
                 onHover={onCardHover}
+                onViewDetail={isCwSection && cw ? () => onCwViewDetail?.(item, cw) : undefined}
+                onRemove={isCwSection && cw ? () => onCwRemove?.(cw) : undefined}
               />
             )
           })}

@@ -19,7 +19,7 @@ function mapEventToItem(ev: CalendarEvent): CatalogItem {
     .map((c) => {
       const rawUrl = c.stream_url ||
         `${IPTV_BASE}/live/{{USERNAME}}/{{PASSWORD}}/${c.provider_id || c.channel_id}`
-      return { label: c.source_name || c.display_name || 'Ver', url: getMpvUrl(rawUrl), rawUrl, providerId: c.provider_id }
+      return { label: c.source_name || c.display_name || 'Ver', url: getMpvUrl(rawUrl), rawUrl, providerId: c.provider_id, quality: c.quality }
     })
 
   return {
@@ -42,7 +42,7 @@ export function EventsContent() {
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [query, setQuery] = useState('')
-  const openPlayer = useAppStore((s) => s.openPlayer)
+  const openDetail = useAppStore((s) => s.openDetail)
 
   useEffect(() => {
     setLoading(true)
@@ -90,7 +90,7 @@ export function EventsContent() {
               width={280}
               height={200}
               showText
-              onClick={() => openPlayer(item)}
+              onClick={() => openDetail(item)}
             />
           ))}
         </div>

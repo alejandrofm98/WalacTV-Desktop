@@ -26,14 +26,19 @@ interface AppState {
 
   setHomeSections: (s: BrowseSection[]) => void
   setContinueWatching: (entries: Map<string, WatchProgressItem>) => void
+  removeContinueWatchingEntry: (key: string) => void
   setSelectedHero: (h: CatalogItem | null) => void
 
   playerItem: CatalogItem | null
   playerStreamIndex: number
   playerStartPosition: number
   playerOpening: boolean
+  closePlayerReason: 'normal' | 'error' | null
+  playerErrorLog: string | null
   openPlayer: (item: CatalogItem, streamIndex?: number, startPosition?: number) => void
   closePlayer: () => void
+  setClosePlayerReason: (r: 'normal' | 'error' | null) => void
+  setPlayerErrorLog: (log: string | null) => void
 
   detailItem: CatalogItem | null
   openDetail: (item: CatalogItem) => void
@@ -78,18 +83,27 @@ export const useAppStore = create<AppState>((set, get) => ({
 
   setHomeSections: (homeSections) => set({ homeSections }),
   setContinueWatching: (continueWatchingEntries) => set({ continueWatchingEntries }),
+  removeContinueWatchingEntry: (key) => set((state) => {
+    const next = new Map(state.continueWatchingEntries)
+    next.delete(key)
+    return { continueWatchingEntries: next }
+  }),
   setSelectedHero: (selectedHero) => set({ selectedHero }),
 
   playerItem: null,
   playerStreamIndex: 0,
   playerStartPosition: 0,
   playerOpening: false,
+  closePlayerReason: null,
+  playerErrorLog: null,
   openPlayer: (item, streamIndex = 0, startPosition = 0) => {
     const { playerOpening } = get()
     if (playerOpening) return
-    set({ playerOpening: true, playerItem: item, playerStreamIndex: streamIndex, playerStartPosition: startPosition })
+    set({ playerOpening: true, playerItem: item, playerStreamIndex: streamIndex, playerStartPosition: startPosition, closePlayerReason: null, playerErrorLog: null })
   },
   closePlayer: () => set({ playerItem: null, playerOpening: false }),
+  setClosePlayerReason: (closePlayerReason) => set({ closePlayerReason }),
+  setPlayerErrorLog: (playerErrorLog) => set({ playerErrorLog }),
 
   detailItem: null,
   openDetail: (item) => {

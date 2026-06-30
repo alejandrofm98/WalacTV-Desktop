@@ -1,7 +1,7 @@
 import { useEffect } from 'react'
 import { invoke } from '@tauri-apps/api/core'
 import { useAppStore } from './store/useAppStore'
-import { login as apiLogin, setToken, getToken, getHomeCatalog, getWatchProgress, getPreferredLanguage } from './api/client'
+import { login as apiLogin, setToken, getToken, getHomeCatalog, getWatchProgress, getPreferredLanguage, cwGroupKey } from './api/client'
 import { loadCredentials } from './credentials'
 import { checkForUpdates } from './updater'
 import { LoginScreen } from './components/LoginScreen'
@@ -15,6 +15,7 @@ import { SettingsContent } from './components/SettingsContent'
 import { Player } from './components/Player'
 import { MovieDetail } from './components/MovieDetail'
 import { SeriesDetail } from './components/SeriesDetail'
+import { EventDetail } from './components/EventDetail'
 import { LoadingScreen } from './components/LoadingScreen'
 import { ErrorScreen } from './components/ErrorScreen'
 import { UpdateBanner } from './components/UpdateBanner/UpdateBanner'
@@ -75,18 +76,25 @@ export default function App() {
       }
 
       if (cw?.items) {
+        // Sort DESC by lastWatchedAt (most recent first). Defensive copy;
+        // backend already orders this way but make it explicit.
+        const sorted = [...cw.items].sort((a, b) =>
+          (b.lastWatchedAt || '').localeCompare(a.lastWatchedAt || ''),
+        )
+        // Group: one entry per series (collapsed by seriesName) or per movie.
         const map = new Map<string, WatchProgressItem>()
-        for (const item of cw.items) {
-          map.set(item.contentId, item)
+        for (const item of sorted) {
+          const key = cwGroupKey(item.contentType, item.seriesName, item.contentId)
+          if (!map.has(key)) map.set(key, item)
         }
         setContinueWatching(map)
-        if (!hero && cw.items.length > 0) {
-          const e = cw.items[0]
+        if (!hero && sorted.length > 0) {
+          const e = sorted[0]
           hero = {
-            stableId: e.contentId,
+            stableId: cwGroupKey(e.contentType, e.seriesName, e.contentId),
             title: e.title,
             subtitle: e.seriesName || '',
-            description: '',
+            description: e.overview ?? '',
             imageUrl: e.imageUrl,
             tmdbPosterUrl: e.tmdbPosterUrl,
             backdropUrl: e.backdropUrl,
@@ -94,9 +102,17 @@ export default function App() {
             group: '',
             badgeText: '',
             streamOptions: [],
-            genres: [],
+            genres: e.genres ?? [],
             seasonNumber: e.seasonNumber,
             episodeNumber: e.episodeNumber,
+            tmdbTitle: e.tmdbTitle,
+            voteAverage: e.voteAverage,
+            voteCount: e.voteCount,
+            runtimeMinutes: e.runtimeMinutes,
+            year: e.year,
+            totalSeasons: e.totalSeasons,
+            tagline: e.tagline,
+            releaseDate: e.releaseDate,
           }
         }
       }
@@ -151,14 +167,19 @@ export default function App() {
           onSetExpanded={setRailExpanded}
         />
         <main className={styles.main}>
-          {detailItem?.kind === 'MOVIE' && <MovieDetail item={detailItem} />}
-          {detailItem?.kind === 'SERIES' && <SeriesDetail item={detailItem} />}
-          {!detailItem && mode === 'Home' && <HomeContent />}
-          {!detailItem && mode === 'TV' && <TVGuide contentType="CHANNEL" />}
-          {!detailItem && mode === 'Events' && <EventsContent />}
-          {!detailItem && mode === 'Discover' && <DiscoverContent />}
-          {!detailItem && mode === 'Search' && <SearchContent />}
-          {!detailItem && mode === 'Settings' && <SettingsContent onSignOut={signOut} />}
+          {detailItem && (
+            <div className={styles.detailOverlay}>
+              {detailItem.kind === 'MOVIE' && <MovieDetail item={detailItem} />}
+              {detailItem.kind === 'SERIES' && <SeriesDetail item={detailItem} />}
+              {detailItem.kind === 'EVENT' && <EventDetail item={detailItem} />}
+            </div>
+          )}
+          {mode === 'Home' && <HomeContent />}
+          {mode === 'TV' && <TVGuide contentType="CHANNEL" />}
+          {mode === 'Events' && <EventsContent />}
+          {mode === 'Discover' && <DiscoverContent />}
+          {mode === 'Search' && <SearchContent />}
+          {mode === 'Settings' && <SettingsContent onSignOut={signOut} />}
         </main>
         {playerItem && <Player />}
       </div>

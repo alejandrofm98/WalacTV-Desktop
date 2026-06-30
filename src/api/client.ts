@@ -93,7 +93,7 @@ export function normalizeRemoteImageUrl(url: string | null | undefined): string 
   if (trimmed.startsWith('//')) return `https:${trimmed}`
   if (trimmed.startsWith('/')) return `${IPTV_BASE}${trimmed}`
   if (trimmed.startsWith('http://') || trimmed.startsWith('https://')) {
-    return trimmed.replace(/^http:\/\/image\.tmdb\.org/, 'https://image.tmdb.org')
+    return trimmed.replace(/^http:\/\//, 'https://')
   }
   return `${IPTV_BASE}/${trimmed}`
 }
@@ -213,6 +213,16 @@ function mapWatchProgress(raw: any): WatchProgressItem {
     episodeNumber: raw.episode_number ?? null,
     lastWatchedAt: raw.last_watched_at ?? '',
     isWatched: raw.is_watched ?? false,
+    overview: raw.overview || raw.overview_es || raw.overview_en || null,
+    voteAverage: raw.rating ?? raw.vote_average ?? null,
+    voteCount: raw.vote_count ?? null,
+    runtimeMinutes: raw.runtime_minutes ?? null,
+    genres: raw.genres ?? [],
+    year: raw.year ?? null,
+    tmdbTitle: raw.tmdb_title ?? null,
+    totalSeasons: raw.total_seasons ?? null,
+    tagline: raw.tagline ?? null,
+    releaseDate: raw.release_date ?? null,
     imdbId: raw.imdb_id ?? null,
   }
 }
@@ -276,7 +286,9 @@ export async function getCatalogPage(params: {
 
 // Series
 export async function getSeriesEpisodes(identifier: string, page = 1) {
-  const raw = await get<{ episodes: any[]; total: number }>(`/api/series/${encodeURIComponent(identifier)}/episodes?page=${page}&page_size=100`)
+  const raw = await get<{ episodes: any[]; total: number }>(
+    `/api/series/by-id/${encodeURIComponent(identifier)}/episodes?page=${page}&page_size=100`,
+  )
   return {
     episodes: (raw.episodes ?? []).map(mapItem),
     total: raw.total,
@@ -340,8 +352,38 @@ export async function getWatchProgress(limit = 20) {
   }
 }
 
-export async function saveWatchProgress(id: string, body: { position_ms: number; duration_ms: number }) {
-  return put<WatchProgressItem>(`/api/watch-progress/${id}`, body)
+/** Stable group key for continue-watching entries. Mirrors Android WalacTV:
+ *  series collapse to one tile per series (grouped by series_name); movies keep
+ *  their own content_id. Used both in the store Map and in the SectionRow lookups
+ *  so catalog cards and synthetic CW tiles all hit the same key. */
+export function cwGroupKey(
+  contentType: string,
+  seriesName: string | null | undefined,
+  contentId: string,
+): string {
+  if (contentType === 'series' && seriesName && seriesName.trim() !== '') {
+    return 'series:' + seriesName
+  }
+  return 'content:' + contentId
+}
+
+export interface WatchProgressUpsertBody {
+  content_type: 'movie' | 'series'
+  position_ms: number
+  duration_ms: number
+  series_name?: string | null
+  season_number?: number | null
+  episode_number?: number | null
+  title?: string
+  image_url?: string
+}
+
+export async function saveWatchProgress(id: string, body: WatchProgressUpsertBody) {
+  return put<WatchProgressItem>(`/api/watch-progress/${id}`, body as unknown as Record<string, unknown>)
+}
+
+export async function removeWatchProgress(id: string): Promise<void> {
+  await del(`/api/watch-progress/${encodeURIComponent(id)}`)
 }
 
 // Countries, Groups
@@ -362,7 +404,10 @@ export async function getGenres(contentType: string, country?: string) {
 }
 
 export async function getCalendarEvents(date: string) {
-  return get<CalendarResponse>(`/api/calendar/${date}?client=desktop`)
+  const params = new URLSearchParams({ client: 'android' })
+  const pwd = getPassword()
+  if (pwd) params.set('password', pwd)
+  return get<CalendarResponse>(`/api/calendar/${date}?${params}`)
 }
 
 export function getPreferredLanguage(): string {
