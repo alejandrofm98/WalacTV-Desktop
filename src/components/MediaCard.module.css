@@ -126,6 +126,23 @@
   backdrop-filter: blur(4px);
 }
 
+/* ── Watched badge ──────────────────────────────── */
+.watchedBadge {
+  position: absolute;
+  top: 7px;
+  right: 7px;
+  z-index: 3;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  background: var(--success-dim);
+  color: var(--success);
+  border-radius: var(--radius-full);
+  backdrop-filter: blur(4px);
+}
+
 /* ── Continue-watching actions overlay ───────────── */
 .cwActions {
   position: absolute;

@@ -1,5 +1,6 @@
 import { useState, type ReactNode } from 'react'
-import type { CatalogItem, StreamOption } from '../api/types'
+import type { CatalogItem, StreamOption, WatchProgressItem } from '../api/types'
+import { cwGroupKey } from '../api/client'
 import { useAppStore } from '../store/useAppStore'
 import styles from './MovieDetail.module.css'
 
@@ -13,9 +14,19 @@ function formatRuntime(minutes: number): string {
   return `${h}h ${m}min`
 }
 
+function computeCwEntry(item: CatalogItem, entries: Map<string, WatchProgressItem>): WatchProgressItem | undefined {
+  return entries.get(cwGroupKey('movie', null, item.stableId))
+    ?? entries.get(item.stableId)
+    ?? entries.get(item.providerId ?? '')
+}
+
 export function MovieDetail({ item }: Props) {
-  const { closeDetail, openPlayer } = useAppStore()
+  const { closeDetail, openPlayer, continueWatchingEntries } = useAppStore()
   const [selectedStream, setSelectedStream] = useState(0)
+
+  const cwEntry = computeCwEntry(item, continueWatchingEntries)
+  const isResume = cwEntry && !cwEntry.isWatched && cwEntry.positionMs > 0
+  const resumePercent = isResume ? Math.round((cwEntry.positionMs * 100) / cwEntry.durationMs) : 0
 
   const displayTitle = item.tmdbTitle ?? item.title
 
@@ -82,6 +93,20 @@ export function MovieDetail({ item }: Props) {
           <p className={styles.synopsis}>{item.description}</p>
         )}
 
+        <div className={styles.statusRow}>
+          {item.isWatched && (
+            <span className={styles.statusWatched}>
+              <span className={styles.statusCheck}>✓</span>
+              Visto
+            </span>
+          )}
+          {isResume && (
+            <span className={styles.statusResume}>
+              Continuar desde {resumePercent}%
+            </span>
+          )}
+        </div>
+
         {item.streamOptions.length > 0 && (
           <div className={styles.streamSection}>
             <h3 className={styles.streamTitle}>Opciones de stream</h3>
@@ -111,7 +136,7 @@ export function MovieDetail({ item }: Props) {
           onClick={() => openPlayer(item, selectedStream)}
           className={styles.playBtn}
         >
-          Reproducir
+          {isResume ? 'Reanudar' : 'Reproducir'}
         </button>
       </div>
     </div>

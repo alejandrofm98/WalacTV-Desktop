@@ -149,7 +149,49 @@
   font-weight: 400;
   line-height: 1.8;
   max-width: 66ch;
-  margin: 0 0 36px;
+  margin: 0 0 20px;
+}
+
+.statusRow {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 28px;
+}
+
+.statusWatched {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--success);
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.statusCheck {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  height: 22px;
+  background: var(--success-dim);
+  color: var(--success);
+  border-radius: var(--radius-full);
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.statusResume {
+  display: inline-flex;
+  align-items: center;
+  padding: 4px 12px;
+  background: oklch(25% 0.020 252 / 0.7);
+  backdrop-filter: blur(4px);
+  color: var(--text-primary);
+  border-radius: var(--radius-full);
+  font-size: 12px;
+  font-weight: 600;
 }
 
 .streamSection {

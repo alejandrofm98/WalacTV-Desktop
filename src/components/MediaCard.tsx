@@ -80,6 +80,13 @@ export function MediaCard({ item, width = CARD_W, height = CARD_H, showText = fa
       )}
 
       {/* Badge */}
+      {item.isWatched && isVod && (
+        <div className={styles.watchedBadge}>
+          <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+            <polyline points="20 6 9 17 4 12" />
+          </svg>
+        </div>
+      )}
       {topBadges && topBadges.length > 0 ? (
         <div className={styles.badgesContainer}>
           {topBadges.map((badge, idx) => (
