@@ -401,6 +401,14 @@ export async function removeWatchProgress(id: string): Promise<void> {
   await del(`/api/watch-progress/${encodeURIComponent(id)}`)
 }
 
+export async function markWatched(contentId: string, season?: number | null, episode?: number | null): Promise<void> {
+  const params = new URLSearchParams()
+  if (season != null) params.set('season', String(season))
+  if (episode != null) params.set('episode', String(episode))
+  const qs = params.toString() ? `?${params}` : ''
+  await post(`/api/watch-progress/${encodeURIComponent(contentId)}/mark-watched${qs}`)
+}
+
 // Countries, Groups
 export async function getCountries(contentType: string) {
   return get<{ countries: string[] }>(`/api/content/countries?content_type=${contentType}`)

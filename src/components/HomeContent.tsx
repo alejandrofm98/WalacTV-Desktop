@@ -1,12 +1,13 @@
 import { useMemo, useCallback, useEffect, useRef, useState } from 'react'
 import { useAppStore } from '../store/useAppStore'
 import { SectionRow } from './SectionRow'
-import { getContentById, getSeriesEpisodes, cwGroupKey, removeWatchProgress } from '../api/client'
+import { getContentById, getSeriesEpisodes, cwGroupKey, markWatched, saveWatchProgress, getAllSeriesEpisodes, getWatchProgress } from '../api/client'
 import type { CatalogItem, BrowseSection, WatchProgressItem } from '../api/types'
+import { pickFirstUnwatched } from '../utils/series'
 import styles from './HomeContent.module.css'
 
 export function HomeContent() {
-  const { homeSections, selectedHero, continueWatchingEntries, openPlayer, openDetail, removeContinueWatchingEntry } = useAppStore()
+  const { homeSections, selectedHero, continueWatchingEntries, openPlayer, openDetail, removeContinueWatchingEntry, setContinueWatching } = useAppStore()
 
   const [hoveredHero, setHoveredHero] = useState<CatalogItem | null>(null)
   const hoverTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null)
@@ -84,13 +85,53 @@ export function HomeContent() {
     openDetail(item)
   }, [openDetail])
 
-  const handleCwRemove = useCallback((entry: WatchProgressItem) => {
+  const handleCwRemove = useCallback(async (entry: WatchProgressItem) => {
     const cwKey = cwGroupKey(entry.contentType, entry.seriesName, entry.contentId)
     removeContinueWatchingEntry(cwKey)
-    removeWatchProgress(entry.contentId).catch((err) => {
-      console.error('removeWatchProgress failed', err)
-    })
-  }, [removeContinueWatchingEntry])
+
+    const isSeries = entry.contentType === 'series' && entry.seriesName
+    if (isSeries && entry.seasonNumber != null && entry.episodeNumber != null) {
+      const season = entry.seasonNumber
+      const episode = entry.episodeNumber
+
+      await markWatched(entry.contentId, season, episode).catch((err) =>
+        console.error('markWatched failed', err),
+      )
+
+      const episodes = await getAllSeriesEpisodes(entry.contentId).catch(() => [] as CatalogItem[])
+      const next = pickFirstUnwatched(episodes, season, episode)
+
+      if (next) {
+        const durationMs = (next.runtimeMinutes ?? entry.runtimeMinutes ?? 0) * 60_000
+        await saveWatchProgress(entry.contentId, {
+          content_type: 'series',
+          position_ms: 1000,
+          duration_ms: durationMs > 0 ? durationMs : entry.durationMs,
+          series_name: entry.seriesName,
+          season_number: next.seasonNumber,
+          episode_number: next.episodeNumber,
+          title: next.title,
+          image_url: next.imageUrl,
+        }).catch((err) => console.error('saveWatchProgress next episode failed', err))
+      }
+    } else {
+      await markWatched(entry.contentId).catch((err) =>
+        console.error('markWatched failed', err),
+      )
+    }
+
+    try {
+      const { items } = await getWatchProgress(20)
+      const map = new Map<string, WatchProgressItem>()
+      for (const item of items) {
+        const key = cwGroupKey(item.contentType, item.seriesName, item.contentId)
+        if (!map.has(key)) map.set(key, item)
+      }
+      setContinueWatching(map)
+    } catch (err) {
+      console.error('CW reload failed', err)
+    }
+  }, [removeContinueWatchingEntry, setContinueWatching])
 
   // Build continue watching section from entries if backend doesn't provide one
   const cwSection = homeSections.find((s) => s.title === 'Continuar viendo')
