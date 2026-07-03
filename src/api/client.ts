@@ -180,6 +180,9 @@ function mapItem(raw: any): CatalogItem {
     totalSeasons: raw.total_seasons ?? null,
     stillPath: stillPath || null,
     imdbId: raw.imdb_id ?? null,
+    airDate: raw.air_date ?? null,
+    episodeType: raw.episode_type ?? null,
+    isWatched: raw.is_watched != null ? Boolean(raw.is_watched) : undefined,
   }
 }
 
@@ -293,6 +296,18 @@ export async function getSeriesEpisodes(identifier: string, page = 1) {
     episodes: (raw.episodes ?? []).map(mapItem),
     total: raw.total,
   }
+}
+
+export async function getAllSeriesEpisodes(identifier: string): Promise<CatalogItem[]> {
+  const first = await getSeriesEpisodes(identifier, 1)
+  if (first.total <= first.episodes.length) return first.episodes
+  const pages = Math.ceil(first.total / 100)
+  const rest: CatalogItem[] = []
+  for (let p = 2; p <= pages; p++) {
+    const r = await getSeriesEpisodes(identifier, p)
+    rest.push(...r.episodes)
+  }
+  return [...first.episodes, ...rest]
 }
 
 // Search

@@ -9,18 +9,10 @@
   gap: 16px;
 }
 
-.logoMark {
-  width: 52px;
-  height: 52px;
-  border-radius: var(--radius-md);
-  background: var(--accent);
-  color: oklch(98% 0.004 252);
-  font-size: 26px;
-  font-weight: 800;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  letter-spacing: -0.5px;
+.logoImage {
+  width: 240px;
+  height: auto;
+  object-fit: contain;
 }
 
 .appName {

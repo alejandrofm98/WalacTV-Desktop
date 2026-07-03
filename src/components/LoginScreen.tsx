@@ -34,8 +34,7 @@ export function LoginScreen({ onLogin }: Props) {
       <form onSubmit={submit} className={styles.form}>
         <div className={styles.formHeader}>
           <div className={styles.logoRow}>
-            <div className={styles.logoMark}>W</div>
-            <span className={styles.appName}>WalacTV</span>
+            <img src="/logo.png" alt="WalacTV" className={styles.logoMark} width={36} height={19} />
           </div>
           <h1 className={styles.title}>Iniciar sesion</h1>
           <p className={styles.subtitle}>Ingresa tu usuario y contrasena para continuar.</p>

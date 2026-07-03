@@ -102,7 +102,7 @@ export function SideRail({ mode, onModeChange, expanded, onSetExpanded }: Props)
     >
       {/* Header */}
       <div className={styles.header}>
-        <div className={styles.logoMark}>W</div>
+        <img src="/logo.png" alt="WalacTV" className={styles.logoMark} width={32} height={17} />
         <span className={`${styles.brand} ${expanded ? '' : styles.hiddenText}`}>WalacTV</span>
       </div>
 

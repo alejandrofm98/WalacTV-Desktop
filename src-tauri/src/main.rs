@@ -5,6 +5,7 @@ use std::path::PathBuf;
 use std::process::Child;
 use std::sync::Mutex;
 use serde::Serialize;
+use tauri::image::Image;
 use tauri::Manager;
 
 #[cfg(unix)]
@@ -180,6 +181,15 @@ fn main() {
     tauri::Builder::default()
         .setup(|app| {
             if let Some(window) = app.get_webview_window("main") {
+                let icon_bytes = include_bytes!("../icons/icon.png");
+                match Image::from_bytes(icon_bytes) {
+                    Ok(icon) => {
+                        if let Err(e) = window.set_icon(icon) {
+                            eprintln!("Failed to set window icon: {}", e);
+                        }
+                    }
+                    Err(e) => eprintln!("Failed to load icon bytes: {}", e),
+                }
                 if let Ok(Some(monitor)) = window.current_monitor() {
                     let size = monitor.size();
                     let new_w = (size.width as f64 * 0.75).round() as u32;

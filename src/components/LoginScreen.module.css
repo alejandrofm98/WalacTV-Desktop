@@ -42,17 +42,9 @@
 }
 
 .logoMark {
-  width: 36px;
   height: 36px;
-  border-radius: var(--radius-sm);
-  background: var(--accent);
-  color: oklch(98% 0.004 252);
-  font-size: 18px;
-  font-weight: 800;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  letter-spacing: -0.5px;
+  width: auto;
+  object-fit: contain;
   flex-shrink: 0;
 }
 

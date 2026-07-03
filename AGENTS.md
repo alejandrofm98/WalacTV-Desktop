@@ -35,7 +35,7 @@ IPTV/multimedia con backend centralizado (`iptv-api`).
 
 | Proyecto          | Rol                 | Stack                          | Repo                                                | Relacion con este proyecto                                    |
 | ----------------- | ------------------- | ------------------------------ | --------------------------------------------------- | ------------------------------------------------------------- |
-| iptv-api          | Backend central     | FastAPI, Python 3.12, Postgres | `github.com/alejandrofm98/iptv-api`                 | Este proyecto consume sus endpoints REST. Ver `iptv-api/AGENTS.md` secciones 4.1-4.2 |
+| iptv-api          | Backend central     | FastAPI, Python 3.12, Postgres | `github.com/alejandrofm98/iptv-api`                 | Este proyecto consume sus endpoints REST. Clonado en `/home/alejandro/PycharmProjects/iptv-api`. Ver `iptv-api/AGENTS.md` secciones 4.1-4.2 |
 | walactv-scrapper  | Productor catalogos | Python 3.12, Ofelia, Ansible   | `github.com/alejandrofm98/walactv-scrapper`         | No interactua directamente (iptv-api es intermediario)         |
 | WalacTV (Android) | Cliente TV          | Kotlin, Android TV             | `github.com/alejandrofm98/WalacTV`                  | Mismo backend, mismos endpoints, clientes equivalentes         |
 | walactvWeb        | Cliente web         | Angular 20                     | `github.com/alejandrofm98/walactvWeb`               | Mismo backend, mismo protocolo                                |

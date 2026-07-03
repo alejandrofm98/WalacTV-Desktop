@@ -138,7 +138,8 @@ export function DiscoverContent() {
                   key={item.stableId}
                   item={item}
                   width={180}
-                  height={260}
+                  height={284}
+                  showText
                   onClick={() => openDetail(item)}
                 />
               ))}

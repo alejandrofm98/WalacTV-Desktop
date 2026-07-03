@@ -18,6 +18,7 @@ interface Props {
 
 const CARD_W = 170
 const CARD_H = 240
+const TEXT_AREA_H = 46
 
 export function MediaCard({ item, width = CARD_W, height = CARD_H, showText = false, progressPercent, topBadges, onClick, onHover, onViewDetail, onRemove }: Props) {
   const [focused, setFocused] = useState(false)
@@ -44,7 +45,7 @@ export function MediaCard({ item, width = CARD_W, height = CARD_H, showText = fa
     isDimmed && styles.cardDimmed,
   ].join(' ')
 
-  const imgHeight = showText ? height - 54 : height
+  const imgHeight = showText ? height - TEXT_AREA_H : height
 
   const isHiddenBadge = ['EN VIVO', 'CINE', 'SERIES', 'SERIE', 'PELICULA', 'PELICULAS'].includes(item.badgeText?.trim().toUpperCase() || '')
 
@@ -131,7 +132,7 @@ export function MediaCard({ item, width = CARD_W, height = CARD_H, showText = fa
 
       {/* Progress bar */}
       {progressPercent != null && progressPercent > 0 && (
-        <div className={styles.progressTrack} style={{ bottom: showText ? 54 : 0 }}>
+        <div className={styles.progressTrack} style={{ bottom: showText ? TEXT_AREA_H : 0 }}>
           <div className={styles.progressBar} style={{ width: `${progressPercent}%` }} />
         </div>
       )}

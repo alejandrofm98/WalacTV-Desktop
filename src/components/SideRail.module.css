@@ -34,16 +34,8 @@
 .logoMark {
   width: 32px;
   height: 32px;
-  border-radius: var(--radius-sm);
-  background: var(--accent);
-  color: oklch(98% 0.004 252);
-  font-size: 16px;
-  font-weight: 800;
-  display: flex;
-  align-items: center;
-  justify-content: center;
+  object-fit: contain;
   flex-shrink: 0;
-  letter-spacing: -0.5px;
 }
 
 .brand {

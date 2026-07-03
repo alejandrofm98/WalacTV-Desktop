@@ -28,3 +28,7 @@ src-tauri/target/
 
 # Credentials store (encrypted, user-specific)
 credentials.dat
+
+# Temp files
+playlist.m3u
+tmp-cw-mockups.html
