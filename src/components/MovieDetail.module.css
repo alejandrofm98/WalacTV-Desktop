@@ -33,16 +33,10 @@
   background:
     linear-gradient(
       90deg,
-      oklch(11% 0.024 252 / 0.94) 0%,
-      oklch(11% 0.024 252 / 0.55) 45%,
-      oklch(11% 0.024 252 / 0.18) 75%,
+      oklch(11% 0.024 252 / 1) 0%,
+      oklch(11% 0.024 252 / 0.8) 30%,
+      oklch(11% 0.024 252 / 0.4) 60%,
       transparent 90%
-    ),
-    linear-gradient(
-      180deg,
-      oklch(11% 0.024 252 / 0.30) 0%,
-      transparent 35%,
-      oklch(8% 0.020 252 / 0.95) 100%
     );
 }
 
@@ -78,7 +72,7 @@
   min-height: 100%;
   display: flex;
   flex-direction: column;
-  justify-content: flex-end;
+  justify-content: center;
   padding: 80px 64px 64px;
   box-sizing: border-box;
   max-width: 1100px;
@@ -129,8 +123,8 @@
 }
 
 .ratingBadge {
-  background: var(--rating-bg);
-  color: var(--rating-fg);
+  background: #facc15;
+  color: black;
   padding: 3px 11px;
   border-radius: var(--radius-full);
   font-size: 13px;
@@ -237,9 +231,9 @@
 }
 
 .streamPillSelected {
-  background: var(--accent-dim);
-  border-color: var(--accent);
-  color: var(--text-accent);
+  background: transparent;
+  border-color: #3b82f6;
+  color: #3b82f6;
 }
 
 .streamLabel {
@@ -251,24 +245,25 @@
   font-weight: 700;
   padding: 2px 8px;
   border-radius: var(--radius-full);
-  background: oklch(30% 0.015 252);
-  color: var(--text-secondary);
+  background: #374151;
+  color: white;
   line-height: 1.3;
 }
 
 .streamPillSelected .streamQuality {
-  background: var(--accent);
-  color: oklch(15% 0.024 252);
+  background: #3b82f6;
+  color: white;
 }
 
 .playBtn {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  background: oklch(90% 0.005 252);
-  color: oklch(18% 0.024 252);
+  gap: 8px;
+  background: white;
+  color: black;
   border: none;
-  border-radius: var(--radius-md);
+  border-radius: 9999px;
   padding: 14px 32px;
   font-size: 16px;
   font-weight: 700;

@@ -10,10 +10,11 @@ interface Props {
   onCardHover?: (item: CatalogItem) => void
   continueWatching?: Map<string, WatchProgressItem>
   onCwViewDetail?: (item: CatalogItem, entry: WatchProgressItem) => void
+  onCwMarkWatched?: (entry: WatchProgressItem) => void
   onCwRemove?: (entry: WatchProgressItem) => void
 }
 
-export function SectionRow({ section, onCardClick, onCardHover, continueWatching, onCwViewDetail, onCwRemove }: Props) {
+export function SectionRow({ section, onCardClick, onCardHover, continueWatching, onCwViewDetail, onCwMarkWatched, onCwRemove }: Props) {
   const scrollRef = useRef<HTMLDivElement>(null)
   const [canScrollLeft, setCanScrollLeft] = useState(false)
   const [canScrollRight, setCanScrollRight] = useState(true)
@@ -99,6 +100,7 @@ export function SectionRow({ section, onCardClick, onCardHover, continueWatching
                 onClick={() => onCardClick(item)}
                 onHover={onCardHover}
                 onViewDetail={isCwSection && cw ? () => onCwViewDetail?.(item, cw) : undefined}
+                onMarkWatched={isCwSection && cw ? () => onCwMarkWatched?.(cw) : undefined}
                 onRemove={isCwSection && cw ? () => onCwRemove?.(cw) : undefined}
               />
             )

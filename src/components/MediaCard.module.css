@@ -149,7 +149,7 @@
   top: 8px;
   right: 8px;
   display: flex;
-  flex-direction: column;
+  flex-direction: row;
   gap: 6px;
   z-index: 4;
   opacity: 0;
@@ -195,6 +195,10 @@
 
 .cwBtnRemove {
   color: var(--live);
+}
+
+.cwBtnMark {
+  color: var(--success);
 }
 
 /* ── Progress bar ────────────────────────────────── */

@@ -136,6 +136,9 @@ export function MovieDetail({ item }: Props) {
           onClick={() => openPlayer(item, selectedStream)}
           className={styles.playBtn}
         >
+          <svg width="24" height="24" viewBox="0 0 24 24" fill="currentColor" xmlns="http://www.w3.org/2000/svg">
+            <path d="M8 5v14l11-7z"/>
+          </svg>
           {isResume ? 'Reanudar' : 'Reproducir'}
         </button>
       </div>

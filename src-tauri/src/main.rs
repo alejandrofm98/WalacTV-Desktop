@@ -161,6 +161,13 @@ fn mpv_get_position(socket_path: String) -> Result<f64, String> {
 }
 
 #[tauri::command]
+fn mpv_get_duration(socket_path: String) -> Result<f64, String> {
+    let resp = send_mpv_command(&socket_path, r#"{"command":["get_property","duration"]}"#)?;
+    let v: serde_json::Value = serde_json::from_str(&resp).map_err(|e| e.to_string())?;
+    v["data"].as_f64().ok_or_else(|| "no duration data".to_string())
+}
+
+#[tauri::command]
 fn mpv_is_alive(socket_path: String) -> bool {
     send_mpv_command(&socket_path, r#"{"command":["get_property","pause"]}"#).is_ok()
 }
@@ -204,7 +211,7 @@ fn main() {
         .plugin(tauri_plugin_store::Builder::new().build())
         .plugin(tauri_plugin_updater::Builder::new().build())
         .plugin(tauri_plugin_process::init())
-        .invoke_handler(tauri::generate_handler![open_in_mpv, mpv_seek, mpv_get_position, mpv_is_alive, mpv_is_running, mpv_get_log, get_scale_info])
+        .invoke_handler(tauri::generate_handler![open_in_mpv, mpv_seek, mpv_get_position, mpv_get_duration, mpv_is_alive, mpv_is_running, mpv_get_log, get_scale_info])
         .run(tauri::generate_context!())
         .expect("error while running tauri application")
 }

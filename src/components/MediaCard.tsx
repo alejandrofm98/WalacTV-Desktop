@@ -13,6 +13,7 @@ interface Props {
   onClick: () => void
   onHover?: (item: CatalogItem) => void
   onViewDetail?: () => void
+  onMarkWatched?: () => void
   onRemove?: () => void
 }
 
@@ -20,7 +21,7 @@ const CARD_W = 170
 const CARD_H = 240
 const TEXT_AREA_H = 46
 
-export function MediaCard({ item, width = CARD_W, height = CARD_H, showText = false, progressPercent, topBadges, onClick, onHover, onViewDetail, onRemove }: Props) {
+export function MediaCard({ item, width = CARD_W, height = CARD_H, showText = false, progressPercent, topBadges, onClick, onHover, onViewDetail, onMarkWatched, onRemove }: Props) {
   const [focused, setFocused] = useState(false)
   const [imgError, setImgError] = useState(false)
   const playerOpening = useAppStore((s) => s.playerOpening)
@@ -101,7 +102,7 @@ export function MediaCard({ item, width = CARD_W, height = CARD_H, showText = fa
         </div>
       ))}
 
-      {(onViewDetail || onRemove) && (
+      {(onViewDetail || onMarkWatched || onRemove) && (
         <div className={styles.cwActions}>
           {onViewDetail && (
             <button
@@ -116,6 +117,20 @@ export function MediaCard({ item, width = CARD_W, height = CARD_H, showText = fa
                 <circle cx="12" cy="12" r="10" />
                 <line x1="12" y1="11" x2="12" y2="17" />
                 <circle cx="12" cy="7" r="0.6" fill="currentColor" stroke="none" />
+              </svg>
+            </button>
+          )}
+          {onMarkWatched && (
+            <button
+              type="button"
+              className={`${styles.cwBtn} ${styles.cwBtnMark}`}
+              onClick={(e) => { e.stopPropagation(); e.preventDefault(); onMarkWatched() }}
+              onKeyDown={(e) => e.stopPropagation()}
+              aria-label="Marcar como vista"
+              title="Marcar como vista"
+            >
+              <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                <polyline points="20 6 9 17 4 12" />
               </svg>
             </button>
           )}

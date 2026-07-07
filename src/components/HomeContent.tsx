@@ -1,7 +1,7 @@
 import { useMemo, useCallback, useEffect, useRef, useState } from 'react'
 import { useAppStore } from '../store/useAppStore'
 import { SectionRow } from './SectionRow'
-import { getContentById, getSeriesEpisodes, cwGroupKey, markWatched, saveWatchProgress, getAllSeriesEpisodes, getWatchProgress } from '../api/client'
+import { getContentById, getSeriesEpisodes, cwGroupKey, markWatched, saveWatchProgress, getAllSeriesEpisodes, getWatchProgress, removeWatchProgress } from '../api/client'
 import type { CatalogItem, BrowseSection, WatchProgressItem } from '../api/types'
 import { pickFirstUnwatched } from '../utils/series'
 import styles from './HomeContent.module.css'
@@ -85,7 +85,7 @@ export function HomeContent() {
     openDetail(item)
   }, [openDetail])
 
-  const handleCwRemove = useCallback(async (entry: WatchProgressItem) => {
+  const handleCwMarkWatched = useCallback(async (entry: WatchProgressItem) => {
     const cwKey = cwGroupKey(entry.contentType, entry.seriesName, entry.contentId)
     removeContinueWatchingEntry(cwKey)
 
@@ -132,6 +132,26 @@ export function HomeContent() {
       console.error('CW reload failed', err)
     }
   }, [removeContinueWatchingEntry, setContinueWatching])
+
+  const handleCwRemove = useCallback(async (entry: WatchProgressItem) => {
+    const cwKey = cwGroupKey(entry.contentType, entry.seriesName, entry.contentId)
+    removeContinueWatchingEntry(cwKey)
+    await removeWatchProgress(entry.contentId).catch((err) =>
+      console.error('removeWatchProgress failed', err),
+    )
+    try {
+      const { items } = await getWatchProgress(20)
+      const map = new Map<string, WatchProgressItem>()
+      for (const item of items) {
+        const key = cwGroupKey(item.contentType, item.seriesName, item.contentId)
+        if (!map.has(key)) map.set(key, item)
+      }
+      setContinueWatching(map)
+    } catch (err) {
+      console.error('CW reload failed', err)
+    }
+  }, [removeContinueWatchingEntry, setContinueWatching])
+
 
   // Build continue watching section from entries if backend doesn't provide one
   const cwSection = homeSections.find((s) => s.title === 'Continuar viendo')
@@ -246,6 +266,7 @@ export function HomeContent() {
             onCardHover={handleCardHover}
             continueWatching={continueWatchingEntries}
             onCwViewDetail={handleCwViewDetail}
+            onCwMarkWatched={handleCwMarkWatched}
             onCwRemove={handleCwRemove}
           />
         )}

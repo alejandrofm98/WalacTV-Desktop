@@ -39,11 +39,11 @@ function mpvInstallMessage(): string {
   ].join('\n')
 }
 
-function buildProgressBody(item: NonNullable<ReturnType<typeof useAppStore.getState>['playerItem']>, posMs: number): WatchProgressUpsertBody {
+function buildProgressBody(item: NonNullable<ReturnType<typeof useAppStore.getState>['playerItem']>, posMs: number, currentDurationMs: number): WatchProgressUpsertBody {
   return {
     content_type: item.kind === 'SERIES' ? 'series' : 'movie',
     position_ms: posMs,
-    duration_ms: (item.runtimeMinutes || 0) * 60000,
+    duration_ms: currentDurationMs > 0 ? currentDurationMs : (item.runtimeMinutes || 0) * 60000,
     series_name: item.seriesName ?? null,
     season_number: item.seasonNumber ?? null,
     episode_number: item.episodeNumber ?? null,
@@ -59,6 +59,7 @@ export function Player() {
   const [socketPath, setSocketPath] = useState<string | null>(null)
   const [segments, setSegments] = useState<IntroDbSegments | null>(null)
   const [currentPosition, setCurrentPosition] = useState<number>(0)
+  const [currentDurationMs, setCurrentDurationMs] = useState<number>(0)
   const [skipHidden, setSkipHidden] = useState<Set<string>>(new Set())
   const [streamAttempt, setStreamAttempt] = useState(0)
   const [retrying, setRetrying] = useState(false)
@@ -70,6 +71,8 @@ export function Player() {
   skipHiddenRef.current = skipHidden
   const positionRef = useRef(0)
   positionRef.current = currentPosition
+  const currentDurationMsRef = useRef(0)
+  currentDurationMsRef.current = currentDurationMs
   const itemRef = useRef(item)
   itemRef.current = item
   const streamAttemptRef = useRef(streamAttempt)
@@ -85,7 +88,7 @@ export function Player() {
   // Persist on open with the resume point (or 0 for fresh).
   useEffect(() => {
     if (item && (item.kind === 'MOVIE' || item.kind === 'SERIES') && item.stableId) {
-      saveWatchProgress(item.stableId, buildProgressBody(item, playerStartPosition)).catch(() => {})
+      saveWatchProgress(item.stableId, buildProgressBody(item, playerStartPosition, 0)).catch(() => {})
     }
   }, [item?.stableId, item?.kind])
 
@@ -96,7 +99,7 @@ export function Player() {
       if (!cur || !cur.stableId) return
       const p = positionRef.current
       if (p <= 0) return
-      saveWatchProgress(cur.stableId, buildProgressBody(cur, p)).catch(() => {})
+      saveWatchProgress(cur.stableId, buildProgressBody(cur, p, currentDurationMsRef.current)).catch(() => {})
     }
   }, [])
 
@@ -108,7 +111,7 @@ export function Player() {
       if (p <= 0) return
       const cur = itemRef.current
       if (!cur || !cur.stableId) return
-      saveWatchProgress(cur.stableId, buildProgressBody(cur, p)).catch(() => {})
+      saveWatchProgress(cur.stableId, buildProgressBody(cur, p, currentDurationMsRef.current)).catch(() => {})
     }, 15000)
     return () => clearInterval(id)
   }, [socketPath, spawned])
@@ -214,7 +217,7 @@ export function Player() {
           } else {
             const cur = itemRef.current
             if (cur && cur.stableId && positionRef.current > 0) {
-              await saveWatchProgress(cur.stableId, buildProgressBody(cur, positionRef.current)).catch(() => {})
+              await saveWatchProgress(cur.stableId, buildProgressBody(cur, positionRef.current, currentDurationMsRef.current)).catch(() => {})
             }
             closePlayer()
           }
@@ -223,6 +226,8 @@ export function Player() {
         try {
           const pos = await invoke<number>('mpv_get_position', { socketPath })
           setCurrentPosition(pos * 1000)
+          const dur = await invoke<number>('mpv_get_duration', { socketPath }).catch(() => 0)
+          if (dur > 0) setCurrentDurationMs(dur * 1000)
         } catch {
           // position unavailable (buffering) — mpv is still alive, ignore
         }

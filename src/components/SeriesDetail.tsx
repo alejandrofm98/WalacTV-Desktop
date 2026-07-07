@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef, useCallback, useMemo } from 'react'
+import { Play, CheckCircle, ChevronDown, ArrowLeft } from 'lucide-react'
 import type { CatalogItem, WatchProgressItem } from '../api/types'
 import { getAllSeriesEpisodes, cwGroupKey } from '../api/client'
 import { useAppStore } from '../store/useAppStore'
@@ -8,23 +9,16 @@ interface Props {
   item: CatalogItem
 }
 
-const EPISODE_DATE_FMT = new Intl.DateTimeFormat('es-ES', {
-  day: '2-digit',
-  month: 'short',
-  year: 'numeric',
-})
-
 function formatRuntime(minutes: number): string {
   const h = Math.floor(minutes / 60)
   const m = minutes % 60
   return h > 0 ? `${h}h ${m}min` : `${m}min`
 }
 
-function formatAirDate(value: string | null | undefined): string {
-  if (!value) return ''
-  const d = new Date(value)
-  if (isNaN(d.getTime())) return ''
-  return EPISODE_DATE_FMT.format(d)
+function formatAirDate(raw: string): string {
+  const d = new Date(raw)
+  if (isNaN(d.getTime())) return raw
+  return d.toLocaleDateString('es-ES', { year: 'numeric', month: 'short', day: 'numeric' })
 }
 
 function computeCwEntry(item: CatalogItem, entries: Map<string, WatchProgressItem>): WatchProgressItem | undefined {
@@ -148,11 +142,23 @@ export function SeriesDetail({ item }: Props) {
   }, [])
 
   const firstUnwatched = useMemo(() => {
-    for (const ep of filteredEpisodes) {
+    if (cwEntry && !cwEntry.isWatched) {
+      const cwEp = episodes.find(
+        (e) => e.seasonNumber === cwEntry.seasonNumber && e.episodeNumber === cwEntry.episodeNumber
+      )
+      if (cwEp) return cwEp
+    }
+
+    const sortedAll = [...episodes].sort(
+      (a, b) =>
+        (a.seasonNumber ?? 0) - (b.seasonNumber ?? 0) ||
+        (a.episodeNumber ?? 0) - (b.episodeNumber ?? 0),
+    )
+    for (const ep of sortedAll) {
       if (!ep.isWatched) return ep
     }
-    return filteredEpisodes[0] ?? null
-  }, [filteredEpisodes])
+    return sortedAll[0] ?? null
+  }, [episodes, cwEntry])
 
   const handlePlayHero = useCallback(() => {
     if (firstUnwatched) openPlayer(firstUnwatched)
@@ -193,8 +199,9 @@ export function SeriesDetail({ item }: Props) {
         <div className={styles.heroGradientBottom} />
         <div className={styles.heroVignette} />
 
-        <button onClick={closeDetail} className={styles.backBtn} aria-label="Volver">
-          <span className={styles.backIcon} aria-hidden="true">&larr;</span> Volver
+        <button onClick={closeDetail} className={styles.backBtn}>
+          <ArrowLeft className={styles.backIcon} aria-hidden="true" size={20} /> 
+          Volver
         </button>
 
         <div className={styles.heroInfo}>
@@ -202,9 +209,8 @@ export function SeriesDetail({ item }: Props) {
 
           <div className={styles.heroMetaRow}>
             {(item.voteAverage ?? 0) > 0 && (
-              <span className={styles.metaRating}>
-                <span className={styles.metaStar} aria-hidden="true">&#9733;</span>
-                {item.voteAverage!.toFixed(1)}
+              <span className={styles.ratingBadge}>
+                ★ {item.voteAverage!.toFixed(1)}
               </span>
             )}
             {item.year && <span className={styles.metaItem}>{item.year}</span>}
@@ -223,7 +229,7 @@ export function SeriesDetail({ item }: Props) {
           )}
 
           <button onClick={handlePlayHero} className={styles.heroPlayBtn} disabled={!firstUnwatched}>
-            <span className={styles.heroPlayIcon} aria-hidden="true">&#9654;</span>
+            <Play className={styles.heroPlayIcon} aria-hidden="true" fill="currentColor" size={24} />
             {heroLabel}
           </button>
         </div>
@@ -239,8 +245,8 @@ export function SeriesDetail({ item }: Props) {
               aria-expanded={dropdownOpen}
               aria-haspopup="listbox"
             >
-              {selectedSeasonLabel}
-              <span className={styles.seasonChevron} aria-hidden="true">&#9662;</span>
+              <span className={styles.seasonDropdownText}>{selectedSeasonLabel}</span>
+              <ChevronDown className={styles.seasonChevron} aria-hidden="true" size={20} />
             </button>
             {dropdownOpen && (
               <ul className={styles.seasonMenu} role="listbox">
@@ -302,34 +308,32 @@ export function SeriesDetail({ item }: Props) {
                     onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); openPlayer(ep) } }}
                     aria-label={`Reproducir T${ep.seasonNumber ?? '?'} E${ep.episodeNumber ?? '?'}: ${ep.tmdbTitle ?? ep.title}`}
                   >
+                    <div className={styles.episodeNumberLeft}>{ep.episodeNumber ?? i + 1}</div>
+
                     <div className={styles.episodeThumbWrap}>
                       {(ep.stillPath || ep.imageUrl) ? (
                         <img src={ep.stillPath || ep.imageUrl} alt="" className={styles.episodeThumb} />
                       ) : (
                         <div className={styles.episodeThumbPlaceholder}>TV</div>
                       )}
-                      {isContinue && epProgress > 0 && (
-                        <div className={styles.thumbProgress} aria-hidden="true">
-                          <div className={styles.thumbProgressFill} style={{ width: `${epProgress}%` }} />
-                        </div>
-                      )}
+                      <div className={styles.playOverlay} aria-hidden="true">
+                        <Play size={24} fill="currentColor" />
+                      </div>
                     </div>
 
                     <div className={styles.episodeInfo}>
-                      <div className={styles.episodeNumber}>Episodio {ep.episodeNumber ?? '?'}</div>
                       <div className={styles.episodeTitle}>{ep.tmdbTitle ?? ep.title}</div>
                       <div className={styles.episodeMeta}>
                         {(ep.voteAverage ?? 0) > 0 && (
-                          <span className={styles.episodeRating}>
-                            <span className={styles.epStar} aria-hidden="true">&#9733;</span>
-                            {ep.voteAverage!.toFixed(1)}
+                          <span className={styles.ratingBadge}>
+                            ★ {ep.voteAverage!.toFixed(1)}
                           </span>
-                        )}
-                        {ep.airDate && (
-                          <span className={styles.episodeDate}>{formatAirDate(ep.airDate)}</span>
                         )}
                         {ep.runtimeMinutes != null && (
                           <span className={styles.episodeDuration}>{formatRuntime(ep.runtimeMinutes)}</span>
+                        )}
+                        {(ep.airDate ?? ep.releaseDate) && (
+                          <span className={styles.episodeAirDate}>{formatAirDate(ep.airDate ?? ep.releaseDate!)}</span>
                         )}
                       </div>
                       {ep.description && (
@@ -337,22 +341,28 @@ export function SeriesDetail({ item }: Props) {
                       )}
                     </div>
 
-                    <div className={styles.episodeStatus}>
-                      {status.variant === 'watched' && (
-                        <span className={styles.statusWatched}>
-                          <span className={styles.statusCheck} aria-hidden="true">&#10003;</span>
-                          <span className={styles.statusLabel}>Visto</span>
-                        </span>
+                    <div className={styles.episodeRight}>
+                      {isContinue && epProgress > 0 && (
+                        <div className={styles.progressTrack} aria-hidden="true">
+                          <div className={styles.progressFillRight} style={{ width: `${epProgress}%` }} />
+                        </div>
                       )}
-                      {status.variant === 'inProgress' && (
-                        <span className={styles.statusInProgress}>
-                          <span className={styles.statusPlay} aria-hidden="true">&#9654;</span>
-                          <span className={styles.statusLabel}>En reproduccion</span>
-                        </span>
-                      )}
-                      {status.variant === 'play' && (
-                        <span className={styles.statusPlayBtn} aria-hidden="true">&#9654;</span>
-                      )}
+                      
+                      <div className={styles.episodeStatus}>
+                        {status.variant === 'watched' && (
+                          <span className={styles.statusWatched}>
+                            <span className={styles.statusLabel}>Visto</span>
+                            <CheckCircle className={styles.statusCheck} size={16} aria-hidden="true" />
+                          </span>
+                        )}
+                        {status.variant === 'inProgress' && epProgress > 0 && (
+                          <span className={styles.statusInProgress}>
+                            <span className={styles.statusLabel}>
+                              {ep.runtimeMinutes ? `${Math.round(ep.runtimeMinutes * (1 - epProgress / 100))} min restantes` : 'En reproduccion'}
+                            </span>
+                          </span>
+                        )}
+                      </div>
                     </div>
                   </div>
                 )
