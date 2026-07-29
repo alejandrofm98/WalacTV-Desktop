@@ -188,6 +188,7 @@ pub fn mpv_event_loop(
 
                 // On Linux with custom controls, lower mpv child window below the
                 // webview so HTML controls render on top of the video.
+                #[cfg(target_os = "linux")]
                 if let Some(ref state) = linux_lowering {
                     if !state.child_lowered.load(Ordering::Acquire) {
                         eprintln!("[mpv-events] Intentando bajar ventana mpv (top_xid=0x{:x}, {} pre-hijos)",

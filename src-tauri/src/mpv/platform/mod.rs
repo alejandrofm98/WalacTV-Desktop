@@ -95,7 +95,7 @@ fn raw_handle_to_wid(handle: RawWindowHandle) -> Result<i64, String> {
         #[cfg(target_os = "windows")]
         RawWindowHandle::Win32(h) => {
             let hwnd = h.hwnd.get();
-            if hwnd.is_null() {
+            if hwnd == 0 {
                 return Err("HWND is null".to_string());
             }
             Ok(hwnd as i64)
