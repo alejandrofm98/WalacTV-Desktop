@@ -1,0 +1,42 @@
+.skipBtn {
+  position: absolute;
+  bottom: 132px;
+  left: 50%;
+  z-index: 20;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 12px 24px;
+  background: oklch(93% 0.008 252 / 0.92);
+  border: none;
+  border-radius: var(--radius-full);
+  color: var(--bg);
+  font-size: 15px;
+  font-weight: 600;
+  font-family: var(--font-body);
+  cursor: pointer;
+  box-shadow: var(--shadow-lg);
+  transform: translateX(-50%);
+  transition: background 0.15s ease, transform 0.15s ease;
+  animation: skipIn 0.25s ease-out;
+}
+
+.skipBtn:hover {
+  background: oklch(98% 0.004 252);
+  transform: translateX(-50%) scale(1.04);
+}
+
+.skipBtn:active {
+  transform: translateX(-50%) scale(0.99);
+}
+
+@keyframes skipIn {
+  from {
+    opacity: 0;
+    transform: translateX(-50%) translateY(12px);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(-50%) translateY(0);
+  }
+}

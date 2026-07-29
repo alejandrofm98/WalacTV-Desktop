@@ -1,0 +1,6 @@
+libmpv is distributed under GPL-2.0 or later.
+
+This copy is bundled for Windows builds of WalacTV Desktop.
+Downloaded from: https://github.com/shinchiro/mpv-winbuild-cmake
+
+See https://github.com/mpv-player/mpv for the full source code and license.

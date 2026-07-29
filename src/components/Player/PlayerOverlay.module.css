@@ -1,0 +1,21 @@
+.overlay {
+  position: absolute;
+  inset: 0;
+  z-index: 10;
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  opacity: 1;
+  transition: opacity 0.3s ease;
+}
+
+.hidden {
+  opacity: 0;
+  cursor: none;
+}
+
+/* Keep the overlay hit-testable so the cursor stays hidden,
+   but disable interaction with the (invisible) children. */
+.hidden > * {
+  pointer-events: none;
+}

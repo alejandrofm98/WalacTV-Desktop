@@ -51,25 +51,43 @@ export function HomeContent() {
     const cw = continueWatchingEntries.get(cwKey)
       ?? continueWatchingEntries.get(item.stableId)
       ?? continueWatchingEntries.get(item.providerId ?? '')
+    // ── Continue-watching flow ──────────────────────────────
+    let fullItem: CatalogItem | null = null
     if (cw) {
-      let fullItem: CatalogItem | null = null
+      // For series, try fetching the specific episode from the series catalog
       if (item.kind === 'SERIES' && cw.seriesName) {
         try {
           const { episodes } = await getSeriesEpisodes(cw.contentId)
           fullItem = episodes.find(
             (ep) => ep.seasonNumber === cw.seasonNumber && ep.episodeNumber === cw.episodeNumber
           ) ?? null
-        } catch {}
+        } catch {
+          // getSeriesEpisodes may fail if cw.contentId is an episode ID, not a series ID
+          // Fallback to getContentById below
+        }
       }
+      // Fetch the full item from the content API with the correct URL pattern
       if (!fullItem) {
-        fullItem = await getContentById(cw.contentId)
+        fullItem = await getContentById(
+          item.kind === 'SERIES' ? 'series' : 'movies',
+          cw.contentId,
+        )
       }
       if (fullItem && fullItem.streamOptions.length > 0) {
         openPlayer(fullItem, 0, cw.positionMs)
         return
       }
     }
-    if (item.kind === 'MOVIE' || item.kind === 'SERIES') {
+
+    // ── Fallback: open detail or play directly ──────────────
+    if (fullItem) {
+      // We have a real item from the API (even without streamOptions) — prefer it
+      if (fullItem.kind === 'MOVIE' || fullItem.kind === 'SERIES') {
+        openDetail(fullItem)
+      } else {
+        openPlayer(fullItem)
+      }
+    } else if (item.kind === 'MOVIE' || item.kind === 'SERIES') {
       const detailItem = cw ? { ...item, stableId: cw.contentId } : item
       openDetail(detailItem)
     } else {
@@ -102,11 +120,13 @@ export function HomeContent() {
       const next = pickFirstUnwatched(episodes, season, episode)
 
       if (next) {
-        const durationMs = (next.runtimeMinutes ?? entry.runtimeMinutes ?? 0) * 60_000
+        const FALLBACK_EPISODE_DURATION_MS = 45 * 60_000
+        const nextDurationMs = ((next as any).runtimeMinutes ?? entry.runtimeMinutes ?? 0) * 60_000
+        const finalDurationMs = nextDurationMs > 0 ? nextDurationMs : (entry.durationMs > 0 ? entry.durationMs : FALLBACK_EPISODE_DURATION_MS)
         await saveWatchProgress(entry.contentId, {
           content_type: 'series',
           position_ms: 1000,
-          duration_ms: durationMs > 0 ? durationMs : entry.durationMs,
+          duration_ms: finalDurationMs,
           series_name: entry.seriesName,
           season_number: next.seasonNumber,
           episode_number: next.episodeNumber,

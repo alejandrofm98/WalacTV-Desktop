@@ -1,0 +1,323 @@
+.controls {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 48px 32px 20px;
+  background: linear-gradient(
+    0deg,
+    oklch(0% 0 0 / 0.8) 0%,
+    oklch(0% 0 0 / 0.4) 55%,
+    transparent 100%
+  );
+}
+
+/* ── Seek row ──────────────────────────────────── */
+.seekRow {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.time {
+  min-width: 52px;
+  font-size: 13px;
+  font-weight: 500;
+  font-variant-numeric: tabular-nums;
+  color: var(--text-primary);
+  text-align: center;
+  text-shadow: 0 1px 6px oklch(0% 0 0 / 0.6);
+}
+
+.progressTrack {
+  position: relative;
+  flex: 1;
+  height: 18px;
+  display: flex;
+  align-items: center;
+  cursor: pointer;
+  touch-action: none;
+}
+
+.progressTrack::before {
+  content: '';
+  position: absolute;
+  left: 0;
+  right: 0;
+  height: 4px;
+  border-radius: var(--radius-full);
+  background: oklch(93% 0.008 252 / 0.25);
+  transition: height 0.15s ease;
+}
+
+.progressTrack:hover::before {
+  height: 6px;
+}
+
+.progressBuffered,
+.progressPlayed {
+  position: absolute;
+  left: 0;
+  right: 0;
+  height: 4px;
+  border-radius: var(--radius-full);
+  transform-origin: left center;
+  transition: height 0.15s ease;
+  pointer-events: none;
+}
+
+.progressBuffered {
+  background: oklch(93% 0.008 252 / 0.35);
+}
+
+.progressPlayed {
+  background: var(--accent);
+}
+
+.progressTrack:hover .progressBuffered,
+.progressTrack:hover .progressPlayed {
+  height: 6px;
+}
+
+.scrubber {
+  position: absolute;
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  background: var(--accent);
+  box-shadow: 0 0 8px oklch(0% 0 0 / 0.5);
+  transform: translateX(-50%) scale(0);
+  transition: transform 0.15s ease;
+  pointer-events: none;
+}
+
+.progressTrack:hover .scrubber,
+.progressTrack:active .scrubber {
+  transform: translateX(-50%) scale(1);
+}
+
+.seekTooltip {
+  position: absolute;
+  bottom: 24px;
+  transform: translateX(-50%);
+  padding: 4px 8px;
+  background: var(--surface-elevated);
+  color: var(--text-primary);
+  font-size: 12px;
+  font-weight: 500;
+  font-variant-numeric: tabular-nums;
+  border-radius: var(--radius-sm);
+  box-shadow: var(--shadow-md);
+  pointer-events: none;
+  white-space: nowrap;
+}
+
+/* ── Live badge ────────────────────────────────── */
+.liveRow {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 0 4px;
+  height: 18px;
+}
+
+.liveDot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--live);
+  animation: livePulse 2s ease-in-out infinite;
+}
+
+.liveLabel {
+  font-size: 12px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.09em;
+  color: var(--live);
+}
+
+@keyframes livePulse {
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.35;
+  }
+}
+
+/* ── Buttons row ───────────────────────────────── */
+.buttonsRow {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.controlBtn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 40px;
+  height: 40px;
+  flex-shrink: 0;
+  background: transparent;
+  border: none;
+  border-radius: var(--radius-full);
+  color: var(--text-primary);
+  cursor: pointer;
+  transition: background 0.15s ease, transform 0.15s ease, color 0.15s ease;
+}
+
+.controlBtn:hover {
+  background: oklch(93% 0.008 252 / 0.12);
+  transform: scale(1.05);
+}
+
+.controlBtn:active {
+  transform: scale(0.97);
+}
+
+.controlBtnActive,
+.controlBtnActive:hover {
+  background: var(--accent-dim);
+  color: var(--accent-hover);
+}
+
+.playBtn {
+  width: 48px;
+  height: 48px;
+}
+
+.spacer {
+  flex: 1;
+}
+
+.rightCluster {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+/* ── Volume ────────────────────────────────────── */
+.volumeGroup {
+  display: flex;
+  align-items: center;
+}
+
+.volumeSlider {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 0;
+  opacity: 0;
+  height: 4px;
+  border-radius: var(--radius-full);
+  background: linear-gradient(
+    90deg,
+    var(--text-primary) var(--volume-pct, 100%),
+    oklch(93% 0.008 252 / 0.3) var(--volume-pct, 100%)
+  );
+  cursor: pointer;
+  transition: width 0.2s ease, opacity 0.2s ease, margin 0.2s ease;
+}
+
+.volumeGroup:hover .volumeSlider,
+.volumeGroup:focus-within .volumeSlider {
+  width: 84px;
+  opacity: 1;
+  margin-right: 8px;
+}
+
+.volumeSlider::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  background: var(--text-primary);
+  border: none;
+}
+
+.volumeSlider::-moz-range-thumb {
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  background: var(--text-primary);
+  border: none;
+}
+
+/* ── Track panels ──────────────────────────────── */
+.panel {
+  position: absolute;
+  bottom: calc(100% + 12px);
+  right: 0;
+  min-width: 220px;
+  max-width: 320px;
+  max-height: 320px;
+  overflow-y: auto;
+  padding: 6px;
+  background: oklch(23% 0.018 252 / 0.92);
+  backdrop-filter: blur(12px);
+  border: 1px solid oklch(93% 0.008 252 / 0.08);
+  border-radius: var(--radius-md);
+  box-shadow: var(--shadow-lg);
+  transform-origin: bottom right;
+  animation: panelIn 0.15s ease-out;
+  z-index: 20;
+}
+
+@keyframes panelIn {
+  from {
+    opacity: 0;
+    transform: scale(0.95) translateY(4px);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1) translateY(0);
+  }
+}
+
+.panelHeader {
+  padding: 8px 12px 4px;
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--text-muted);
+}
+
+.panelItem {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  width: 100%;
+  padding: 9px 12px;
+  background: transparent;
+  border: none;
+  border-radius: var(--radius-sm);
+  color: var(--text-primary);
+  font-size: 14px;
+  font-weight: 500;
+  text-align: left;
+  white-space: nowrap;
+  cursor: pointer;
+  transition: background 0.12s ease;
+}
+
+.panelItem:hover {
+  background: oklch(93% 0.008 252 / 0.08);
+}
+
+.panelItemActive,
+.panelItemActive:hover {
+  color: var(--accent-hover);
+  font-weight: 600;
+}
+
+.panelItemHint {
+  margin-left: 8px;
+  font-size: 12px;
+  font-weight: 400;
+  color: var(--text-muted);
+}

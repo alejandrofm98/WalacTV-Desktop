@@ -33,12 +33,8 @@ interface AppState {
   playerStreamIndex: number
   playerStartPosition: number
   playerOpening: boolean
-  closePlayerReason: 'normal' | 'error' | null
-  playerErrorLog: string | null
   openPlayer: (item: CatalogItem, streamIndex?: number, startPosition?: number) => void
   closePlayer: () => void
-  setClosePlayerReason: (r: 'normal' | 'error' | null) => void
-  setPlayerErrorLog: (log: string | null) => void
 
   detailItem: CatalogItem | null
   openDetail: (item: CatalogItem) => void
@@ -94,16 +90,12 @@ export const useAppStore = create<AppState>((set, get) => ({
   playerStreamIndex: 0,
   playerStartPosition: 0,
   playerOpening: false,
-  closePlayerReason: null,
-  playerErrorLog: null,
   openPlayer: (item, streamIndex = 0, startPosition = 0) => {
     const { playerOpening } = get()
     if (playerOpening) return
-    set({ playerOpening: true, playerItem: item, playerStreamIndex: streamIndex, playerStartPosition: startPosition, closePlayerReason: null, playerErrorLog: null })
+    set({ playerOpening: true, playerItem: item, playerStreamIndex: streamIndex, playerStartPosition: startPosition })
   },
   closePlayer: () => set({ playerItem: null, playerOpening: false }),
-  setClosePlayerReason: (closePlayerReason) => set({ closePlayerReason }),
-  setPlayerErrorLog: (playerErrorLog) => set({ playerErrorLog }),
 
   detailItem: null,
   openDetail: (item) => {

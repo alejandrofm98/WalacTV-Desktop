@@ -1,0 +1,64 @@
+.topBar {
+  display: flex;
+  align-items: flex-start;
+  gap: 16px;
+  padding: 24px 32px 64px;
+  background: linear-gradient(
+    180deg,
+    oklch(0% 0 0 / 0.75) 0%,
+    oklch(0% 0 0 / 0.4) 45%,
+    transparent 100%
+  );
+}
+
+.backBtn {
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 40px;
+  height: 40px;
+  background: transparent;
+  border: none;
+  border-radius: var(--radius-full);
+  color: var(--text-primary);
+  cursor: pointer;
+  transition: background 0.15s ease, transform 0.15s ease;
+}
+
+.backBtn:hover {
+  background: oklch(93% 0.008 252 / 0.12);
+  transform: scale(1.05);
+}
+
+.backBtn:active {
+  transform: scale(0.97);
+}
+
+.titleBlock {
+  flex: 1;
+  min-width: 0;
+  padding-top: 4px;
+}
+
+.title {
+  font-size: 20px;
+  font-weight: 600;
+  letter-spacing: -0.01em;
+  line-height: 1.25;
+  color: var(--text-primary);
+  text-shadow: 0 1px 12px oklch(0% 0 0 / 0.6);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.subtitle {
+  margin-top: 2px;
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--text-secondary);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}

@@ -1,4 +1,4 @@
-import { useEffect } from 'react'
+import { useEffect, useRef } from 'react'
 import { invoke } from '@tauri-apps/api/core'
 import { useAppStore } from './store/useAppStore'
 import { login as apiLogin, setToken, getToken, getHomeCatalog, getWatchProgress, getPreferredLanguage, cwGroupKey } from './api/client'
@@ -12,7 +12,7 @@ import { EventsContent } from './components/EventsContent'
 import { DiscoverContent } from './components/DiscoverContent'
 import { SearchContent } from './components/SearchContent'
 import { SettingsContent } from './components/SettingsContent'
-import { Player } from './components/Player'
+import { Player } from './components/Player/Player'
 import { MovieDetail } from './components/MovieDetail'
 import { SeriesDetail } from './components/SeriesDetail'
 import { EventDetail } from './components/EventDetail'
@@ -58,6 +58,19 @@ export default function App() {
       .finally(() => useAppStore.setState({ updateChecking: false }))
   }, [])
 
+  // Shared CW map builder: sort desc by lastWatchedAt, group by cwGroupKey, keep first per key.
+  function buildCwMap(items: WatchProgressItem[]): Map<string, WatchProgressItem> {
+    const sorted = [...items].sort((a, b) =>
+      (b.lastWatchedAt || '').localeCompare(a.lastWatchedAt || ''),
+    )
+    const map = new Map<string, WatchProgressItem>()
+    for (const item of sorted) {
+      const key = cwGroupKey(item.contentType, item.seriesName, item.contentId)
+      if (!map.has(key)) map.set(key, item)
+    }
+    return map
+  }
+
   async function loadData() {
     useAppStore.setState({ loading: true, error: null })
     try {
@@ -76,20 +89,13 @@ export default function App() {
       }
 
       if (cw?.items) {
-        // Sort DESC by lastWatchedAt (most recent first). Defensive copy;
-        // backend already orders this way but make it explicit.
-        const sorted = [...cw.items].sort((a, b) =>
+        const map = buildCwMap(cw.items)
+        setContinueWatching(map)
+        const cwSorted = [...cw.items].sort((a, b) =>
           (b.lastWatchedAt || '').localeCompare(a.lastWatchedAt || ''),
         )
-        // Group: one entry per series (collapsed by seriesName) or per movie.
-        const map = new Map<string, WatchProgressItem>()
-        for (const item of sorted) {
-          const key = cwGroupKey(item.contentType, item.seriesName, item.contentId)
-          if (!map.has(key)) map.set(key, item)
-        }
-        setContinueWatching(map)
-        if (!hero && sorted.length > 0) {
-          const e = sorted[0]
+        if (!hero && cwSorted.length > 0) {
+          const e = cwSorted[0]
           hero = {
             stableId: cwGroupKey(e.contentType, e.seriesName, e.contentId),
             title: e.title,
@@ -140,17 +146,30 @@ export default function App() {
     }
   }
 
-  // Keyboard: Escape to close overlays
+  // Keyboard: Escape to close overlays. Player has its own Escape handler.
   useEffect(() => {
     function onKey(e: KeyboardEvent) {
       if (e.key === 'Escape') {
-        if (playerItem) { useAppStore.getState().closePlayer(); return }
         if (detailItem) { useAppStore.getState().closeDetail(); return }
       }
     }
     window.addEventListener('keydown', onKey)
     return () => window.removeEventListener('keydown', onKey)
-  }, [playerItem, detailItem])
+  }, [detailItem])
+
+  // Refresh continue watching when the player closes.
+  const prevPlayerItemRef = useRef(playerItem)
+  useEffect(() => {
+    const prev = prevPlayerItemRef.current
+    prevPlayerItemRef.current = playerItem
+    if (prev && !playerItem) {
+      getWatchProgress(20)
+        .then((cw) => {
+          if (cw?.items) setContinueWatching(buildCwMap(cw.items))
+        })
+        .catch(() => {})
+    }
+  }, [playerItem])
 
   if (!signedIn) return <LoginScreen onLogin={handleLogin} />
   if (loading) return <LoadingScreen />

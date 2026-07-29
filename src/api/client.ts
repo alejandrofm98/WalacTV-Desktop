@@ -104,7 +104,7 @@ function resolveUrl(url: string): string {
     .replace(/\{\{PASSWORD\}\}/g, getPassword())
 }
 
-export function getMpvUrl(url: string): string {
+export function getStreamUrl(url: string): string {
   const u = getUsername()
   const p = getPassword()
   let resolved = url.replace(/\{\{USERNAME\}\}/g, encodeURIComponent(u)).replace(/\{\{PASSWORD\}\}/g, encodeURIComponent(p))
@@ -350,11 +350,20 @@ export async function removeFavorite(channelId: string) {
 }
 
 // Content by ID (for continue watching refetch)
-export async function getContentById(contentId: string): Promise<CatalogItem | null> {
+export async function getContentById(contentType: string, contentId: string): Promise<CatalogItem | null> {
   try {
-    const raw = await get<any>(`/api/content/${contentId}`)
-    return raw ? mapItem(raw) : null
-  } catch {
+    const url = `/api/content/${contentType}/${contentId}`
+    console.log(`[getContentById] fetching: ${url}`)
+    const raw = await get<any>(url)
+    if (!raw) {
+      console.warn(`[getContentById] empty response for: ${url}`)
+      return null
+    }
+    const mapped = mapItem(raw)
+    console.log(`[getContentById] mapped item: id=${mapped.stableId} kind=${mapped.kind} streamOptions=${mapped.streamOptions.length}`)
+    return mapped
+  } catch (err) {
+    console.warn(`[getContentById] failed for ${contentType}/${contentId}:`, err)
     return null
   }
 }

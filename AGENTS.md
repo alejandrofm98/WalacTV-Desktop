@@ -9,6 +9,10 @@
 WalacTV Desktop es uno de los clientes del ecosistema WalacTV, un sistema
 IPTV/multimedia con backend centralizado (`iptv-api`).
 
+El player ahora usa **libmpv embebido** via FFI directo en Rust (reemplazando
+el anterior Shaka Player/HLS del frontend). La reproduccion se maneja desde
+el backend nativo, con el frontend como capa de control remota (invoke/listen).
+
 ```
    +-------------+        +-------------+
    |  walactvWeb |        | WalacTV     |
@@ -45,7 +49,7 @@ IPTV/multimedia con backend centralizado (`iptv-api`).
 - **Stack**: Tauri 2 (Rust), React 19, TypeScript 5.8, Vite 6, Zustand 5
 - **Package manager**: pnpm
 - **Backend**: iptv-api en `https://iptv.walerike.com` (configurable via `VITE_API_URL`)
-- **Player**: MPV (proceso externo, invocado desde Rust)
+- **Player**: libmpv embebido (FFI directo en Rust)
 - **Credenciales**: `tauri-plugin-store` (encriptadas en `credentials.dat`, NO en localStorage)
 - **Build**: `pnpm tauri build` genera binarios nativos (.deb, .AppImage, .exe)
 
@@ -74,10 +78,23 @@ src/
   styles/          # CSS global (variables CSS con oklch)
   version.ts       # Constante VERSION
 
+src/
+  player/          # Player service wrapper (invoke + listen de eventos)
+    PlayerService.ts   # Singleton que envuelve libmpv via Tauri commands
+    types.ts           # Tipos de eventos y tracks de libmpv
+    usePlayerStore.ts  # Estado local del player (Zustand)
+
 src-tauri/
-  src/main.rs      # Comandos Rust: open_in_mpv, get_scale_info
+  src/mpv/         # Modulo Rust: libmpv FFI, handle, event loop
+    ffi.rs         # Bindings FFI dinamicos (libloading)
+    handle.rs      # MpvInstance: lifecycle, properties, commands
+    events.rs      # Event loop thread + emision de eventos Tauri
+    platform/      # Platform-specific window handle extraction
+  src/commands/player.rs  # Tauri commands (#[tauri::command])
+  src/main.rs      # Entrypoint
   capabilities/    # Permisos Tauri (core, http, store)
-  tauri.conf.json  # Configuracion de la app Tauri
+  tauri.conf.json  # Configuracion base de la app
+  tauri.windows.conf.json  # Override Windows: bundle libmpv DLLs
 ```
 
 ### 2.2 Flujo de datos
@@ -94,7 +111,7 @@ Usuario -> React Component -> api/client.ts -> fetch(IPV_API_URL/...)
 
 Las credenciales del usuario (username/password) se almacenan en `credentials.dat`
 via `tauri-plugin-store` (encriptado en disco). Module-level cache en `credentials.ts`
-para acceso sincrono desde `resolveUrl()` y `getMpvUrl()`.
+para acceso sincrono desde `resolveUrl()` y `getStreamUrl()`.
 
 **Flujo**:
 1. Login -> `api/login()` -> `saveCredentials()` (async store + memory cache)
@@ -175,7 +192,38 @@ cargo build                        # Build Rust
 pnpm rimraf dist src-tauri/target  # Limpiar builds
 ```
 
-## 7. Seguridad
+## 7. Dependencias del sistema (libmpv)
+
+El player usa libmpv embebido via FFI. La carga es dinamica (libloading).
+
+| OS      | Dependencia                     | Bundling                                        |
+|---------|---------------------------------|--------------------------------------------------|
+| Linux   | `libmpv-dev` (o `libmpv.so.2`)  | No se bundlea. El sistema debe tenerlo instalado |
+| Windows | `libmpv-2.dll`                  | Se descarga y bundlea automaticamente via script |
+| macOS   | `libmpv.dylib` (Homebrew)       | No se bundlea. `brew install mpv`               |
+
+```bash
+# Ubuntu/Debian
+sudo apt install libmpv-dev
+
+# Fedora
+sudo dnf install mpv-libs-devel
+
+# Arch
+sudo pacman -S mpv
+
+# macOS
+brew install mpv
+```
+
+### Bundle de libmpv para Windows
+
+El script `scripts/fetch-libmpv-windows.sh` descarga `libmpv-2.dll` y
+dependencias desde `shinchiro/mpv-winbuild-cmake`. Se ejecuta automaticamente
+en el CI antes de `tauri build` en Windows. Los DLLs se incluyen en
+`src-tauri/resources/libmpv/` y se empaquetan via `tauri.windows.conf.json`.
+
+## 8. Seguridad
 
 - `.gitignore` protege: `.env*`, `.idea/`, `.opencode/`, `*.pem`, `*.key`,
   `*.cert`, `credentials.dat`.
@@ -185,7 +233,7 @@ pnpm rimraf dist src-tauri/target  # Limpiar builds
 - El proxy de Vite reescribe URLs en dev para evitar CORS, pero en produccion
   las peticiones van directas a `VITE_API_URL`.
 
-## 8. Checklist antes de cerrar una tarea
+## 9. Checklist antes de cerrar una tarea
 
 1. `pnpm tsc --noEmit` sin errores.
 2. `pnpm vite build` exitoso.
@@ -195,7 +243,7 @@ pnpm rimraf dist src-tauri/target  # Limpiar builds
 6. Si tocaste endpoints de la API, verificar compatibilidad con `iptv-api/AGENTS.md` 4.1-4.2.
 7. Si agregaste componentes, verificar que tienen `.module.css` asociado.
 
-## 9. Release y actualizaciones
+## 10. Release y actualizaciones
 
 ### Flujo de release
 1. Actualizar version en `src/version.ts`, `package.json`, y `src-tauri/tauri.conf.json`.
@@ -213,31 +261,4 @@ pnpm rimraf dist src-tauri/target  # Limpiar builds
 - Para regenerar: `pnpm tauri signer generate --ci --write-keys ~/.tauri/walactv-desktop.key`.
 - La private key se pasa al CI via secret `TAURI_SIGNING_PRIVATE_KEY`.
 
-### mpv bundled (Windows)
 
-En Windows, mpv se empaqueta dentro del installer NSIS via `bundled.resources`
-para evitar el error "program not found" si el usuario no tiene mpv en el PATH.
-
-**Fuente**: shinchiro/mpv-winbuild-cmake - builds x86_64 genericas (no v3).
-**Tag actual**: `20260610` (ver `scripts/fetch-mpv-windows.sh`).
-
-**Como actualizar**:
-1. Ir a https://github.com/shinchiro/mpv-winbuild-cmake/releases
-2. Elegir el ultimo tag (formato `YYYYMMDD`)
-3. Actualizar `TAG` y `ASSET` en `scripts/fetch-mpv-windows.sh`
-4. Ejecutar `scripts/fetch-mpv-windows.sh` localmente
-5. Verificar que `src-tauri/resources/mpv/mpv.exe` y DLLs se actualizaron
-6. Hacer build de prueba en Windows
-
-**Flujo en build**:
-- Local: `scripts/fetch-mpv-windows.sh` (requiere `curl` y `7z`)
-- CI: se ejecuta automaticamente en el job de Windows de `release.yml`
-- Linux/Mac: no se ejecuta el script; `open_in_mpv` usa `mpv` del PATH
-
-**En runtime** (`main.rs`):
-1. Busca `resource_dir/resources/mpv/mpv.exe` (bundled)
-2. Si no existe, fallback a `mpv` en PATH del sistema
-
-**Licencia**: mpv se distribuye bajo GPLv2+. El binario se descarga de shinchiro
-y se redistribuye como parte del installer. El archivo `LICENSE.mpv.txt` se
-incluye en `src-tauri/resources/mpv/`.

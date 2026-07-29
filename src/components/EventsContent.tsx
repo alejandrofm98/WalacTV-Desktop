@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react'
 import type { CalendarEvent, CatalogItem } from '../api/types'
-import { getCalendarEvents, getMpvUrl, normalizeRemoteImageUrl, IPTV_BASE } from '../api/client'
+import { getCalendarEvents, getStreamUrl, normalizeRemoteImageUrl, IPTV_BASE } from '../api/client'
 import { useAppStore } from '../store/useAppStore'
 import { MediaCard } from './MediaCard'
 import { SearchInput } from './SearchInput'
@@ -19,7 +19,7 @@ function mapEventToItem(ev: CalendarEvent): CatalogItem {
     .map((c) => {
       const rawUrl = c.stream_url ||
         `${IPTV_BASE}/live/{{USERNAME}}/{{PASSWORD}}/${c.provider_id || c.channel_id}`
-      return { label: c.source_name || c.display_name || 'Ver', url: getMpvUrl(rawUrl), rawUrl, providerId: c.provider_id, quality: c.quality }
+      return { label: c.source_name || c.display_name || 'Ver', url: getStreamUrl(rawUrl), rawUrl, providerId: c.provider_id, quality: c.quality }
     })
 
   return {

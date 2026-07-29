@@ -14,6 +14,7 @@
     "http:allow-fetch-send",
     "store:default",
     "updater:default",
-    "process:default"
+    "process:default",
+    "global-shortcut:default"
   ]
 }
