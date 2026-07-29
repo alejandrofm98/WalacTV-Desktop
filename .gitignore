@@ -32,3 +32,6 @@ credentials.dat
 # Temp files
 playlist.m3u
 tmp-cw-mockups.html
+
+# Extracted AppImage artifacts (large, not part of the project)
+squashfs-root/
