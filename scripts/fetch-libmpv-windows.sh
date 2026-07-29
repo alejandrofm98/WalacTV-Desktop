@@ -8,7 +8,7 @@ set -e
 LIBMPV_VERSION="20260610"
 LIBMPV_URL="https://github.com/shinchiro/mpv-winbuild-cmake/releases/download/${LIBMPV_VERSION}/mpv-x86_64-${LIBMPV_VERSION}-git-304426c.7z"
 
-DEST_DIR="$(dirname "$0")/../src-tauri/resources/libmpv"
+DEST_DIR="$(cd "$(dirname "$0")/../src-tauri/resources" && pwd)/libmpv"
 mkdir -p "$DEST_DIR"
 
 cd /tmp
