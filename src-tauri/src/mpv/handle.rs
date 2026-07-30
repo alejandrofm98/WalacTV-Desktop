@@ -476,6 +476,7 @@ impl MpvInstance {
     pub fn loadfile(&self, url: &str, start_position: Option<f64>) -> Result<(), String> {
         let url = CString::new(url).map_err(|_| "URL contains null byte".to_string())?;
         let loadmode = CString::new("replace").unwrap();
+        let playlist_index = CString::new("-1").unwrap();
 
         // Keep pos_cstr alive in the outer scope so its pointer remains valid
         // through the mpv_command call below.
@@ -492,6 +493,9 @@ impl MpvInstance {
             loadmode.as_ptr(),
         ];
         if let Some(ref cstr) = pos_cstr {
+            // mpv 0.38 added the playlist index before per-file options.
+            // -1 preserves compatibility with older versions.
+            args.push(playlist_index.as_ptr());
             args.push(cstr.as_ptr());
         }
         args.push(std::ptr::null());
