@@ -35,3 +35,7 @@ tmp-cw-mockups.html
 
 # Extracted AppImage artifacts (large, not part of the project)
 squashfs-root/
+
+# libmpv bundled DLLs (downloaded by CI on Windows only)
+src-tauri/resources/libmpv/*
+!src-tauri/resources/libmpv/LICENSE.libmpv.txt
