@@ -14,6 +14,8 @@ use serde_json::json;
 use std::ffi::{c_char, c_int, CStr, CString};
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
+#[cfg(target_os = "windows")]
+use std::time::{Duration, Instant};
 use tauri::{AppHandle, Emitter};
 
 // ---------------------------------------------------------------------------
@@ -157,6 +159,9 @@ pub fn mpv_event_loop(
     let mut last_is_buffering: bool = false;
     let mut last_demuxer_cache_time: f64 = 0.0;
     let mut end_file_emitted: bool = false;
+
+    #[cfg(target_os = "windows")]
+    let mut last_raise = Instant::now();
 
     loop {
         if stop_flag.load(Ordering::Relaxed) {
@@ -442,6 +447,21 @@ pub fn mpv_event_loop(
 
             _ => {
                 // Ignore unhandled events
+            }
+        }
+
+        // On Windows, periodically re-raise the mpv child HWND above WebView2.
+        // WebView2 tends to re-order its HWND on top after FILE_LOADED, so a
+        // single raise at FILE_LOADED is not sufficient.
+        #[cfg(target_os = "windows")]
+        if let Some(ref state) = windows_raising {
+            let now = Instant::now();
+            if now.duration_since(last_raise) >= Duration::from_millis(500) {
+                let _ = crate::mpv::platform::windows::raise_mpv_child(
+                    state.top_hwnd,
+                    &state.pre_children,
+                );
+                last_raise = now;
             }
         }
     }
