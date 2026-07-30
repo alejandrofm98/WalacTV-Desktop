@@ -4,6 +4,8 @@
 local src = debug.getinfo(1, 'S').source or ''
 local dir = src:gsub('^@', '')
 dir = dir:gsub('\\', '/')
+-- Strip the Windows long-path prefix (//?/) so Lua does not treat its ? as a module placeholder
+dir = dir:gsub('^//%?/', '')
 dir = dir:match('(.*/)') or './'
 package.path = dir .. '?.lua;'
     .. dir .. '?/init.lua;'

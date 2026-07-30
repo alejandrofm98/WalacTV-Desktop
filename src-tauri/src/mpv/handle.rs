@@ -191,13 +191,6 @@ impl MpvInstance {
             return Err("mpv_create returned null".to_string());
         }
 
-        // ── Diagnostic: request TRACE-level log messages before any set_option ──
-        // "trace" catches absolutely everything including lua script load messages.
-        if let Ok(level_c) = CString::new("trace") {
-            unsafe { (api.mpv_request_log_messages)(handle, level_c.as_ptr()) };
-            eprintln!("[mpv-diagnostic] mpv_request_log_messages('trace') called on main handle");
-        }
-
         let uosc_available = uosc_main_path.is_some();
 
         // Set options before initialize

@@ -122,12 +122,12 @@ pub fn mpv_event_loop(
         return;
     }
 
-    // mpv_request_log_messages is per-handle; child clients don't inherit the parent's.
-    // Request trace logs on THIS event client so we receive MPV_EVENT_LOG_MESSAGE.
-    if let Ok(level_c) = std::ffi::CString::new("trace") {
+    // mpv_request_log_messages is per-handle; keep important diagnostics while
+    // avoiding verbose messages that may contain sensitive stream URLs.
+    if let Ok(level_c) = std::ffi::CString::new("warn") {
         unsafe { (api.mpv_request_log_messages)(event_client, level_c.as_ptr()) };
     }
-    eprintln!("[mpv-event] request_log_messages(trace) called on event client");
+    eprintln!("[mpv-event] request_log_messages(warn) called on event client");
 
     // Observe properties
     observe(&api, event_client, TIME_POS_ID, "time-pos", mpv_format::MPV_FORMAT_DOUBLE);
@@ -414,8 +414,6 @@ pub fn mpv_event_loop(
             }
 
             mpv_event_id::MPV_EVENT_LOG_MESSAGE => {
-                // RAW diagnostic — confirm this event branch is reached
-                eprintln!("[mpv-event] LOG_MESSAGE event received, reply_usrdata={}", ev.reply_usrdata);
                 if !ev.data.is_null() {
                     let log_msg = unsafe { &*(ev.data as *const mpv_event_log_message) };
                     let prefix_s = if log_msg.prefix.is_null() {
