@@ -401,12 +401,16 @@ impl MpvApi {
             #[cfg(target_os = "windows")]
             {
                 // Search order:
-                //  1. <resource_dir>/libmpv/libmpv-2.dll  (bundled by Tauri)
-                //  2. <resource_dir>/libmpv/libmpv.dll
-                //  3. libmpv-2.dll in EXE dir (manual install)
-                //  4. libmpv.dll in EXE dir (manual install)
+                //  1. <resource_dir>/libmpv-2.dll  (bundled via beforeBuildCommand copy)
+                //  2. <resource_dir>/libmpv.dll
+                //  3. <resource_dir>/libmpv/libmpv-2.dll  (legacy bundle layout)
+                //  4. <resource_dir>/libmpv/libmpv.dll
+                //  5. libmpv-2.dll in EXE dir (manual install)
+                //  6. libmpv.dll in EXE dir (manual install)
                 let mut candidates: Vec<PathBuf> = Vec::new();
                 if let Some(rd) = resource_dir {
+                    candidates.push(rd.join("libmpv-2.dll"));
+                    candidates.push(rd.join("libmpv.dll"));
                     candidates.push(rd.join("libmpv").join("libmpv-2.dll"));
                     candidates.push(rd.join("libmpv").join("libmpv.dll"));
                 }

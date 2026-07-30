@@ -7,7 +7,7 @@
     "frontendDist": "../dist",
     "devUrl": "http://localhost:1420",
     "beforeDevCommand": "pnpm dev",
-    "beforeBuildCommand": "pnpm build"
+    "beforeBuildCommand": "pnpm build && node scripts/copy-libmpv.js"
   },
   "app": {
     "windows": [
@@ -36,8 +36,7 @@
       "icons/icon.ico"
     ],
     "resources": {
-      "resources/uosc/**/*": "uosc/**/*",
-      "resources/libmpv/*.dll": "libmpv/*.dll"
+      "resources/uosc/**/*": "uosc/**/*"
     },
     "createUpdaterArtifacts": true
   },

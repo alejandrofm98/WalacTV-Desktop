@@ -218,12 +218,18 @@ brew install mpv
 ### Bundle de libmpv para Windows
 
 El script `scripts/fetch-libmpv-windows.sh` descarga `libmpv-2.dll` y
-dependencias desde `shinchiro/mpv-winbuild-cmake`. Se ejecuta automaticamente
-en el CI antes de `tauri build` en Windows. Los DLLs van a
-`src-tauri/resources/libmpv/` y se empaquetan via
-`tauri.conf.json` → `bundle.resources` (`resources/libmpv/**/*` → `libmpv/**/*`).
+dependencias desde `shinchiro/mpv-winbuild-cmake` usando `7z e` (extract
+sin paths) para aplanar todos los DLLs en `src-tauri/resources/libmpv/`.
+Se ejecuta automaticamente en el CI antes de `tauri build` en Windows.
+
+Los DLLs se copian a `dist/` via `scripts/copy-libmpv.js` (ejecutado como
+`beforeBuildCommand` en `tauri.conf.json`), lo que evita un bug en
+`tauri-codegen` 2.6.3 que falla con `os error 123` al procesar globs
+`**/*` que incluyen archivos `.gitignore` o `LICENSE` en Windows.
+
 En runtime, `MpvApi::load()` recibe `app.path().resource_dir()` y prueba
-`<resource_dir>/libmpv/libmpv-2.dll` antes de caer al directorio del EXE.
+`<resource_dir>/libmpv-2.dll` (root del resource dir) antes de caer al
+directorio del EXE.
 
 ## 8. Seguridad
 
