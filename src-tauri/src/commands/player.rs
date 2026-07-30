@@ -164,6 +164,10 @@ pub fn mpv_init(
     state: State<'_, PlayerState>,
     window: tauri::Window,
 ) -> Result<serde_json::Value, String> {
+    // Resolve the platform resource directory. On Windows, the bundled
+    // libmpv-2.dll lives under <resource_dir>/libmpv/.
+    let resource_dir = app.path().resource_dir().ok();
+
     // Load libmpv (cached after first load)
     // If it fails with LibraryNotFound, try auto-install and retry once.
     let api = {
@@ -171,7 +175,7 @@ pub fn mpv_init(
         if let Some(api) = api_guard.as_ref() {
             Arc::clone(api)
         } else {
-            match MpvApi::load() {
+            match MpvApi::load(resource_dir.as_deref()) {
                 Ok(api) => {
                     *api_guard = Some(Arc::clone(&api));
                     api
@@ -183,7 +187,7 @@ pub fn mpv_init(
                     match ensure_libmpv_installed() {
                         Ok(path) => {
                             log::info!("libmpv instalada en {path}, reintentando carga...");
-                            match MpvApi::load() {
+                            match MpvApi::load(resource_dir.as_deref()) {
                                 Ok(api) => {
                                     *api_guard = Some(Arc::clone(&api));
                                     let _ = app.emit("mpv://dependency-ready", ());
@@ -620,8 +624,10 @@ pub fn mpv_check_health(
         .ok()
         .flatten()
     } else {
-        // Try loading just to check version
-        match MpvApi::load() {
+        // Try loading just to check version. No resource_dir here:
+        // health checks normally run after mpv_init, which has already
+        // resolved the bundled DLLs. This fallback is a no-op in that case.
+        match MpvApi::load(None) {
             Ok(api) => {
                 let c_name = match std::ffi::CString::new("mpv-version") {
                     Ok(n) => n,

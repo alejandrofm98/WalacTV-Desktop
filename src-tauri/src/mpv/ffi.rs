@@ -8,7 +8,7 @@
 use libloading::Library;
 use std::ffi::{c_char, c_int, c_void, CStr};
 use std::fmt;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
 // ---------------------------------------------------------------------------
@@ -345,9 +345,14 @@ unsafe impl Sync for MpvApi {}
 impl MpvApi {
     /// Load libmpv dynamically and resolve all function pointers.
     ///
+    /// `resource_dir` is the platform resource directory (from
+    /// `app.path().resource_dir()` on Tauri). It is used on Windows to locate
+    /// the bundled `libmpv-2.dll` inside the installer's `libmpv/` subdir.
+    /// On Linux/macOS it is unused (system paths / Homebrew are searched).
+    ///
     /// Returns `MpvError::LibraryNotFound` with platform-specific install
     /// instructions when the shared library cannot be loaded.
-    pub fn load() -> Result<Arc<Self>, MpvError> {
+    pub fn load(resource_dir: Option<&Path>) -> Result<Arc<Self>, MpvError> {
         let lib = unsafe {
             #[cfg(target_os = "linux")]
             {
@@ -395,14 +400,52 @@ impl MpvApi {
             }
             #[cfg(target_os = "windows")]
             {
-                Library::new("libmpv-2.dll")
-                    .or_else(|_| Library::new("libmpv.dll"))
-                    .map_err(|e| MpvError::LibraryNotFound(format!(
+                // Search order:
+                //  1. <resource_dir>/libmpv/libmpv-2.dll  (bundled by Tauri)
+                //  2. <resource_dir>/libmpv/libmpv.dll
+                //  3. libmpv-2.dll in EXE dir (manual install)
+                //  4. libmpv.dll in EXE dir (manual install)
+                let mut candidates: Vec<PathBuf> = Vec::new();
+                if let Some(rd) = resource_dir {
+                    candidates.push(rd.join("libmpv").join("libmpv-2.dll"));
+                    candidates.push(rd.join("libmpv").join("libmpv.dll"));
+                }
+                candidates.push(PathBuf::from("libmpv-2.dll"));
+                candidates.push(PathBuf::from("libmpv.dll"));
+
+                let mut last_err: Option<libloading::Error> = None;
+                let mut loaded: Option<Library> = None;
+                for path in &candidates {
+                    match Library::new(path) {
+                        Ok(lib) => {
+                            log::info!("libmpv cargado desde {}", path.display());
+                            loaded = Some(lib);
+                            break;
+                        }
+                        Err(e) => {
+                            log::debug!("libmpv no encontrado en {}: {e}", path.display());
+                            last_err = Some(e);
+                        }
+                    }
+                }
+                loaded.ok_or_else(|| {
+                    let e = last_err
+                        .as_ref()
+                        .map(|e| e.to_string())
+                        .unwrap_or_else(|| "no candidates".to_string());
+                    MpvError::LibraryNotFound(format!(
                         "No se pudo cargar libmpv-2.dll: {e}. \
-                         Asegurate de que libmpv-2.dll está en el directorio \
-                         de la aplicación o instalalo desde:\n  \
-                         https://mpv.srsfckn.biz/"
-                    )))?
+                         Buscado en:\n  - {}\
+                         \nAsegurate de que libmpv-2.dll está bundleado \
+                         en el installer o instalalo desde:\n  \
+                         https://mpv.srsfckn.biz/",
+                        candidates
+                            .iter()
+                            .map(|p| p.display().to_string())
+                            .collect::<Vec<_>>()
+                            .join("\n  - ")
+                    ))
+                })?
             }
             #[cfg(target_os = "macos")]
             {

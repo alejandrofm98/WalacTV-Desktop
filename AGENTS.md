@@ -93,8 +93,7 @@ src-tauri/
   src/commands/player.rs  # Tauri commands (#[tauri::command])
   src/main.rs      # Entrypoint
   capabilities/    # Permisos Tauri (core, http, store)
-  tauri.conf.json  # Configuracion base de la app
-  tauri.windows.conf.json  # Override Windows: bundle libmpv DLLs
+  tauri.conf.json  # Configuracion base de la app (incluye bundle de libmpv)
 ```
 
 ### 2.2 Flujo de datos
@@ -220,8 +219,11 @@ brew install mpv
 
 El script `scripts/fetch-libmpv-windows.sh` descarga `libmpv-2.dll` y
 dependencias desde `shinchiro/mpv-winbuild-cmake`. Se ejecuta automaticamente
-en el CI antes de `tauri build` en Windows. Los DLLs se incluyen en
-`src-tauri/resources/libmpv/` y se empaquetan via `tauri.windows.conf.json`.
+en el CI antes de `tauri build` en Windows. Los DLLs van a
+`src-tauri/resources/libmpv/` y se empaquetan via
+`tauri.conf.json` → `bundle.resources` (`resources/libmpv/**/*` → `libmpv/**/*`).
+En runtime, `MpvApi::load()` recibe `app.path().resource_dir()` y prueba
+`<resource_dir>/libmpv/libmpv-2.dll` antes de caer al directorio del EXE.
 
 ## 8. Seguridad
 
