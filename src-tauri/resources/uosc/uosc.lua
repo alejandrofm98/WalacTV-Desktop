@@ -26,3 +26,5 @@ mp.get_script_directory = function(...)
 end
 mp.msg.info('uosc-loader: dir=' .. dir .. ' package.path extended (UOSC_DIR=' .. (_G.UOSC_DIR or 'nil') .. '), loading main.lua')
 dofile(dir .. 'main.lua')
+-- Keep mpv's built-in OSC as a fallback unless uosc loaded successfully.
+mp.set_property('osc', 'no')

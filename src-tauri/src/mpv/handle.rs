@@ -87,7 +87,6 @@ fn initial_options(_linux_use_custom: bool, uosc_available: bool) -> Vec<(&'stat
         ("load-scripts", "yes"),
         ("keep-open", "yes"),
         ("vo", "gpu"),
-        ("ao", "auto"),
     ];
 
     #[cfg(target_os = "linux")]
@@ -96,9 +95,12 @@ fn initial_options(_linux_use_custom: bool, uosc_available: bool) -> Vec<(&'stat
     opts.push(("gpu-context", "auto"));
 
     if uosc_available {
-        opts.push(("osc", "no"));
+        // Keep the built-in OSC active until the uosc loader completes.
+        // The loader disables it after main.lua succeeds.
+        opts.push(("osc", "yes"));
         opts.push(("input-default-bindings", "no"));
         opts.push(("input-vo-keyboard", "yes"));
+        opts.push(("input-cursor", "yes"));
         opts.push(("cursor-autohide", "3000"));
         return opts;
     }
@@ -230,15 +232,7 @@ impl MpvInstance {
         if let (Some(ref loader_path), Some(ref fonts_dir)) = (uosc_main_path.as_ref(), uosc_fonts_dir.as_ref()) {
             eprintln!("[mpv-uosc] Applying uosc options: loader={loader_path}, fonts={fonts_dir}");
 
-            // 1. Disable default OSC (uosc replaces it)
-            if let Ok(c_name) = CString::new("osc") {
-                if let Ok(c_value) = CString::new("no") {
-                    let ret_val = unsafe { (api.mpv_set_option_string)(handle, c_name.as_ptr(), c_value.as_ptr()) };
-                    eprintln!("[mpv-uosc] set_option osc=no returned {ret_val}");
-                }
-            }
-
-            // 2. Load uosc via uosc.lua wrapper which sets package.path
+            // Load uosc via uosc.lua wrapper which sets package.path
             //    then dofiles main.lua. This avoids the `module 'lib/std' not found`
             //    error caused by mpv's --scripts not adding the script dir to Lua's
             //    package.path.
@@ -266,7 +260,7 @@ impl MpvInstance {
                 }
             }
 
-            // 3. Set subtitle fonts directory for libass (uosc icon/texture fonts)
+            // Set subtitle fonts directory for libass (uosc icon/texture fonts)
             if let Ok(c_name) = CString::new("sub-fonts-dir") {
                 if let Ok(c_value) = CString::new(fonts_dir.as_str()) {
                     let ret_val = unsafe { (api.mpv_set_option_string)(handle, c_name.as_ptr(), c_value.as_ptr()) };
@@ -274,7 +268,7 @@ impl MpvInstance {
                 }
             }
 
-            // 3b. Set OSD fonts directory for libass (uosc icon font via osd-overlay renderer)
+            // Set OSD fonts directory for libass (uosc icon font via osd-overlay renderer)
             if let Ok(c_name) = CString::new("osd-fonts-dir") {
                 if let Ok(c_value) = CString::new(fonts_dir.as_str()) {
                     let ret_val = unsafe { (api.mpv_set_option_string)(handle, c_name.as_ptr(), c_value.as_ptr()) };
@@ -282,7 +276,7 @@ impl MpvInstance {
                 }
             }
 
-            // 4. Set uosc configuration via script-opts
+            // Set uosc configuration via script-opts
             // NOTE: script-opts values are comma-separated. Values that contain
             // commas (like color=foreground=ffffff,background=000000) would be
             // split incorrectly. Only set simple key=value options here.
