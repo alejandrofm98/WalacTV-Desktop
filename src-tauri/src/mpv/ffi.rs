@@ -353,6 +353,9 @@ impl MpvApi {
     /// Returns `MpvError::LibraryNotFound` with platform-specific install
     /// instructions when the shared library cannot be loaded.
     pub fn load(resource_dir: Option<&Path>) -> Result<Arc<Self>, MpvError> {
+        #[cfg(not(target_os = "windows"))]
+        let _ = resource_dir;
+
         let lib = unsafe {
             #[cfg(target_os = "linux")]
             {
@@ -401,7 +404,7 @@ impl MpvApi {
             #[cfg(target_os = "windows")]
             {
                 // Search order:
-                //  1. <resource_dir>/libmpv-2.dll  (bundled via beforeBuildCommand copy)
+                //  1. <resource_dir>/libmpv-2.dll  (bundled via beforeBundleCommand copy)
                 //  2. <resource_dir>/libmpv.dll
                 //  3. <resource_dir>/libmpv/libmpv-2.dll  (legacy bundle layout)
                 //  4. <resource_dir>/libmpv/libmpv.dll

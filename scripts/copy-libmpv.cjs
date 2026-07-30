@@ -9,8 +9,8 @@
  * which fails with os error 123 (ERROR_INVALID_NAME) for certain
  * file patterns.
  *
- * Runs as part of tauri.conf.json -> build.beforeBuildCommand,
- * AFTER `pnpm build` creates the dist/ directory.
+ * Runs as part of tauri.conf.json -> build.beforeBundleCommand,
+ * after the Rust build and after `pnpm build` creates the dist/ directory.
  * No-op when no .dll files are found (e.g. on Linux/macOS).
  */
 const fs = require('fs');
