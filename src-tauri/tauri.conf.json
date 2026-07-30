@@ -37,7 +37,7 @@
     ],
     "resources": {
       "resources/uosc/**/*": "uosc/**/*",
-      "resources/libmpv/**/*": "libmpv/**/*"
+      "resources/libmpv/*.dll": "libmpv/*.dll"
     },
     "createUpdaterArtifacts": true
   },
