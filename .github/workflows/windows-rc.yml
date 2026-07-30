@@ -1,0 +1,55 @@
+name: Windows RC Build
+on:
+  workflow_dispatch:
+
+jobs:
+  windows:
+    runs-on: windows-latest
+    permissions:
+      contents: read
+    env:
+      TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+      TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: latest
+
+      - name: Install frontend deps
+        run: pnpm install --frozen-lockfile
+
+      - name: Download libmpv for bundling
+        shell: bash
+        run: bash scripts/fetch-libmpv-windows.sh
+
+      - name: Build Tauri app
+        run: pnpm tauri build --bundles nsis --ci
+        env:
+          VITE_API_URL: ${{ vars.VITE_API_URL || 'https://iptv.walerike.com' }}
+
+      - name: Verify libmpv in installer
+        shell: pwsh
+        run: |
+          $installer = Get-ChildItem src-tauri/target/release/bundle/nsis/*-setup.exe | Select-Object -First 1
+          if (-not $installer) { throw "NSIS installer not found" }
+          $contents = & 7z l $installer.FullName
+          if (-not ($contents -match 'libmpv[/\\]libmpv-2\.dll')) {
+            throw "libmpv/libmpv-2.dll is missing from the NSIS installer"
+          }
+
+      - name: Upload NSIS installer
+        uses: actions/upload-artifact@v4
+        with:
+          name: walactv-windows-rc
+          path: src-tauri/target/release/bundle/nsis/*-setup.exe
+          if-no-files-found: error
+          compression-level: 0
+          retention-days: 7

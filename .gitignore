@@ -17,6 +17,7 @@ src-tauri/target/
 
 # AI tools
 .opencode/
+.slim/deepwork/
 
 # Certificates and keys
 *.pem

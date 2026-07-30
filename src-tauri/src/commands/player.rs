@@ -7,8 +7,6 @@
 
 use crate::mpv::ffi::{mpv_format, ensure_libmpv_installed, MpvApi, MpvError};
 use crate::mpv::handle::{MpvInstance, LinuxLoweringState};
-#[cfg(target_os = "windows")]
-use crate::mpv::handle::WindowsRaisingState;
 use crate::mpv::platform;
 use parking_lot::Mutex;
 use serde::Serialize;
@@ -75,7 +73,7 @@ pub struct MpvVersionInfo {
 }
 
 // ---------------------------------------------------------------------------
-// UOSC path resolution (Linux and Windows)
+// UOSC path resolution (Linux only)
 // ---------------------------------------------------------------------------
 
 /// Resolve uosc loader script and fonts paths using Tauri's resource resolution.
@@ -87,7 +85,7 @@ pub struct MpvVersionInfo {
 /// 4. `std::env::current_dir()` → `resources/uosc/uosc.lua`
 ///
 /// Returns `(loader_path, fonts_dir_path)` — both `None` if unresolvable.
-#[cfg(any(target_os = "linux", target_os = "windows"))]
+#[cfg(target_os = "linux")]
 fn resolve_uosc_paths(app: &AppHandle) -> (Option<String>, Option<String>) {
     let mut candidates: Vec<std::path::PathBuf> = Vec::new();
 
@@ -243,14 +241,14 @@ pub fn mpv_init(
     #[cfg(not(target_os = "linux"))]
     let use_custom = false;
 
-    // ── Resolve uosc paths for modern UI (Linux/Windows) ─────────────
-    #[cfg(any(target_os = "linux", target_os = "windows"))]
+    // ── Resolve uosc paths for modern UI (Linux only) ────────────────
+    #[cfg(target_os = "linux")]
     let (uosc_main_path, uosc_fonts_dir) = resolve_uosc_paths(&app);
-    #[cfg(target_os = "macos")]
+    #[cfg(not(target_os = "linux"))]
     let (uosc_main_path, uosc_fonts_dir) = (None, None);
-    #[cfg(any(target_os = "linux", target_os = "windows"))]
+    #[cfg(target_os = "linux")]
     let uosc_available = uosc_main_path.is_some(); // snapshot before move into new()
-    #[cfg(target_os = "macos")]
+    #[cfg(not(target_os = "linux"))]
     let uosc_available = false;
 
     // ── Linux: snapshot pre-children before mpv creates its child ─────
@@ -273,23 +271,6 @@ pub fn mpv_init(
     #[cfg(not(target_os = "linux"))]
     let linux_init_state: Option<(u64, Vec<u64>)> = None;
 
-    // ── Windows: snapshot child HWNDs before mpv creates its child ─────
-    #[cfg(target_os = "windows")]
-    let windows_init_state: Option<(i64, Vec<isize>)> = if uosc_available {
-        match platform::windows::snapshot_child_hwnds(wid) {
-            Ok(children) => {
-                eprintln!("[mpv-init] {} child hwnds snapshotted for 0x{:x}", children.len(), wid);
-                log::info!("mpv_init: {} child HWNDs captured before mpv creation", children.len());
-                Some((wid, children))
-            }
-            Err(e) => {
-                log::warn!("mpv_init: Could not snapshot child HWNDs: {e}");
-                None
-            }
-        }
-    } else {
-        None
-    };
     // Create the player instance — sets INITIAL_OPTIONS, wid, hwdec, uosc
     let mut instance = MpvInstance::new(api, wid, app.clone(), use_custom, uosc_main_path, uosc_fonts_dir)?;
 
@@ -302,17 +283,6 @@ pub fn mpv_init(
             child_lowered: AtomicBool::new(false),
         }));
         log::info!("mpv_init: Estado de bajada X11 configurado (top_xid=0x{:x})", top_xid);
-    }
-
-    // ── Windows: store HWND raising state for uosc z-order ─────────────
-    #[cfg(target_os = "windows")]
-    if let Some((top_hwnd, pre_children)) = windows_init_state {
-        instance.windows_raising = Some(Arc::new(WindowsRaisingState {
-            top_hwnd,
-            pre_children,
-            child_raised: AtomicBool::new(false),
-        }));
-        log::info!("mpv_init: Windows HWND raising state set (top_hwnd=0x{:x})", top_hwnd);
     }
 
     // VO/gpu-context/ao are configured pre-init in MpvInstance::new().
@@ -333,12 +303,12 @@ pub fn mpv_init(
         use_custom,
     );
 
-    // nativeControls=true when uosc is available (Linux/Windows).
-    // When true, the mpv child window renders its own controls via OSD/libass
-    // and the HTML overlay is hidden. When false, the React PlayerOverlay handles UI.
-    #[cfg(any(target_os = "linux", target_os = "windows"))]
+    // nativeControls=true when uosc is available (Linux only).
+    // When true, uosc renders controls via OSD/libass and the HTML overlay
+    // is hidden. When false, the React PlayerOverlay handles UI.
+    #[cfg(target_os = "linux")]
     let native_controls = uosc_available;
-    #[cfg(target_os = "macos")]
+    #[cfg(not(target_os = "linux"))]
     let native_controls = false;
 
     Ok(serde_json::json!({

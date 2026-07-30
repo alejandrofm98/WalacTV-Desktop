@@ -8,14 +8,12 @@ use crate::mpv::ffi::{
     mpv_event_property, mpv_format,
     mpv_handle, mpv_node, MpvApi,
 };
-use crate::mpv::handle::{LinuxLoweringState, WindowsRaisingState};
+use crate::mpv::handle::LinuxLoweringState;
 use serde::Serialize;
 use serde_json::json;
 use std::ffi::{c_char, c_int, CStr, CString};
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
-#[cfg(target_os = "windows")]
-use std::time::{Duration, Instant};
 use tauri::{AppHandle, Emitter};
 
 // ---------------------------------------------------------------------------
@@ -105,7 +103,6 @@ pub struct MpvRestartPayload;
 /// On Linux with custom controls, `linux_lowering` carries the X11 state
 /// needed to lower the mpv child window below the webview on `file-loaded`
 /// so custom HTML controls render on top of the video.
-/// On Windows with uosc, `windows_raising` raises mpv above WebView2.
 pub fn mpv_event_loop(
     app_handle: AppHandle,
     api: Arc<MpvApi>,
@@ -113,7 +110,6 @@ pub fn mpv_event_loop(
     stop_flag: Arc<AtomicBool>,
     is_playing: Arc<AtomicBool>,
     linux_lowering: Option<Arc<LinuxLoweringState>>,
-    windows_raising: Option<Arc<WindowsRaisingState>>,
 ) {
     // Create a client handle for event processing (reduces interference
     // with the main mpv_handle operations).
@@ -145,10 +141,6 @@ pub fn mpv_event_loop(
     observe(&api, event_client, WIDTH_ID, "width", mpv_format::MPV_FORMAT_INT64);
     observe(&api, event_client, HEIGHT_ID, "height", mpv_format::MPV_FORMAT_INT64);
 
-    // Suppress unused warning on non-Windows targets
-    #[cfg(not(target_os = "windows"))]
-    let _ = &windows_raising;
-
     log::info!("mpv_event_loop: started, observing properties");
 
     // State tracking
@@ -159,9 +151,6 @@ pub fn mpv_event_loop(
     let mut last_is_buffering: bool = false;
     let mut last_demuxer_cache_time: f64 = 0.0;
     let mut end_file_emitted: bool = false;
-
-    #[cfg(target_os = "windows")]
-    let mut last_raise = Instant::now();
 
     loop {
         if stop_flag.load(Ordering::Relaxed) {
@@ -222,30 +211,6 @@ pub fn mpv_event_loop(
                     }
                 }
 
-                // On Windows with uosc, raise mpv child HWND above WebView2 so
-                // uosc renders on top of the video.
-                #[cfg(target_os = "windows")]
-                if let Some(ref state) = windows_raising {
-                    if !state.child_raised.load(Ordering::Acquire) {
-                        eprintln!("[mpv-events] Raising mpv child HWND (top_hwnd=0x{:x}, {} pre-children)",
-                            state.top_hwnd, state.pre_children.len());
-                        match crate::mpv::platform::windows::raise_mpv_child(
-                            state.top_hwnd,
-                            &state.pre_children,
-                        ) {
-                            Ok(true) => {
-                                eprintln!("[mpv-events] Mpv child HWND raised above WebView2");
-                                state.child_raised.store(true, Ordering::Release);
-                            }
-                            Ok(false) => {
-                                eprintln!("[mpv-events] No mpv child HWND found to raise (will retry on next file-loaded)");
-                            }
-                            Err(e) => {
-                                eprintln!("[mpv-events] Error raising mpv child HWND: {e}");
-                            }
-                        }
-                    }
-                }
             }
 
             mpv_event_id::MPV_EVENT_PLAYBACK_RESTART => {
@@ -447,21 +412,6 @@ pub fn mpv_event_loop(
 
             _ => {
                 // Ignore unhandled events
-            }
-        }
-
-        // On Windows, periodically re-raise the mpv child HWND above WebView2.
-        // WebView2 tends to re-order its HWND on top after FILE_LOADED, so a
-        // single raise at FILE_LOADED is not sufficient.
-        #[cfg(target_os = "windows")]
-        if let Some(ref state) = windows_raising {
-            let now = Instant::now();
-            if now.duration_since(last_raise) >= Duration::from_millis(500) {
-                let _ = crate::mpv::platform::windows::raise_mpv_child(
-                    state.top_hwnd,
-                    &state.pre_children,
-                );
-                last_raise = now;
             }
         }
     }
