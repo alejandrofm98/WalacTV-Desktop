@@ -61,6 +61,16 @@ jobs:
           includeDebug: false
           includeRelease: true
 
+      - name: Verify libmpv in installer
+        shell: pwsh
+        run: |
+          $installer = Get-ChildItem src-tauri/target/release/bundle/nsis/*-setup.exe | Select-Object -First 1
+          if (-not $installer) { throw "NSIS installer not found" }
+          $contents = & 7z l $installer.FullName
+          if (-not ($contents -match 'libmpv[/\\]libmpv-2\.dll')) {
+            throw "libmpv/libmpv-2.dll is missing from the NSIS installer"
+          }
+
   linux:
     needs: [resolve-tag, windows]
     runs-on: ubuntu-22.04

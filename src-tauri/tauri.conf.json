@@ -1,14 +1,13 @@
 {
   "$schema": "https://raw.githubusercontent.com/tauri-apps/tauri/dev/crates/tauri-cli/schema.json",
   "productName": "WalacTV",
-  "version": "1.3.1",
+  "version": "1.3.2",
   "identifier": "com.walactv.desktop",
   "build": {
     "frontendDist": "../dist",
     "devUrl": "http://localhost:1420",
     "beforeDevCommand": "pnpm dev",
-    "beforeBuildCommand": "pnpm build",
-    "beforeBundleCommand": "node scripts/copy-libmpv.cjs"
+    "beforeBuildCommand": "pnpm build"
   },
   "app": {
     "windows": [
@@ -37,7 +36,8 @@
       "icons/icon.ico"
     ],
     "resources": {
-      "resources/uosc/": "uosc/"
+      "resources/uosc/": "uosc/",
+      "resources/libmpv/": "libmpv/"
     },
     "createUpdaterArtifacts": true
   },

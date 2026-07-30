@@ -110,7 +110,7 @@ export class PlayerService extends EventTarget {
       const error = classifyMpvError(err)
       usePlayerStore.getState().setError(error)
       this._emit('error', error)
-      return
+      throw err
     }
 
     this._bindWindowEvents()

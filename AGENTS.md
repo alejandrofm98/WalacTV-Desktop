@@ -222,14 +222,13 @@ dependencias desde `shinchiro/mpv-winbuild-cmake` usando `7z e` (extract
 sin paths) para aplanar todos los DLLs en `src-tauri/resources/libmpv/`.
 Se ejecuta automaticamente en el CI antes de `tauri build` en Windows.
 
-Los DLLs se copian a `dist/` via `scripts/copy-libmpv.js` (ejecutado como
-`beforeBuildCommand` en `tauri.conf.json`), lo que evita un bug en
-`tauri-codegen` 2.6.3 que falla con `os error 123` al procesar globs
-`**/*` que incluyen archivos `.gitignore` o `LICENSE` en Windows.
+Los DLLs se incluyen como directorio de recursos mediante
+`resources/libmpv/` en `tauri.conf.json`. Se usa una ruta de directorio en
+lugar de un glob para evitar un bug de `tauri-codegen` 2.6.3 que falla con
+`os error 123` al procesar ciertos globs en Windows.
 
 En runtime, `MpvApi::load()` recibe `app.path().resource_dir()` y prueba
-`<resource_dir>/libmpv-2.dll` (root del resource dir) antes de caer al
-directorio del EXE.
+`<resource_dir>/libmpv/libmpv-2.dll` antes de caer al directorio del EXE.
 
 ## 8. Seguridad
 
@@ -268,5 +267,4 @@ directorio del EXE.
 - Si la private key se pierde, el updater se rompe para todos los usuarios existentes.
 - Para regenerar: `pnpm tauri signer generate --ci --write-keys ~/.tauri/walactv-desktop.key`.
 - La private key se pasa al CI via secret `TAURI_SIGNING_PRIVATE_KEY`.
-
 

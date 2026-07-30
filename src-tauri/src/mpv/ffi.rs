@@ -404,7 +404,7 @@ impl MpvApi {
             #[cfg(target_os = "windows")]
             {
                 // Search order:
-                //  1. <resource_dir>/libmpv-2.dll  (bundled via beforeBundleCommand copy)
+                //  1. <resource_dir>/libmpv-2.dll
                 //  2. <resource_dir>/libmpv.dll
                 //  3. <resource_dir>/libmpv/libmpv-2.dll  (legacy bundle layout)
                 //  4. <resource_dir>/libmpv/libmpv.dll
