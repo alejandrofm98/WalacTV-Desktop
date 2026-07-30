@@ -3,6 +3,7 @@
 -- to this script's own directory, then load the real main.lua in the same lua state.
 local src = debug.getinfo(1, 'S').source or ''
 local dir = src:gsub('^@', '')
+dir = dir:gsub('\\', '/')
 dir = dir:match('(.*/)') or './'
 package.path = dir .. '?.lua;'
     .. dir .. '?/init.lua;'

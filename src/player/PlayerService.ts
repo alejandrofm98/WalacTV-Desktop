@@ -306,7 +306,8 @@ export class PlayerService extends EventTarget {
       this._videoEl.volume = vol
     }
     usePlayerStore.getState().setVolume(vol)
-    invoke('mpv_set_property', { name: 'volume', value: vol }).catch(() => {})
+    // mpv uses 0..100 range, frontend uses 0..1
+    invoke('mpv_set_property', { name: 'volume', value: vol * 100 }).catch(() => {})
   }
 
   setMuted(muted: boolean): void {

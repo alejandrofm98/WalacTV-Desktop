@@ -8,7 +8,7 @@ use crate::mpv::ffi::{
     mpv_event_property, mpv_format,
     mpv_handle, mpv_node, MpvApi,
 };
-use crate::mpv::handle::LinuxLoweringState;
+use crate::mpv::handle::{LinuxLoweringState, WindowsRaisingState};
 use serde::Serialize;
 use serde_json::json;
 use std::ffi::{c_char, c_int, CStr, CString};
@@ -103,6 +103,7 @@ pub struct MpvRestartPayload;
 /// On Linux with custom controls, `linux_lowering` carries the X11 state
 /// needed to lower the mpv child window below the webview on `file-loaded`
 /// so custom HTML controls render on top of the video.
+/// On Windows with uosc, `windows_raising` raises mpv above WebView2.
 pub fn mpv_event_loop(
     app_handle: AppHandle,
     api: Arc<MpvApi>,
@@ -110,6 +111,7 @@ pub fn mpv_event_loop(
     stop_flag: Arc<AtomicBool>,
     is_playing: Arc<AtomicBool>,
     linux_lowering: Option<Arc<LinuxLoweringState>>,
+    windows_raising: Option<Arc<WindowsRaisingState>>,
 ) {
     // Create a client handle for event processing (reduces interference
     // with the main mpv_handle operations).
@@ -140,6 +142,10 @@ pub fn mpv_event_loop(
     observe(&api, event_client, SPEED_ID, "speed", mpv_format::MPV_FORMAT_DOUBLE);
     observe(&api, event_client, WIDTH_ID, "width", mpv_format::MPV_FORMAT_INT64);
     observe(&api, event_client, HEIGHT_ID, "height", mpv_format::MPV_FORMAT_INT64);
+
+    // Suppress unused warning on non-Windows targets
+    #[cfg(not(target_os = "windows"))]
+    let _ = &windows_raising;
 
     log::info!("mpv_event_loop: started, observing properties");
 
@@ -206,6 +212,31 @@ pub fn mpv_event_loop(
                             }
                             Err(e) => {
                                 eprintln!("[mpv-events] Error al bajar ventana mpv: {e}");
+                            }
+                        }
+                    }
+                }
+
+                // On Windows with uosc, raise mpv child HWND above WebView2 so
+                // uosc renders on top of the video.
+                #[cfg(target_os = "windows")]
+                if let Some(ref state) = windows_raising {
+                    if !state.child_raised.load(Ordering::Acquire) {
+                        eprintln!("[mpv-events] Raising mpv child HWND (top_hwnd=0x{:x}, {} pre-children)",
+                            state.top_hwnd, state.pre_children.len());
+                        match crate::mpv::platform::windows::raise_mpv_child(
+                            state.top_hwnd,
+                            &state.pre_children,
+                        ) {
+                            Ok(true) => {
+                                eprintln!("[mpv-events] Mpv child HWND raised above WebView2");
+                                state.child_raised.store(true, Ordering::Release);
+                            }
+                            Ok(false) => {
+                                eprintln!("[mpv-events] No mpv child HWND found to raise (will retry on next file-loaded)");
+                            }
+                            Err(e) => {
+                                eprintln!("[mpv-events] Error raising mpv child HWND: {e}");
                             }
                         }
                     }
@@ -343,9 +374,9 @@ pub fn mpv_event_loop(
                     VOLUME_ID => {
                         if prop.format == mpv_format::MPV_FORMAT_DOUBLE && !value_ptr.is_null() {
                             let volume = unsafe { *(value_ptr as *mut f64) };
-                            let clamped = volume.clamp(0.0, 130.0);
-                            let _ = app_handle.emit("mpv://volume", clamped);
-                            emit_unified_event(&app_handle, "volume", Some(json!({ "volume": clamped })));
+                            let normalized = (volume / 100.0).clamp(0.0, 1.0);
+                            let _ = app_handle.emit("mpv://volume", normalized);
+                            emit_unified_event(&app_handle, "volume", Some(json!({ "volume": normalized })));
                         }
                     }
 

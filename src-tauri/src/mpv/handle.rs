@@ -35,6 +35,25 @@ pub struct LinuxLoweringState {
 }
 
 // ---------------------------------------------------------------------------
+// WindowsRaisingState — state for raising mpv child HWND (Windows only)
+// ---------------------------------------------------------------------------
+
+/// State needed to raise the mpv child HWND above the WebView2 control on
+/// Windows so uosc renders on top of the video.
+///
+/// Only constructed when uosc is available (`uosc_main_path.is_some()`).
+/// On non-Windows platforms this is always `None`.
+#[allow(dead_code)]
+pub struct WindowsRaisingState {
+    /// HWND of the top-level Tauri window (the wid given to mpv).
+    pub top_hwnd: i64,
+    /// Snapshot of child HWNDs of `top_hwnd` taken BEFORE mpv created its child.
+    pub pre_children: Vec<isize>,
+    /// Set to true once the mpv child has been successfully raised.
+    pub child_raised: AtomicBool,
+}
+
+// ---------------------------------------------------------------------------
 // Locale fix – libmpv requires LC_NUMERIC="C"
 // ---------------------------------------------------------------------------
 
@@ -60,25 +79,32 @@ fn ensure_numeric_locale() {
 /// Platform-dependent options:
 /// - Linux with `use_custom`: no OSC, no mpv keyboard (HTML controls).
 /// - Linux fallback (no compositor / WALACTV_PLAYER_OSC=1 / uosc unavailable): native OSC.
-/// - Linux with uosc: default mpv keyboard (input-vo-keyboard=yes) so the X11 VO
-///   sets ButtonPressMask on the EGL child window (needed for uosc mouse clicks
-///   to register). Escape-to-close handled by a system-level global shortcut.
-/// - Windows/macOS: no OSC, no mpv keyboard (HTML controls).
-fn initial_options(linux_use_custom: bool, linux_uosc_available: bool) -> Vec<(&'static str, &'static str)> {
+/// - Linux/Windows with uosc: mpv keyboard enabled for mouse input.
+/// - Windows/macOS without uosc: no OSC, no mpv keyboard (HTML controls).
+fn initial_options(_linux_use_custom: bool, uosc_available: bool) -> Vec<(&'static str, &'static str)> {
     let mut opts: Vec<(&'static str, &'static str)> = vec![
         ("ytdl", "no"),
         ("load-scripts", "yes"),
         ("keep-open", "yes"),
+        ("vo", "gpu"),
+        ("ao", "auto"),
     ];
 
     #[cfg(target_os = "linux")]
-    if linux_uosc_available {
-        // uosc replaces default OSC: disable native osc, keep vo-keyboard for
-        // mouse event routing to the mpv child window (needed for uosc clicks).
+    opts.push(("gpu-context", "x11egl"));
+    #[cfg(any(target_os = "windows", target_os = "macos"))]
+    opts.push(("gpu-context", "auto"));
+
+    if uosc_available {
+        opts.push(("osc", "no"));
         opts.push(("input-default-bindings", "no"));
         opts.push(("input-vo-keyboard", "yes"));
         opts.push(("cursor-autohide", "3000"));
-    } else if linux_use_custom {
+        return opts;
+    }
+
+    #[cfg(target_os = "linux")]
+    if _linux_use_custom {
         // uosc not available with custom HTML controls: disable OSC so mpv
         // does not draw duplicate controls over the HTML overlay.
         opts.push(("osc", "no"));
@@ -88,9 +114,9 @@ fn initial_options(linux_use_custom: bool, linux_uosc_available: bool) -> Vec<(&
     // else: Linux fallback (no compositor / WALACTV_PLAYER_OSC=1 / uosc unavailable):
     // keep default OSC enabled so the user has native playback controls.
 
-    #[cfg(not(target_os = "linux"))]
+    #[cfg(any(target_os = "windows", target_os = "macos"))]
     {
-        // Windows/macOS: always use HTML controls (no OSC)
+        // No uosc: use HTML controls.
         opts.push(("osc", "no"));
         opts.push(("input-default-bindings", "no"));
         opts.push(("input-vo-keyboard", "no"));
@@ -118,6 +144,10 @@ pub struct MpvInstance {
     /// Populated only when using custom HTML controls with a compositor.
     /// On non-Linux or fallback mode, this is always None.
     pub linux_lowering: Option<Arc<LinuxLoweringState>>,
+    /// Windows raising state for uosc z-order support.
+    /// Populated only when uosc is available on Windows.
+    /// On non-Windows or when uosc is not available, this is always None.
+    pub windows_raising: Option<Arc<WindowsRaisingState>>,
 }
 
 // SAFETY: mpv_handle is thread-safe (libmpv is designed for this).
@@ -134,16 +164,14 @@ impl MpvInstance {
     /// - Windows: HWND cast to i64
     /// - macOS: NSView pointer cast to i64 (for `wid` property) or render context
     ///
-    /// `linux_uosc_available` is determined from `uosc_main_path.is_some()` and
-    /// controls whether uosc OSD provides the UI (true) or the HTML overlay does
-    /// (false via `initial_options` setting `osc=no` + `input-vo-keyboard=no`).
+    /// uosc availability is determined from `uosc_main_path.is_some()` and
+    /// controls whether uosc or the HTML overlay provides the UI.
     /// `_linux_use_custom` is preserved for API compatibility; the X11 lowering
     /// state is managed by `mpv_init` in the commands module.
     ///
-    /// `uosc_main_path` and `uosc_fonts_dir`: when `Some` on Linux, the uosc
+    /// `uosc_main_path` and `uosc_fonts_dir`: when `Some` on Linux or Windows, the uosc
     /// modern OSC script is loaded (via a loader wrapper that fixes package.path)
-    /// replacing the default mpv OSC. On non-Linux platforms these are always
-    /// `None`.
+    /// replacing the default mpv OSC.
     pub fn new(
         api: Arc<MpvApi>,
         wid: i64,
@@ -168,14 +196,10 @@ impl MpvInstance {
             eprintln!("[mpv-diagnostic] mpv_request_log_messages('trace') called on main handle");
         }
 
-        // Determine whether uosc is active (Linux only)
-        #[cfg(target_os = "linux")]
-        let linux_uosc = uosc_main_path.is_some();
-        #[cfg(not(target_os = "linux"))]
-        let linux_uosc = false;
+        let uosc_available = uosc_main_path.is_some();
 
         // Set options before initialize
-        for (name, value) in initial_options(linux_use_custom, linux_uosc) {
+        for (name, value) in initial_options(linux_use_custom, uosc_available) {
             if let Ok(c_name) = CString::new(name) {
                 if let Ok(c_value) = CString::new(value) {
                     let ret = unsafe { (api.mpv_set_option_string)(handle, c_name.as_ptr(), c_value.as_ptr()) };
@@ -186,8 +210,23 @@ impl MpvInstance {
             }
         }
 
+        // ── Window ID for embedding (before mpv_initialize) ────────────────
+        if wid > 0 {
+            if let Ok(c_wid) = CString::new(wid.to_string()) {
+                if let Ok(c_name) = CString::new("wid") {
+                    let ret = unsafe {
+                        (api.mpv_set_option_string)(handle, c_name.as_ptr(), c_wid.as_ptr())
+                    };
+                    if ret < 0 {
+                        unsafe { (api.mpv_destroy)(handle) };
+                        return Err(format!("Setting wid={wid} failed with code {ret}"));
+                    }
+                }
+            }
+        }
+
         // ── UOSC-specific options (overrides initial_options, before mpv_initialize) ──
-        #[cfg(target_os = "linux")]
+        #[cfg(any(target_os = "linux", target_os = "windows"))]
         if let (Some(ref loader_path), Some(ref fonts_dir)) = (uosc_main_path.as_ref(), uosc_fonts_dir.as_ref()) {
             eprintln!("[mpv-uosc] Applying uosc options: loader={loader_path}, fonts={fonts_dir}");
 
@@ -271,8 +310,8 @@ impl MpvInstance {
             ));
         }
 
-        // Log loaded scripts to confirm uosc loaded (Linux only)
-        #[cfg(target_os = "linux")]
+        // Log loaded scripts to confirm uosc loaded (Linux/Windows)
+        #[cfg(any(target_os = "linux", target_os = "windows"))]
         if uosc_main_path.is_some() {
             let ptr = unsafe { (api.mpv_get_property_string)(handle, b"script-names\0".as_ptr().cast()) };
             if !ptr.is_null() {
@@ -284,20 +323,7 @@ impl MpvInstance {
             }
         }
 
-        // Set the window ID for video output embedding
-        if wid > 0 {
-            if let Ok(c_wid) = CString::new(wid.to_string()) {
-                let ret = unsafe {
-                    (api.mpv_set_property_string)(handle, b"wid\0".as_ptr().cast(), c_wid.as_ptr())
-                };
-                if ret < 0 {
-                    // Non-fatal on Wayland where we use render context
-                    log::warn!("Setting wid={wid} returned {} (non-fatal)", ret);
-                }
-            }
-        }
-
-        // Set hwdec to auto-safe
+        // Set hwdec to auto-safe (post-init, runtime-configurable)
         if let Ok(c_hwdec) = CString::new("auto-safe") {
             let _ = unsafe {
                 (api.mpv_set_property_string)(handle, b"hwdec\0".as_ptr().cast(), c_hwdec.as_ptr())
@@ -319,6 +345,7 @@ impl MpvInstance {
             #[cfg(target_os = "linux")]
             render_context: None,
             linux_lowering: None,
+            windows_raising: None,
         })
     }
 
@@ -542,8 +569,10 @@ impl MpvInstance {
     /// - time-pos, duration, pause, media-title
     /// - track-list, eof-reached, demuxer-cache-time
     ///
-    /// On Linux with custom controls, also passes the lowering state so the
+    /// On Linux with custom controls, passes the lowering state so the
     /// event loop can lower the mpv child window on `file-loaded`.
+    /// On Windows with uosc, passes the raising state so the event loop
+    /// can raise the mpv child HWND above WebView2 on `file-loaded`.
     pub fn start_event_loop(&self) {
         self.stop_event_loop();
 
@@ -557,12 +586,13 @@ impl MpvInstance {
         let stop_flag = Arc::clone(&self.stop_flag);
         let is_playing = Arc::clone(&self.is_playing);
         let linux_lowering = self.linux_lowering.clone();
+        let windows_raising = self.windows_raising.clone();
 
         let thread_handle = std::thread::Builder::new()
             .name("mpv-event-loop".into())
             .spawn(move || {
                 let handle = handle_ptr as *mut mpv_handle;
-                mpv_event_loop(app_handle, api, handle, stop_flag, is_playing, linux_lowering);
+                mpv_event_loop(app_handle, api, handle, stop_flag, is_playing, linux_lowering, windows_raising);
             })
             .expect("Failed to spawn mpv event loop thread");
 

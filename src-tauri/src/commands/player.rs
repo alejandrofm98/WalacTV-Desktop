@@ -7,6 +7,8 @@
 
 use crate::mpv::ffi::{mpv_format, ensure_libmpv_installed, MpvApi, MpvError};
 use crate::mpv::handle::{MpvInstance, LinuxLoweringState};
+#[cfg(target_os = "windows")]
+use crate::mpv::handle::WindowsRaisingState;
 use crate::mpv::platform;
 use parking_lot::Mutex;
 use serde::Serialize;
@@ -73,7 +75,7 @@ pub struct MpvVersionInfo {
 }
 
 // ---------------------------------------------------------------------------
-// UOSC path resolution (Linux only)
+// UOSC path resolution (Linux and Windows)
 // ---------------------------------------------------------------------------
 
 /// Resolve uosc loader script and fonts paths using Tauri's resource resolution.
@@ -85,7 +87,7 @@ pub struct MpvVersionInfo {
 /// 4. `std::env::current_dir()` → `resources/uosc/uosc.lua`
 ///
 /// Returns `(loader_path, fonts_dir_path)` — both `None` if unresolvable.
-#[cfg(target_os = "linux")]
+#[cfg(any(target_os = "linux", target_os = "windows"))]
 fn resolve_uosc_paths(app: &AppHandle) -> (Option<String>, Option<String>) {
     let mut candidates: Vec<std::path::PathBuf> = Vec::new();
 
@@ -241,13 +243,15 @@ pub fn mpv_init(
     #[cfg(not(target_os = "linux"))]
     let use_custom = false;
 
-    // ── Linux: resolve uosc paths for modern UI ──────────────────────
-    #[cfg(target_os = "linux")]
+    // ── Resolve uosc paths for modern UI (Linux/Windows) ─────────────
+    #[cfg(any(target_os = "linux", target_os = "windows"))]
     let (uosc_main_path, uosc_fonts_dir) = resolve_uosc_paths(&app);
-    #[cfg(not(target_os = "linux"))]
+    #[cfg(target_os = "macos")]
     let (uosc_main_path, uosc_fonts_dir) = (None, None);
-    #[cfg(target_os = "linux")]
+    #[cfg(any(target_os = "linux", target_os = "windows"))]
     let uosc_available = uosc_main_path.is_some(); // snapshot before move into new()
+    #[cfg(target_os = "macos")]
+    let uosc_available = false;
 
     // ── Linux: snapshot pre-children before mpv creates its child ─────
     #[cfg(target_os = "linux")]
@@ -269,6 +273,23 @@ pub fn mpv_init(
     #[cfg(not(target_os = "linux"))]
     let linux_init_state: Option<(u64, Vec<u64>)> = None;
 
+    // ── Windows: snapshot child HWNDs before mpv creates its child ─────
+    #[cfg(target_os = "windows")]
+    let windows_init_state: Option<(i64, Vec<isize>)> = if uosc_available {
+        match platform::windows::snapshot_child_hwnds(wid) {
+            Ok(children) => {
+                eprintln!("[mpv-init] {} child hwnds snapshotted for 0x{:x}", children.len(), wid);
+                log::info!("mpv_init: {} child HWNDs captured before mpv creation", children.len());
+                Some((wid, children))
+            }
+            Err(e) => {
+                log::warn!("mpv_init: Could not snapshot child HWNDs: {e}");
+                None
+            }
+        }
+    } else {
+        None
+    };
     // Create the player instance — sets INITIAL_OPTIONS, wid, hwdec, uosc
     let mut instance = MpvInstance::new(api, wid, app.clone(), use_custom, uosc_main_path, uosc_fonts_dir)?;
 
@@ -283,29 +304,19 @@ pub fn mpv_init(
         log::info!("mpv_init: Estado de bajada X11 configurado (top_xid=0x{:x})", top_xid);
     }
 
-    // Configure platform-specific video output
-    #[cfg(target_os = "linux")]
-    {
-        // X11 wid embedding with GPU-accelerated x11egl.
-        // mpv renders directly into a child X11 window via the `wid` property.
-        let _ = instance.set_property_str("vo", "gpu");
-        let _ = instance.set_property_str("gpu-context", "x11egl");
-        let osc_state = if uosc_available { "no (uosc)" } else if use_custom { "no" } else { "yes" };
-        let keyboard_state = if uosc_available { "yes" } else { "no" };
-        eprintln!("[mpv-init] Opciones: osc={osc_state}, input-default-bindings=no, input-vo-keyboard={keyboard_state}");
-    }
-
+    // ── Windows: store HWND raising state for uosc z-order ─────────────
     #[cfg(target_os = "windows")]
-    {
-        let _ = instance.set_property_str("vo", "gpu");
-        let _ = instance.set_property_str("gpu-context", "auto");
+    if let Some((top_hwnd, pre_children)) = windows_init_state {
+        instance.windows_raising = Some(Arc::new(WindowsRaisingState {
+            top_hwnd,
+            pre_children,
+            child_raised: AtomicBool::new(false),
+        }));
+        log::info!("mpv_init: Windows HWND raising state set (top_hwnd=0x{:x})", top_hwnd);
     }
 
-    #[cfg(target_os = "macos")]
-    {
-        let _ = instance.set_property_str("vo", "gpu");
-        let _ = instance.set_property_str("gpu-context", "auto");
-    }
+    // VO/gpu-context/ao are configured pre-init in MpvInstance::new().
+    // Post-init vo/gpu-context manipulation is removed as redundant.
 
     // Start event loop
     instance.start_event_loop();
@@ -322,12 +333,12 @@ pub fn mpv_init(
         use_custom,
     );
 
-    // nativeControls=true when uosc is available (Linux only).
+    // nativeControls=true when uosc is available (Linux/Windows).
     // When true, the mpv child window renders its own controls via OSD/libass
     // and the HTML overlay is hidden. When false, the React PlayerOverlay handles UI.
-    #[cfg(target_os = "linux")]
+    #[cfg(any(target_os = "linux", target_os = "windows"))]
     let native_controls = uosc_available;
-    #[cfg(not(target_os = "linux"))]
+    #[cfg(target_os = "macos")]
     let native_controls = false;
 
     Ok(serde_json::json!({
