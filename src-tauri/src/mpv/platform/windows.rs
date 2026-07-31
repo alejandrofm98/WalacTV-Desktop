@@ -22,13 +22,14 @@ use windows_sys::Win32::UI::Input::KeyboardAndMouse::{GetFocus, SetActiveWindow,
 use windows_sys::Win32::UI::WindowsAndMessaging::{
     CreateWindowExW, DefWindowProcW, GetClassNameW, GetClientRect, GetCursorPos,
     GetForegroundWindow, GetGUIThreadInfo, GetWindow, GetWindowRect, GetWindowThreadProcessId,
-    IsWindow, IsWindowVisible, PostMessageW, RegisterClassExW, SetForegroundWindow, SetWindowPos,
-    ShowWindow, WindowFromPoint, GUITHREADINFO, GW_CHILD, HWND_TOP, MA_ACTIVATE, SWP_NOACTIVATE,
-    SW_HIDE, SW_SHOW, WM_CHAR, WM_KEYDOWN, WM_KEYUP, WM_KILLFOCUS, WM_LBUTTONDBLCLK,
-    WM_LBUTTONDOWN, WM_LBUTTONUP, WM_MBUTTONDBLCLK, WM_MBUTTONDOWN, WM_MBUTTONUP, WM_MOUSEACTIVATE,
-    WM_MOUSEHWHEEL, WM_MOUSEMOVE, WM_MOUSEWHEEL, WM_RBUTTONDBLCLK, WM_RBUTTONDOWN, WM_RBUTTONUP,
-    WM_SETFOCUS, WM_SYSCHAR, WM_SYSKEYDOWN, WM_SYSKEYUP, WM_UNICHAR, WM_XBUTTONDBLCLK,
-    WM_XBUTTONDOWN, WM_XBUTTONUP, WNDCLASSEXW, WS_CLIPCHILDREN, WS_EX_TOOLWINDOW, WS_POPUP,
+    IsWindow, IsWindowVisible, PostMessageW, RegisterClassExW, SendMessageW, SetForegroundWindow,
+    SetWindowPos, ShowWindow, WindowFromPoint, GUITHREADINFO, GW_CHILD, HWND_TOP, MA_ACTIVATE,
+    SWP_NOACTIVATE, SW_HIDE, SW_SHOW, WM_CHAR, WM_KEYDOWN, WM_KEYUP, WM_KILLFOCUS,
+    WM_LBUTTONDBLCLK, WM_LBUTTONDOWN, WM_LBUTTONUP, WM_MBUTTONDBLCLK, WM_MBUTTONDOWN, WM_MBUTTONUP,
+    WM_MOUSEACTIVATE, WM_MOUSEHWHEEL, WM_MOUSEMOVE, WM_MOUSEWHEEL, WM_RBUTTONDBLCLK,
+    WM_RBUTTONDOWN, WM_RBUTTONUP, WM_SETFOCUS, WM_SYSCHAR, WM_SYSKEYDOWN, WM_SYSKEYUP, WM_UNICHAR,
+    WM_XBUTTONDBLCLK, WM_XBUTTONDOWN, WM_XBUTTONUP, WNDCLASSEXW, WS_CLIPCHILDREN, WS_EX_TOOLWINDOW,
+    WS_POPUP,
 };
 
 fn diagnostic_path() -> std::path::PathBuf {
@@ -55,6 +56,7 @@ pub fn diagnostic_log(message: impl AsRef<str>) {
 
 static WND_CLASS_INIT: OnceLock<Result<(), u32>> = OnceLock::new();
 static FIRST_MOUSE_FORWARD: AtomicBool = AtomicBool::new(false);
+static FIRST_CLICK_FORWARD: AtomicBool = AtomicBool::new(false);
 static FIRST_KEY_FORWARD: AtomicBool = AtomicBool::new(false);
 
 /// Return the class name pointer, lazily encoding the wide string.
@@ -134,14 +136,24 @@ unsafe extern "system" fn host_window_proc(
                 | WM_SETFOCUS
                 | WM_KILLFOCUS
         ) {
-            let posted = PostMessageW(child, message, wparam, lparam) != 0;
-            if message == WM_MOUSEMOVE && !FIRST_MOUSE_FORWARD.swap(true, Ordering::AcqRel) {
-                diagnostic_log(format!("first mouse message forwarded posted={posted}"));
+            if message == WM_MOUSEMOVE {
+                let posted = PostMessageW(child, message, wparam, lparam) != 0;
+                if !FIRST_MOUSE_FORWARD.swap(true, Ordering::AcqRel) {
+                    diagnostic_log(format!("first mouse message forwarded posted={posted}"));
+                }
+            } else {
+                SendMessageW(child, message, wparam, lparam);
+            }
+
+            if matches!(message, WM_LBUTTONDOWN | WM_MBUTTONDOWN | WM_RBUTTONDOWN)
+                && !FIRST_CLICK_FORWARD.swap(true, Ordering::AcqRel)
+            {
+                diagnostic_log("first click message forwarded synchronously");
             }
             if matches!(message, WM_KEYDOWN | WM_SYSKEYDOWN)
                 && !FIRST_KEY_FORWARD.swap(true, Ordering::AcqRel)
             {
-                diagnostic_log(format!("first key message forwarded posted={posted}"));
+                diagnostic_log("first key message forwarded synchronously");
             }
             return 0;
         }
