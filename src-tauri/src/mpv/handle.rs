@@ -289,6 +289,9 @@ impl MpvInstance {
             ));
         }
 
+        #[cfg(target_os = "windows")]
+        crate::mpv::platform::windows::register_input_bridge(Arc::clone(&api), handle);
+
         // Log loaded scripts to confirm uosc loaded (Linux and Windows)
         #[cfg(any(target_os = "linux", target_os = "windows"))]
         if uosc_main_path.is_some() {
@@ -640,6 +643,9 @@ impl MpvInstance {
 
     /// Destroy the mpv instance and stop the event loop.
     pub fn destroy(mut self) {
+        #[cfg(target_os = "windows")]
+        crate::mpv::platform::windows::clear_input_bridge(self.handle);
+
         self.stop_event_loop();
 
         // Clean up the render context before destroying the mpv handle.
@@ -677,6 +683,9 @@ impl MpvInstance {
 
 impl Drop for MpvInstance {
     fn drop(&mut self) {
+        #[cfg(target_os = "windows")]
+        crate::mpv::platform::windows::clear_input_bridge(self.handle);
+
         self.stop_event_loop();
 
         // mpv_render_context_free DEBE ejecutarse antes de mpv_destroy.

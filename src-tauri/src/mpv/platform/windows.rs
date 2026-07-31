@@ -8,8 +8,10 @@
 //! All show/hide/sync operations dispatch to the main thread when called from
 //! the mpv event loop, using `run_on_main_thread` + channel.
 
+use crate::mpv::ffi::{mpv_handle, MpvApi};
+use std::ffi::{c_char, CString};
 use std::sync::atomic::{AtomicBool, Ordering};
-use std::sync::OnceLock;
+use std::sync::{Arc, OnceLock};
 use std::time::Duration;
 use std::{fs::OpenOptions, io::Write};
 use tauri::AppHandle;
@@ -18,19 +20,23 @@ use windows_sys::Win32::Foundation::{GetLastError, ERROR_CLASS_ALREADY_EXISTS, H
 use windows_sys::Win32::Graphics::Gdi::ClientToScreen;
 use windows_sys::Win32::System::LibraryLoader::GetModuleHandleW;
 use windows_sys::Win32::System::Threading::{AttachThreadInput, GetCurrentThreadId};
-use windows_sys::Win32::UI::Input::KeyboardAndMouse::{GetFocus, SetActiveWindow, SetFocus};
+use windows_sys::Win32::UI::Input::KeyboardAndMouse::{
+    GetFocus, ReleaseCapture, SetActiveWindow, SetCapture, SetFocus, TrackMouseEvent, TME_LEAVE,
+    TRACKMOUSEEVENT, VK_DOWN, VK_END, VK_ESCAPE, VK_F, VK_HOME, VK_LEFT, VK_M, VK_NEXT, VK_PRIOR,
+    VK_RETURN, VK_RIGHT, VK_SPACE, VK_UP,
+};
 use windows_sys::Win32::UI::WindowsAndMessaging::{
     CreateWindowExW, DefWindowProcW, GetClassNameW, GetClientRect, GetCursorPos,
     GetForegroundWindow, GetGUIThreadInfo, GetWindow, GetWindowRect, GetWindowThreadProcessId,
-    IsWindow, IsWindowVisible, PostMessageW, RegisterClassExW, SendMessageW, SetForegroundWindow,
-    SetWindowPos, ShowWindow, WindowFromPoint, GUITHREADINFO, GW_CHILD, HWND_TOP, MA_ACTIVATE,
-    SWP_NOACTIVATE, SW_HIDE, SW_SHOW, WM_CHAR, WM_KEYDOWN, WM_KEYUP, WM_KILLFOCUS,
-    WM_LBUTTONDBLCLK, WM_LBUTTONDOWN, WM_LBUTTONUP, WM_MBUTTONDBLCLK, WM_MBUTTONDOWN, WM_MBUTTONUP,
-    WM_MOUSEACTIVATE, WM_MOUSEHWHEEL, WM_MOUSEMOVE, WM_MOUSEWHEEL, WM_RBUTTONDBLCLK,
-    WM_RBUTTONDOWN, WM_RBUTTONUP, WM_SETFOCUS, WM_SYSCHAR, WM_SYSKEYDOWN, WM_SYSKEYUP, WM_UNICHAR,
-    WM_XBUTTONDBLCLK, WM_XBUTTONDOWN, WM_XBUTTONUP, WNDCLASSEXW, WS_CLIPCHILDREN, WS_EX_TOOLWINDOW,
-    WS_POPUP,
+    IsWindow, IsWindowVisible, RegisterClassExW, SetForegroundWindow, SetWindowPos, ShowWindow,
+    WindowFromPoint, GUITHREADINFO, GW_CHILD, HWND_TOP, MA_ACTIVATE, SWP_NOACTIVATE, SW_HIDE,
+    SW_SHOW, WM_KEYDOWN, WM_KEYUP, WM_LBUTTONDBLCLK, WM_LBUTTONDOWN, WM_LBUTTONUP,
+    WM_MBUTTONDBLCLK, WM_MBUTTONDOWN, WM_MBUTTONUP, WM_MOUSEACTIVATE, WM_MOUSEHWHEEL, WM_MOUSEMOVE,
+    WM_MOUSEWHEEL, WM_RBUTTONDBLCLK, WM_RBUTTONDOWN, WM_RBUTTONUP, WM_SYSKEYDOWN, WM_SYSKEYUP,
+    WNDCLASSEXW, WS_CLIPCHILDREN, WS_EX_TOOLWINDOW, WS_POPUP,
 };
+
+const WM_MOUSE_LEAVE: u32 = 0x02A3;
 
 fn diagnostic_path() -> std::path::PathBuf {
     std::env::temp_dir().join("walactv-player.log")
@@ -50,6 +56,88 @@ pub fn diagnostic_log(message: impl AsRef<str>) {
     }
 }
 
+struct InputBridge {
+    api: Arc<MpvApi>,
+    handle: usize,
+}
+
+static INPUT_BRIDGE: OnceLock<parking_lot::Mutex<Option<InputBridge>>> = OnceLock::new();
+
+fn input_bridge() -> &'static parking_lot::Mutex<Option<InputBridge>> {
+    INPUT_BRIDGE.get_or_init(|| parking_lot::Mutex::new(None))
+}
+
+pub fn register_input_bridge(api: Arc<MpvApi>, handle: *mut mpv_handle) {
+    *input_bridge().lock() = Some(InputBridge {
+        api,
+        handle: handle as usize,
+    });
+    diagnostic_log("libmpv input bridge registered");
+}
+
+pub fn clear_input_bridge(handle: *mut mpv_handle) {
+    let mut bridge = input_bridge().lock();
+    if bridge
+        .as_ref()
+        .is_some_and(|bridge| bridge.handle == handle as usize)
+    {
+        *bridge = None;
+        diagnostic_log("libmpv input bridge cleared");
+    }
+}
+
+fn mpv_input_command(args: &[&str]) -> bool {
+    let bridge = input_bridge().lock();
+    let Some(bridge) = bridge.as_ref() else {
+        return false;
+    };
+    let Ok(c_args) = args
+        .iter()
+        .map(|arg| CString::new(*arg))
+        .collect::<Result<Vec<_>, _>>()
+    else {
+        return false;
+    };
+    let mut raw_args: Vec<*const c_char> = c_args.iter().map(|arg| arg.as_ptr()).collect();
+    raw_args.push(std::ptr::null());
+    unsafe { (bridge.api.mpv_command)(bridge.handle as *mut mpv_handle, raw_args.as_ptr()) >= 0 }
+}
+
+fn mpv_mouse_position(lparam: isize) -> bool {
+    let x = (lparam as u32 & 0xffff) as u16 as i16 as i32;
+    let y = ((lparam as u32 >> 16) & 0xffff) as u16 as i16 as i32;
+    let x = x.to_string();
+    let y = y.to_string();
+    mpv_input_command(&["mouse", &x, &y])
+}
+
+fn mpv_key_name(vkey: u16) -> Option<&'static str> {
+    const DIGITS: [&str; 10] = ["0", "1", "2", "3", "4", "5", "6", "7", "8", "9"];
+    const LETTERS: [&str; 26] = [
+        "a", "b", "c", "d", "e", "f", "g", "h", "i", "j", "k", "l", "m", "n", "o", "p", "q", "r",
+        "s", "t", "u", "v", "w", "x", "y", "z",
+    ];
+
+    match vkey {
+        VK_SPACE => Some("SPACE"),
+        VK_LEFT => Some("LEFT"),
+        VK_RIGHT => Some("RIGHT"),
+        VK_UP => Some("UP"),
+        VK_DOWN => Some("DOWN"),
+        VK_RETURN => Some("ENTER"),
+        VK_ESCAPE => Some("ESC"),
+        VK_HOME => Some("HOME"),
+        VK_END => Some("END"),
+        VK_PRIOR => Some("PGUP"),
+        VK_NEXT => Some("PGDWN"),
+        VK_F => Some("f"),
+        VK_M => Some("m"),
+        0x30..=0x39 => Some(DIGITS[(vkey - 0x30) as usize]),
+        0x41..=0x5a => Some(LETTERS[(vkey - 0x41) as usize]),
+        _ => None,
+    }
+}
+
 // ---------------------------------------------------------------------------
 // Window class registration (once per process)
 // ---------------------------------------------------------------------------
@@ -58,6 +146,7 @@ static WND_CLASS_INIT: OnceLock<Result<(), u32>> = OnceLock::new();
 static FIRST_MOUSE_FORWARD: AtomicBool = AtomicBool::new(false);
 static FIRST_CLICK_FORWARD: AtomicBool = AtomicBool::new(false);
 static FIRST_KEY_FORWARD: AtomicBool = AtomicBool::new(false);
+static MOUSE_TRACKING: AtomicBool = AtomicBool::new(false);
 
 /// Return the class name pointer, lazily encoding the wide string.
 fn class_name() -> *const u16 {
@@ -95,7 +184,7 @@ fn ensure_window_class() -> Result<(), u32> {
         .map_err(|e| *e)
 }
 
-/// The popup wins hit-testing, so explicitly forward its input to mpv's child.
+/// The popup wins hit-testing, so inject its input through libmpv commands.
 unsafe extern "system" fn host_window_proc(
     hwnd: HWND,
     message: u32,
@@ -107,53 +196,87 @@ unsafe extern "system" fn host_window_proc(
         return MA_ACTIVATE as isize;
     }
 
-    let child = GetWindow(hwnd, GW_CHILD);
-    if !child.is_null() {
-        if matches!(
-            message,
-            WM_MOUSEMOVE
-                | WM_LBUTTONDOWN
-                | WM_LBUTTONUP
-                | WM_LBUTTONDBLCLK
-                | WM_MBUTTONDOWN
-                | WM_MBUTTONUP
-                | WM_MBUTTONDBLCLK
-                | WM_RBUTTONDOWN
-                | WM_RBUTTONUP
-                | WM_RBUTTONDBLCLK
-                | WM_XBUTTONDOWN
-                | WM_XBUTTONUP
-                | WM_XBUTTONDBLCLK
-                | WM_MOUSEWHEEL
-                | WM_MOUSEHWHEEL
-                | WM_KEYDOWN
-                | WM_KEYUP
-                | WM_SYSKEYDOWN
-                | WM_SYSKEYUP
-                | WM_CHAR
-                | WM_SYSCHAR
-                | WM_UNICHAR
-                | WM_SETFOCUS
-                | WM_KILLFOCUS
-        ) {
-            if message == WM_MOUSEMOVE {
-                let posted = PostMessageW(child, message, wparam, lparam) != 0;
-                if !FIRST_MOUSE_FORWARD.swap(true, Ordering::AcqRel) {
-                    diagnostic_log(format!("first mouse message forwarded posted={posted}"));
-                }
-            } else {
-                SendMessageW(child, message, wparam, lparam);
-            }
+    if message == WM_MOUSEMOVE {
+        if !MOUSE_TRACKING.swap(true, Ordering::AcqRel) {
+            let mut tracking = TRACKMOUSEEVENT {
+                cbSize: std::mem::size_of::<TRACKMOUSEEVENT>() as u32,
+                dwFlags: TME_LEAVE,
+                hwndTrack: hwnd,
+                dwHoverTime: 0,
+            };
+            TrackMouseEvent(&mut tracking);
+            mpv_input_command(&["keypress", "MOUSE_ENTER"]);
+        }
+        let delivered = mpv_mouse_position(lparam);
+        if !FIRST_MOUSE_FORWARD.swap(true, Ordering::AcqRel) {
+            diagnostic_log(format!("first mouse command delivered={delivered}"));
+        }
+        return 0;
+    }
 
-            if matches!(message, WM_LBUTTONDOWN | WM_MBUTTONDOWN | WM_RBUTTONDOWN)
-                && !FIRST_CLICK_FORWARD.swap(true, Ordering::AcqRel)
-            {
-                diagnostic_log("first click message forwarded synchronously");
+    if message == WM_MOUSE_LEAVE {
+        MOUSE_TRACKING.store(false, Ordering::Release);
+        mpv_input_command(&["keypress", "MOUSE_LEAVE"]);
+        return 0;
+    }
+
+    let button = match message {
+        WM_LBUTTONDOWN | WM_LBUTTONUP => Some("MBTN_LEFT"),
+        WM_MBUTTONDOWN | WM_MBUTTONUP => Some("MBTN_MID"),
+        WM_RBUTTONDOWN | WM_RBUTTONUP => Some("MBTN_RIGHT"),
+        _ => None,
+    };
+    if let Some(button) = button {
+        mpv_mouse_position(lparam);
+        let is_down = matches!(message, WM_LBUTTONDOWN | WM_MBUTTONDOWN | WM_RBUTTONDOWN);
+        if is_down {
+            SetCapture(hwnd);
+            mpv_input_command(&["keydown", button]);
+            if !FIRST_CLICK_FORWARD.swap(true, Ordering::AcqRel) {
+                diagnostic_log("first click delivered through libmpv keydown");
             }
-            if matches!(message, WM_KEYDOWN | WM_SYSKEYDOWN)
-                && !FIRST_KEY_FORWARD.swap(true, Ordering::AcqRel)
-            {
-                diagnostic_log("first key message forwarded synchronously");
+        } else {
+            mpv_input_command(&["keyup", button]);
+            ReleaseCapture();
+        }
+        return 0;
+    }
+
+    let double_button = match message {
+        WM_LBUTTONDBLCLK => Some("MBTN_LEFT_DBL"),
+        WM_MBUTTONDBLCLK => Some("MBTN_MID_DBL"),
+        WM_RBUTTONDBLCLK => Some("MBTN_RIGHT_DBL"),
+        _ => None,
+    };
+    if let Some(button) = double_button {
+        mpv_mouse_position(lparam);
+        mpv_input_command(&["keypress", button]);
+        return 0;
+    }
+
+    if matches!(message, WM_MOUSEWHEEL | WM_MOUSEHWHEEL) {
+        let delta = ((wparam >> 16) & 0xffff) as u16 as i16;
+        let key = match (message, delta.is_positive()) {
+            (WM_MOUSEWHEEL, true) => "WHEEL_UP",
+            (WM_MOUSEWHEEL, false) => "WHEEL_DOWN",
+            (WM_MOUSEHWHEEL, true) => "WHEEL_RIGHT",
+            _ => "WHEEL_LEFT",
+        };
+        let scale = (f64::from(delta.unsigned_abs()) / 120.0).to_string();
+        mpv_input_command(&["keypress", key, &scale]);
+        return 0;
+    }
+
+    if matches!(message, WM_KEYDOWN | WM_SYSKEYDOWN | WM_KEYUP | WM_SYSKEYUP) {
+        if let Some(key) = mpv_key_name(wparam as u16) {
+            let command = if matches!(message, WM_KEYDOWN | WM_SYSKEYDOWN) {
+                "keydown"
+            } else {
+                "keyup"
+            };
+            mpv_input_command(&[command, key]);
+            if command == "keydown" && !FIRST_KEY_FORWARD.swap(true, Ordering::AcqRel) {
+                diagnostic_log("first key delivered through libmpv command");
             }
             return 0;
         }
