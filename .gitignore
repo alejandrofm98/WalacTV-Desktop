@@ -19,6 +19,10 @@ src-tauri/target/
 .opencode/
 .slim/deepwork/
 
+# BEGIN oh-my-opencode-slim clonedeps
+.slim/clonedeps/repos/
+# END oh-my-opencode-slim clonedeps
+
 # Certificates and keys
 *.pem
 *.key

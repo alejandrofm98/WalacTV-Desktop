@@ -88,6 +88,8 @@ export class PlayerService extends EventTarget {
   // ── Attach / Detach ──────────────────────────────────────────────
 
   async attach(videoEl?: HTMLVideoElement | null): Promise<void> {
+    if (this._attached) return
+
     this._videoEl = videoEl ?? null
 
     try {
@@ -121,8 +123,7 @@ export class PlayerService extends EventTarget {
     this._unlistenTauri()
     if (this._attached) {
       try {
-        await invoke('mpv_command', { args: ['stop'] })
-        await invoke('mpv_set_property', { name: 'vo', value: 'null' })
+        await invoke('mpv_destroy')
       } catch (err) {
         console.error('[PlayerService] detach fallo:', err)
       }

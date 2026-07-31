@@ -18,6 +18,8 @@ use commands::player::{
 #[cfg(target_os = "linux")]
 use commands::player::mpv_get_render_frame;
 
+#[cfg(target_os = "windows")]
+use crate::mpv::platform::windows::WindowsVideoHost;
 use serde::Serialize;
 use tauri::image::Image;
 use tauri::{Emitter, Manager};
@@ -113,6 +115,35 @@ pub fn run() {
                     let _ = window.set_size(tauri::PhysicalSize::new(new_w, new_h));
                     let _ = window.center();
                 }
+            }
+
+            // ── Windows: create video popup host and sync on window events ──
+            #[cfg(target_os = "windows")]
+            {
+                // Get the main window HWND for use as the popup owner.
+                let main_window = app.get_webview_window("main")
+                    .ok_or("Main window not found")?;
+                let parent_hwnd = crate::mpv::platform::get_mpv_wid(&main_window)
+                    .map_err(|e| format!("Failed to get main window HWND: {e}"))?;
+                let host = WindowsVideoHost::new(app.handle().clone(), parent_hwnd)
+                    .map_err(|e| format!("Failed to create video host window: {e}"))?;
+                app.manage(host);
+
+                // Sync popup position on Moved, Resized, or ScaleFactorChanged.
+                let app_clone = app.handle().clone();
+                main_window.on_window_event(move |event| {
+                    use tauri::WindowEvent;
+                    let should_sync = matches!(event, WindowEvent::Moved(_)
+                        | WindowEvent::Resized(_)
+                        | WindowEvent::ScaleFactorChanged { .. });
+                    if should_sync {
+                        if let Some(host) = app_clone.try_state::<WindowsVideoHost>() {
+                            if let Err(e) = host.sync() {
+                                log::warn!("WindowsVideoHost sync on window event failed: {e}");
+                            }
+                        }
+                    }
+                });
             }
 
             // Register global Escape shortcut so the player can always be

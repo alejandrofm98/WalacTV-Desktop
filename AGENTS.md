@@ -268,3 +268,10 @@ En runtime, `MpvApi::load()` recibe `app.path().resource_dir()` y prueba
 - Para regenerar: `pnpm tauri signer generate --ci --write-keys ~/.tauri/walactv-desktop.key`.
 - La private key se pasa al CI via secret `TAURI_SIGNING_PRIVATE_KEY`.
 
+## Cloned Dependency Source
+
+Read-only dependency source repositories are available under
+`.slim/clonedeps/repos/` for inspection. Do not edit these clones.
+
+- `.slim/clonedeps/repos/lukr54__airspace/` - `lukr54/airspace` at `450a7b4`; Tauri 2/mpv Win32 airspace and overlay reference.
+- `.slim/clonedeps/repos/AreChen__OpenPlayer/` - `AreChen/OpenPlayer` at `e30be4f`; Windows libmpv host and transparent overlay lifecycle reference.

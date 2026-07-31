@@ -15,6 +15,8 @@ use std::ffi::{c_char, c_int, CStr, CString};
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 use tauri::{AppHandle, Emitter};
+#[cfg(target_os = "windows")]
+use tauri::Manager;
 
 // ---------------------------------------------------------------------------
 // Observed property IDs (must match handle.rs if changed)
@@ -32,6 +34,8 @@ const VOLUME_ID: u64 = 9;
 const SPEED_ID: u64 = 10;
 const WIDTH_ID: u64 = 11;
 const HEIGHT_ID: u64 = 12;
+#[cfg(target_os = "windows")]
+const FULLSCREEN_ID: u64 = 13;
 
 // ---------------------------------------------------------------------------
 // Payload structs for Tauri events
@@ -140,6 +144,8 @@ pub fn mpv_event_loop(
     observe(&api, event_client, SPEED_ID, "speed", mpv_format::MPV_FORMAT_DOUBLE);
     observe(&api, event_client, WIDTH_ID, "width", mpv_format::MPV_FORMAT_INT64);
     observe(&api, event_client, HEIGHT_ID, "height", mpv_format::MPV_FORMAT_INT64);
+    #[cfg(target_os = "windows")]
+    observe(&api, event_client, FULLSCREEN_ID, "fullscreen", mpv_format::MPV_FORMAT_FLAG);
 
     log::info!("mpv_event_loop: started, observing properties");
 
@@ -362,6 +368,16 @@ pub fn mpv_event_loop(
 
                     WIDTH_ID | HEIGHT_ID => {
                         // Could emit video-resolution if desired
+                    }
+
+                    #[cfg(target_os = "windows")]
+                    FULLSCREEN_ID => {
+                        if prop.format == mpv_format::MPV_FORMAT_FLAG && !value_ptr.is_null() {
+                            let is_fullscreen = unsafe { *(value_ptr as *mut c_int) != 0 };
+                            if let Some(window) = app_handle.get_webview_window("main") {
+                                let _ = window.set_fullscreen(is_fullscreen);
+                            }
+                        }
                     }
 
                     _ => {}

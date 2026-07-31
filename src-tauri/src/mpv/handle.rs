@@ -61,7 +61,9 @@ fn ensure_numeric_locale() {
 /// - Linux with uosc: mpv keyboard enabled for mouse input.
 /// - Linux fallback (no compositor / WALACTV_PLAYER_OSC=1 / uosc unavailable): native OSC.
 /// - Linux with `use_custom`: no OSC, no mpv keyboard (HTML controls).
-/// - Windows/macOS (always HTML controls): no OSC, no mpv keyboard.
+/// - Windows with uosc: default bindings + keyboard enabled.
+/// - Windows fallback: native OSC with full input enabled.
+/// - macOS: no OSC, no mpv keyboard (HTML controls).
 fn initial_options(_linux_use_custom: bool, uosc_available: bool) -> Vec<(&'static str, &'static str)> {
     let mut opts: Vec<(&'static str, &'static str)> = vec![
         ("ytdl", "no"),
@@ -76,10 +78,13 @@ fn initial_options(_linux_use_custom: bool, uosc_available: bool) -> Vec<(&'stat
     opts.push(("gpu-context", "auto"));
 
     if uosc_available {
-        // Keep the built-in OSC active until the uosc loader completes.
-        // The loader disables it after main.lua succeeds.
         opts.push(("osc", "yes"));
+        // Linux uosc: no default bindings (uosc + custom overlay pattern).
+        // Windows uosc: keep default bindings so uosc keyboard/mouse work.
+        #[cfg(target_os = "linux")]
         opts.push(("input-default-bindings", "no"));
+        #[cfg(target_os = "windows")]
+        opts.push(("input-default-bindings", "yes"));
         opts.push(("input-vo-keyboard", "yes"));
         opts.push(("input-cursor", "yes"));
         opts.push(("cursor-autohide", "3000"));
@@ -97,9 +102,19 @@ fn initial_options(_linux_use_custom: bool, uosc_available: bool) -> Vec<(&'stat
     // else: Linux fallback (no compositor / WALACTV_PLAYER_OSC=1 / uosc unavailable):
     // keep default OSC enabled so the user has native playback controls.
 
-    #[cfg(any(target_os = "windows", target_os = "macos"))]
+    #[cfg(target_os = "windows")]
     {
-        // No uosc: use HTML controls.
+        // Windows without uosc: native OSC with full input enabled.
+        opts.push(("osc", "yes"));
+        opts.push(("input-default-bindings", "yes"));
+        opts.push(("input-vo-keyboard", "yes"));
+        opts.push(("input-cursor", "yes"));
+        opts.push(("cursor-autohide", "3000"));
+    }
+
+    #[cfg(target_os = "macos")]
+    {
+        // macOS: HTML controls (no OSC, no keyboard input).
         opts.push(("osc", "no"));
         opts.push(("input-default-bindings", "no"));
         opts.push(("input-vo-keyboard", "no"));
@@ -144,13 +159,13 @@ impl MpvInstance {
     /// - macOS: NSView pointer cast to i64 (for `wid` property) or render context
     ///
     /// uosc availability is determined from `uosc_main_path.is_some()` and
-    /// controls whether uosc (Linux) or the HTML overlay (Windows/macOS)
-    /// provides the UI. `_linux_use_custom` is preserved for API compatibility;
-    /// the X11 lowering state is managed by `mpv_init` in the commands module.
+    /// controls whether uosc or native OSC provides the UI.
+    /// `_linux_use_custom` is preserved for API compatibility; the X11 lowering
+    /// state is managed by `mpv_init` in the commands module.
     ///
-    /// `uosc_main_path` and `uosc_fonts_dir`: when `Some` on Linux, the uosc
-    /// modern OSC script is loaded (via a loader wrapper that fixes package.path)
-    /// replacing the default mpv OSC.
+    /// `uosc_main_path` and `uosc_fonts_dir`: when `Some` on Linux or Windows,
+    /// the uosc modern OSC script is loaded (via a loader wrapper that fixes
+    /// package.path) replacing the default mpv OSC.
     pub fn new(
         api: Arc<MpvApi>,
         wid: i64,
@@ -197,8 +212,8 @@ impl MpvInstance {
             }
         }
 
-        // ── UOSC-specific options (Linux only) ──
-        #[cfg(target_os = "linux")]
+        // ── UOSC-specific options (Linux and Windows) ──
+        #[cfg(any(target_os = "linux", target_os = "windows"))]
         if let (Some(ref loader_path), Some(ref fonts_dir)) = (uosc_main_path.as_ref(), uosc_fonts_dir.as_ref()) {
             eprintln!("[mpv-uosc] Applying uosc options: loader={loader_path}, fonts={fonts_dir}");
 
@@ -274,8 +289,8 @@ impl MpvInstance {
             ));
         }
 
-        // Log loaded scripts to confirm uosc loaded (Linux only)
-        #[cfg(target_os = "linux")]
+        // Log loaded scripts to confirm uosc loaded (Linux and Windows)
+        #[cfg(any(target_os = "linux", target_os = "windows"))]
         if uosc_main_path.is_some() {
             let ptr = unsafe { (api.mpv_get_property_string)(handle, b"script-names\0".as_ptr().cast()) };
             if !ptr.is_null() {

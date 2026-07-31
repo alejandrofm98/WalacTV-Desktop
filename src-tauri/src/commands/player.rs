@@ -8,6 +8,8 @@
 use crate::mpv::ffi::{mpv_format, ensure_libmpv_installed, MpvApi, MpvError};
 use crate::mpv::handle::{MpvInstance, LinuxLoweringState};
 use crate::mpv::platform;
+#[cfg(target_os = "windows")]
+use crate::mpv::platform::windows::WindowsVideoHost;
 use parking_lot::Mutex;
 use serde::Serialize;
 use std::sync::Arc;
@@ -73,7 +75,7 @@ pub struct MpvVersionInfo {
 }
 
 // ---------------------------------------------------------------------------
-// UOSC path resolution (Linux only)
+// UOSC path resolution (Linux and Windows)
 // ---------------------------------------------------------------------------
 
 /// Resolve uosc loader script and fonts paths using Tauri's resource resolution.
@@ -85,7 +87,7 @@ pub struct MpvVersionInfo {
 /// 4. `std::env::current_dir()` → `resources/uosc/uosc.lua`
 ///
 /// Returns `(loader_path, fonts_dir_path)` — both `None` if unresolvable.
-#[cfg(target_os = "linux")]
+#[cfg(any(target_os = "linux", target_os = "windows"))]
 fn resolve_uosc_paths(app: &AppHandle) -> (Option<String>, Option<String>) {
     let mut candidates: Vec<std::path::PathBuf> = Vec::new();
 
@@ -164,6 +166,8 @@ pub fn mpv_init(
     state: State<'_, PlayerState>,
     window: tauri::Window,
 ) -> Result<serde_json::Value, String> {
+    #[cfg(target_os = "windows")]
+    let _ = &window;
     // Resolve the platform resource directory. On Windows, the bundled
     // libmpv-2.dll lives under <resource_dir>/libmpv/.
     let resource_dir = app.path().resource_dir().ok();
@@ -215,17 +219,35 @@ pub fn mpv_init(
         }
     };
 
-    // Get platform window ID for wid embedding
-    // On X11/Windows: returns the native window handle.
-    // On Wayland (with GDK_BACKEND=x11 fallback): returns X11 XID via XWayland.
+    // Serialize the complete player lifecycle. React may request another init
+    // before the previous instance has been torn down; two mpv children cannot
+    // safely share the same native host HWND.
+    let mut player_guard = state.inner.lock();
+    if let Some(previous) = player_guard.take() {
+        #[cfg(target_os = "windows")]
+        if let Some(host) = app.try_state::<WindowsVideoHost>() {
+            let _ = host.hide();
+        }
+        previous.destroy();
+    }
+
+    // Get platform window ID for wid embedding.
+    // On Windows: use the WindowsVideoHost popup HWND so mpv renders into a
+    // separate popup window, keeping WebView2 hit-testing intact.
+    // On other platforms: extract from the Tauri window handle directly.
+    #[cfg(target_os = "windows")]
+    let wid = {
+        let host = app.state::<WindowsVideoHost>();
+        host.sync()
+            .map_err(|e| format!("Failed to size video popup: {e}"))?;
+        host.wid()
+    };
+    #[cfg(not(target_os = "windows"))]
     let wid = platform::get_mpv_wid(&window)?;
 
     // ── Linux: detect compositor and compute custom-controls mode ──────
     #[cfg(target_os = "linux")]
     let use_custom = {
-        // overlay-HTML disabled — X11+GPU compositing limitation, using native OSC.
-        // The env override WALACTV_PLAYER_OSC is still honored for diagnostics/testing
-        // but the actual decision is forced to false.
         let osc_env = std::env::var("WALACTV_PLAYER_OSC");
         let force_osc = osc_env.as_deref().map(|v| v == "1").unwrap_or(false);
         let has_compositor = platform::linux::detect_compositor();
@@ -234,21 +256,21 @@ pub fn mpv_init(
         if force_osc {
             log::info!("mpv_init: WALACTV_PLAYER_OSC=1 — forzando OSC nativo");
         }
-        let result = false;  // was: !force_osc && has_compositor — overlay HTML disabled, always use native OSC
+        let result = false;
         eprintln!("[mpv-init] use_custom={} (overlay-HTML disabled, using native OSC)", result);
         result
     };
     #[cfg(not(target_os = "linux"))]
     let use_custom = false;
 
-    // ── Resolve uosc paths for modern UI (Linux only) ────────────────
-    #[cfg(target_os = "linux")]
+    // ── Resolve uosc paths for modern UI (Linux/Windows) ─────────────
+    #[cfg(any(target_os = "linux", target_os = "windows"))]
     let (uosc_main_path, uosc_fonts_dir) = resolve_uosc_paths(&app);
-    #[cfg(not(target_os = "linux"))]
+    #[cfg(target_os = "macos")]
     let (uosc_main_path, uosc_fonts_dir) = (None, None);
-    #[cfg(target_os = "linux")]
-    let uosc_available = uosc_main_path.is_some(); // snapshot before move into new()
-    #[cfg(not(target_os = "linux"))]
+    #[cfg(any(target_os = "linux", target_os = "windows"))]
+    let uosc_available = uosc_main_path.is_some();
+    #[cfg(target_os = "macos")]
     let uosc_available = false;
 
     // ── Linux: snapshot pre-children before mpv creates its child ─────
@@ -285,17 +307,19 @@ pub fn mpv_init(
         log::info!("mpv_init: Estado de bajada X11 configurado (top_xid=0x{:x})", top_xid);
     }
 
-    // VO/gpu-context/ao are configured pre-init in MpvInstance::new().
-    // Post-init vo/gpu-context manipulation is removed as redundant.
-
     // Start event loop
     instance.start_event_loop();
 
-    // Store in state
+    // ── Windows: show the video popup after successful init ────────────
+    #[cfg(target_os = "windows")]
     {
-        let mut guard = state.inner.lock();
-        *guard = Some(instance);
+        let host = app.state::<WindowsVideoHost>();
+        host.show()
+            .map_err(|e| format!("Failed to show video popup: {e}"))?;
     }
+
+    // Store in state while still holding the lifecycle lock acquired above.
+    *player_guard = Some(instance);
 
     log::info!(
         "mpv_init: player inicializado correctamente (modo wid, os={}, useCustom={})",
@@ -303,12 +327,13 @@ pub fn mpv_init(
         use_custom,
     );
 
-    // nativeControls=true when uosc is available (Linux only).
-    // When true, uosc renders controls via OSD/libass and the HTML overlay
-    // is hidden. When false, the React PlayerOverlay handles UI.
+    // nativeControls: Linux follows uosc availability; Windows always true
+    // (uosc or native OSC); macOS uses HTML overlay (false).
     #[cfg(target_os = "linux")]
     let native_controls = uosc_available;
-    #[cfg(not(target_os = "linux"))]
+    #[cfg(target_os = "windows")]
+    let native_controls = true;
+    #[cfg(target_os = "macos")]
     let native_controls = false;
 
     Ok(serde_json::json!({
@@ -414,12 +439,26 @@ pub fn mpv_observe_property(
 
 /// Destroy the mpv player and release all resources.
 #[tauri::command]
-pub fn mpv_destroy(state: State<'_, PlayerState>) -> Result<(), String> {
-    let mut guard = state.inner.lock();
-    if let Some(instance) = guard.take() {
+pub fn mpv_destroy(app: AppHandle, state: State<'_, PlayerState>) -> Result<(), String> {
+    #[cfg(not(target_os = "windows"))]
+    let _ = &app;
+
+    // Take the instance under the same lock held throughout mpv_init so destroy
+    // cannot hide or tear down a newly initialized player midway through init.
+    let mut player_guard = state.inner.lock();
+    let instance = player_guard.take();
+
+    // On Windows, hide the video popup before destroying mpv.
+    #[cfg(target_os = "windows")]
+    if let Some(host) = app.try_state::<WindowsVideoHost>() {
+        let _ = host.hide();
+    }
+
+    if let Some(instance) = instance {
         instance.destroy();
         log::info!("mpv_destroy: player destroyed");
     }
+    drop(player_guard);
     Ok(())
 }
 
