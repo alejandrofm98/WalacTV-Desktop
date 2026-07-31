@@ -26,10 +26,9 @@ use windows_sys::Win32::UI::WindowsAndMessaging::{
     ShowWindow, WindowFromPoint, GUITHREADINFO, GW_CHILD, HWND_TOP, MA_ACTIVATE, SWP_NOACTIVATE,
     SW_HIDE, SW_SHOW, WM_CHAR, WM_KEYDOWN, WM_KEYUP, WM_KILLFOCUS, WM_LBUTTONDBLCLK,
     WM_LBUTTONDOWN, WM_LBUTTONUP, WM_MBUTTONDBLCLK, WM_MBUTTONDOWN, WM_MBUTTONUP, WM_MOUSEACTIVATE,
-    WM_MOUSEHWHEEL, WM_MOUSELEAVE, WM_MOUSEMOVE, WM_MOUSEWHEEL, WM_RBUTTONDBLCLK, WM_RBUTTONDOWN,
-    WM_RBUTTONUP, WM_SETFOCUS, WM_SYSCHAR, WM_SYSKEYDOWN, WM_SYSKEYUP, WM_UNICHAR,
-    WM_XBUTTONDBLCLK, WM_XBUTTONDOWN, WM_XBUTTONUP, WNDCLASSEXW, WS_CLIPCHILDREN, WS_EX_TOOLWINDOW,
-    WS_POPUP,
+    WM_MOUSEHWHEEL, WM_MOUSEMOVE, WM_MOUSEWHEEL, WM_RBUTTONDBLCLK, WM_RBUTTONDOWN, WM_RBUTTONUP,
+    WM_SETFOCUS, WM_SYSCHAR, WM_SYSKEYDOWN, WM_SYSKEYUP, WM_UNICHAR, WM_XBUTTONDBLCLK,
+    WM_XBUTTONDOWN, WM_XBUTTONUP, WNDCLASSEXW, WS_CLIPCHILDREN, WS_EX_TOOLWINDOW, WS_POPUP,
 };
 
 fn diagnostic_path() -> std::path::PathBuf {
@@ -67,8 +66,7 @@ fn class_name() -> *const u16 {
 
 /// Register the popup window class once per process.
 ///
-/// Uses `WNDCLASSEXW` with `DefWindowProcW` directly (no wrapper closure)
-/// to avoid STATIC capture issues that break hit-test.
+/// Uses a small window procedure that forwards popup input to mpv's child.
 fn ensure_window_class() -> Result<(), u32> {
     WND_CLASS_INIT
         .get_or_init(|| unsafe {
@@ -112,7 +110,6 @@ unsafe extern "system" fn host_window_proc(
         if matches!(
             message,
             WM_MOUSEMOVE
-                | WM_MOUSELEAVE
                 | WM_LBUTTONDOWN
                 | WM_LBUTTONUP
                 | WM_LBUTTONDBLCLK
