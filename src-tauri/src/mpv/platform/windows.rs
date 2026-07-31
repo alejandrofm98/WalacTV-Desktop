@@ -22,9 +22,14 @@ use windows_sys::Win32::UI::Input::KeyboardAndMouse::{GetFocus, SetActiveWindow,
 use windows_sys::Win32::UI::WindowsAndMessaging::{
     CreateWindowExW, DefWindowProcW, GetClassNameW, GetClientRect, GetCursorPos,
     GetForegroundWindow, GetGUIThreadInfo, GetWindow, GetWindowRect, GetWindowThreadProcessId,
-    IsWindow, IsWindowVisible, RegisterClassExW, SetForegroundWindow, SetWindowPos, ShowWindow,
-    WindowFromPoint, GUITHREADINFO, GW_CHILD, HWND_TOP, SWP_NOACTIVATE, SW_HIDE, SW_SHOW,
-    WNDCLASSEXW, WS_CLIPCHILDREN, WS_EX_TOOLWINDOW, WS_POPUP,
+    IsWindow, IsWindowVisible, PostMessageW, RegisterClassExW, SetForegroundWindow, SetWindowPos,
+    ShowWindow, WindowFromPoint, GUITHREADINFO, GW_CHILD, HWND_TOP, MA_ACTIVATE, SWP_NOACTIVATE,
+    SW_HIDE, SW_SHOW, WM_CHAR, WM_KEYDOWN, WM_KEYUP, WM_KILLFOCUS, WM_LBUTTONDBLCLK,
+    WM_LBUTTONDOWN, WM_LBUTTONUP, WM_MBUTTONDBLCLK, WM_MBUTTONDOWN, WM_MBUTTONUP, WM_MOUSEACTIVATE,
+    WM_MOUSEHWHEEL, WM_MOUSELEAVE, WM_MOUSEMOVE, WM_MOUSEWHEEL, WM_RBUTTONDBLCLK, WM_RBUTTONDOWN,
+    WM_RBUTTONUP, WM_SETFOCUS, WM_SYSCHAR, WM_SYSKEYDOWN, WM_SYSKEYUP, WM_UNICHAR,
+    WM_XBUTTONDBLCLK, WM_XBUTTONDOWN, WM_XBUTTONUP, WNDCLASSEXW, WS_CLIPCHILDREN, WS_EX_TOOLWINDOW,
+    WS_POPUP,
 };
 
 fn diagnostic_path() -> std::path::PathBuf {
@@ -50,6 +55,8 @@ pub fn diagnostic_log(message: impl AsRef<str>) {
 // ---------------------------------------------------------------------------
 
 static WND_CLASS_INIT: OnceLock<Result<(), u32>> = OnceLock::new();
+static FIRST_MOUSE_FORWARD: AtomicBool = AtomicBool::new(false);
+static FIRST_KEY_FORWARD: AtomicBool = AtomicBool::new(false);
 
 /// Return the class name pointer, lazily encoding the wide string.
 fn class_name() -> *const u16 {
@@ -63,13 +70,6 @@ fn class_name() -> *const u16 {
 /// Uses `WNDCLASSEXW` with `DefWindowProcW` directly (no wrapper closure)
 /// to avoid STATIC capture issues that break hit-test.
 fn ensure_window_class() -> Result<(), u32> {
-    const _: () = {
-        // Validate that lpfnWndProc matches DefWindowProcW's signature.
-        // DefWindowProcW is `unsafe extern "system" fn(HWND, u32, usize, isize) -> isize`.
-        let _: Option<unsafe extern "system" fn(HWND, u32, usize, isize) -> isize> =
-            Some(DefWindowProcW);
-    };
-
     WND_CLASS_INIT
         .get_or_init(|| unsafe {
             let instance = GetModuleHandleW(std::ptr::null());
@@ -79,7 +79,7 @@ fn ensure_window_class() -> Result<(), u32> {
 
             let mut wc: WNDCLASSEXW = std::mem::zeroed();
             wc.cbSize = std::mem::size_of::<WNDCLASSEXW>() as u32;
-            wc.lpfnWndProc = Some(DefWindowProcW);
+            wc.lpfnWndProc = Some(host_window_proc);
             wc.hInstance = instance;
             wc.lpszClassName = class_name();
             if RegisterClassExW(&wc) == 0 {
@@ -93,6 +93,64 @@ fn ensure_window_class() -> Result<(), u32> {
         .as_ref()
         .map(|_| ())
         .map_err(|e| *e)
+}
+
+/// The popup wins hit-testing, so explicitly forward its input to mpv's child.
+unsafe extern "system" fn host_window_proc(
+    hwnd: HWND,
+    message: u32,
+    wparam: usize,
+    lparam: isize,
+) -> isize {
+    if message == WM_MOUSEACTIVATE {
+        SetFocus(hwnd);
+        return MA_ACTIVATE as isize;
+    }
+
+    let child = GetWindow(hwnd, GW_CHILD);
+    if !child.is_null() {
+        if matches!(
+            message,
+            WM_MOUSEMOVE
+                | WM_MOUSELEAVE
+                | WM_LBUTTONDOWN
+                | WM_LBUTTONUP
+                | WM_LBUTTONDBLCLK
+                | WM_MBUTTONDOWN
+                | WM_MBUTTONUP
+                | WM_MBUTTONDBLCLK
+                | WM_RBUTTONDOWN
+                | WM_RBUTTONUP
+                | WM_RBUTTONDBLCLK
+                | WM_XBUTTONDOWN
+                | WM_XBUTTONUP
+                | WM_XBUTTONDBLCLK
+                | WM_MOUSEWHEEL
+                | WM_MOUSEHWHEEL
+                | WM_KEYDOWN
+                | WM_KEYUP
+                | WM_SYSKEYDOWN
+                | WM_SYSKEYUP
+                | WM_CHAR
+                | WM_SYSCHAR
+                | WM_UNICHAR
+                | WM_SETFOCUS
+                | WM_KILLFOCUS
+        ) {
+            let posted = PostMessageW(child, message, wparam, lparam) != 0;
+            if message == WM_MOUSEMOVE && !FIRST_MOUSE_FORWARD.swap(true, Ordering::AcqRel) {
+                diagnostic_log(format!("first mouse message forwarded posted={posted}"));
+            }
+            if matches!(message, WM_KEYDOWN | WM_SYSKEYDOWN)
+                && !FIRST_KEY_FORWARD.swap(true, Ordering::AcqRel)
+            {
+                diagnostic_log(format!("first key message forwarded posted={posted}"));
+            }
+            return 0;
+        }
+    }
+
+    DefWindowProcW(hwnd, message, wparam, lparam)
 }
 
 // ---------------------------------------------------------------------------
