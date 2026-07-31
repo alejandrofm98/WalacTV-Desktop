@@ -4,9 +4,8 @@
 //! Tauri events to the frontend. Based on Soia's event_loop.rs pattern.
 
 use crate::mpv::ffi::{
-    c_str_to_string, mpv_event_end_file, mpv_event_id, mpv_event_log_message,
-    mpv_event_property, mpv_format,
-    mpv_handle, mpv_node, MpvApi,
+    c_str_to_string, mpv_event_end_file, mpv_event_id, mpv_event_log_message, mpv_event_property,
+    mpv_format, mpv_handle, mpv_node, MpvApi,
 };
 use crate::mpv::handle::LinuxLoweringState;
 use serde::Serialize;
@@ -14,9 +13,9 @@ use serde_json::json;
 use std::ffi::{c_char, c_int, CStr, CString};
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
-use tauri::{AppHandle, Emitter};
 #[cfg(target_os = "windows")]
 use tauri::Manager;
+use tauri::{AppHandle, Emitter};
 
 // ---------------------------------------------------------------------------
 // Observed property IDs (must match handle.rs if changed)
@@ -132,20 +131,98 @@ pub fn mpv_event_loop(
     eprintln!("[mpv-event] request_log_messages(warn) called on event client");
 
     // Observe properties
-    observe(&api, event_client, TIME_POS_ID, "time-pos", mpv_format::MPV_FORMAT_DOUBLE);
-    observe(&api, event_client, DURATION_ID, "duration", mpv_format::MPV_FORMAT_DOUBLE);
-    observe(&api, event_client, PAUSE_ID, "pause", mpv_format::MPV_FORMAT_FLAG);
-    observe(&api, event_client, TRACK_LIST_ID, "track-list", mpv_format::MPV_FORMAT_NODE);
-    observe(&api, event_client, MEDIA_TITLE_ID, "media-title", mpv_format::MPV_FORMAT_STRING);
-    observe(&api, event_client, EOF_REACHED_ID, "eof-reached", mpv_format::MPV_FORMAT_FLAG);
-    observe(&api, event_client, DEMUXER_CACHE_TIME_ID, "demuxer-cache-time", mpv_format::MPV_FORMAT_DOUBLE);
-    observe(&api, event_client, PAUSED_FOR_CACHE_ID, "paused-for-cache", mpv_format::MPV_FORMAT_FLAG);
-    observe(&api, event_client, VOLUME_ID, "volume", mpv_format::MPV_FORMAT_DOUBLE);
-    observe(&api, event_client, SPEED_ID, "speed", mpv_format::MPV_FORMAT_DOUBLE);
-    observe(&api, event_client, WIDTH_ID, "width", mpv_format::MPV_FORMAT_INT64);
-    observe(&api, event_client, HEIGHT_ID, "height", mpv_format::MPV_FORMAT_INT64);
+    observe(
+        &api,
+        event_client,
+        TIME_POS_ID,
+        "time-pos",
+        mpv_format::MPV_FORMAT_DOUBLE,
+    );
+    observe(
+        &api,
+        event_client,
+        DURATION_ID,
+        "duration",
+        mpv_format::MPV_FORMAT_DOUBLE,
+    );
+    observe(
+        &api,
+        event_client,
+        PAUSE_ID,
+        "pause",
+        mpv_format::MPV_FORMAT_FLAG,
+    );
+    observe(
+        &api,
+        event_client,
+        TRACK_LIST_ID,
+        "track-list",
+        mpv_format::MPV_FORMAT_NODE,
+    );
+    observe(
+        &api,
+        event_client,
+        MEDIA_TITLE_ID,
+        "media-title",
+        mpv_format::MPV_FORMAT_STRING,
+    );
+    observe(
+        &api,
+        event_client,
+        EOF_REACHED_ID,
+        "eof-reached",
+        mpv_format::MPV_FORMAT_FLAG,
+    );
+    observe(
+        &api,
+        event_client,
+        DEMUXER_CACHE_TIME_ID,
+        "demuxer-cache-time",
+        mpv_format::MPV_FORMAT_DOUBLE,
+    );
+    observe(
+        &api,
+        event_client,
+        PAUSED_FOR_CACHE_ID,
+        "paused-for-cache",
+        mpv_format::MPV_FORMAT_FLAG,
+    );
+    observe(
+        &api,
+        event_client,
+        VOLUME_ID,
+        "volume",
+        mpv_format::MPV_FORMAT_DOUBLE,
+    );
+    observe(
+        &api,
+        event_client,
+        SPEED_ID,
+        "speed",
+        mpv_format::MPV_FORMAT_DOUBLE,
+    );
+    observe(
+        &api,
+        event_client,
+        WIDTH_ID,
+        "width",
+        mpv_format::MPV_FORMAT_INT64,
+    );
+    observe(
+        &api,
+        event_client,
+        HEIGHT_ID,
+        "height",
+        mpv_format::MPV_FORMAT_INT64,
+    );
     #[cfg(target_os = "windows")]
-    observe(&api, event_client, FULLSCREEN_ID, "fullscreen", mpv_format::MPV_FORMAT_FLAG);
+    observe(
+        &api,
+        event_client,
+        FULLSCREEN_ID,
+        "fullscreen",
+        mpv_format::MPV_FORMAT_FLAG,
+    );
 
     log::info!("mpv_event_loop: started, observing properties");
 
@@ -192,6 +269,15 @@ pub fn mpv_event_loop(
                 let _ = app_handle.emit("mpv://file-loaded", MpvFileLoadedPayload);
                 emit_unified_event(&app_handle, "file-loaded", None);
 
+                #[cfg(target_os = "windows")]
+                if let Some(host) =
+                    app_handle.try_state::<crate::mpv::platform::windows::WindowsVideoHost>()
+                {
+                    if let Err(e) = host.focus() {
+                        log::warn!("WindowsVideoHost focus on file-loaded failed: {e}");
+                    }
+                }
+
                 // On Linux with custom controls, lower mpv child window below the
                 // webview so HTML controls render on top of the video.
                 #[cfg(target_os = "linux")]
@@ -204,7 +290,9 @@ pub fn mpv_event_loop(
                             &state.pre_children,
                         ) {
                             Ok(true) => {
-                                eprintln!("[mpv-events] Ventana mpv bajada correctamente bajo el webview");
+                                eprintln!(
+                                    "[mpv-events] Ventana mpv bajada correctamente bajo el webview"
+                                );
                                 state.child_lowered.store(true, Ordering::Release);
                             }
                             Ok(false) => {
@@ -216,13 +304,21 @@ pub fn mpv_event_loop(
                         }
                     }
                 }
-
             }
 
             mpv_event_id::MPV_EVENT_PLAYBACK_RESTART => {
                 is_playing.store(!last_is_paused, Ordering::Relaxed);
                 let _ = app_handle.emit("mpv://playback-restart", MpvRestartPayload);
                 emit_unified_event(&app_handle, "playback-restart", None);
+
+                #[cfg(target_os = "windows")]
+                if let Some(host) =
+                    app_handle.try_state::<crate::mpv::platform::windows::WindowsVideoHost>()
+                {
+                    if let Err(e) = host.focus() {
+                        log::warn!("WindowsVideoHost focus on playback-restart failed: {e}");
+                    }
+                }
             }
 
             mpv_event_id::MPV_EVENT_END_FILE => {
@@ -236,10 +332,17 @@ pub fn mpv_event_loop(
                 eprintln!("[mpv-events] MPV_EVENT_END_FILE: reason={reason}");
 
                 if !(end_file_emitted && reason == "eof") {
-                    let _ = app_handle.emit("mpv://end-file", MpvEndFilePayload {
-                        reason: reason.clone(),
-                    });
-                    emit_unified_event(&app_handle, "end-file", Some(json!({ "reason": reason.clone() })));
+                    let _ = app_handle.emit(
+                        "mpv://end-file",
+                        MpvEndFilePayload {
+                            reason: reason.clone(),
+                        },
+                    );
+                    emit_unified_event(
+                        &app_handle,
+                        "end-file",
+                        Some(json!({ "reason": reason.clone() })),
+                    );
                 }
                 end_file_emitted = reason == "eof";
 
@@ -266,7 +369,9 @@ pub fn mpv_event_loop(
                         if prop.format == mpv_format::MPV_FORMAT_DOUBLE && !value_ptr.is_null() {
                             last_time_pos = unsafe { *(value_ptr as *mut f64) };
                             last_buffered_pos = compute_buffered_pos(
-                                last_time_pos, last_duration, last_demuxer_cache_time,
+                                last_time_pos,
+                                last_duration,
+                                last_demuxer_cache_time,
                             );
                         }
                     }
@@ -275,7 +380,9 @@ pub fn mpv_event_loop(
                         if prop.format == mpv_format::MPV_FORMAT_DOUBLE && !value_ptr.is_null() {
                             last_duration = unsafe { *(value_ptr as *mut f64) };
                             last_buffered_pos = compute_buffered_pos(
-                                last_time_pos, last_duration, last_demuxer_cache_time,
+                                last_time_pos,
+                                last_duration,
+                                last_demuxer_cache_time,
                             );
                         }
                     }
@@ -301,7 +408,8 @@ pub fn mpv_event_loop(
                         if prop.format == mpv_format::MPV_FORMAT_NODE && !value_ptr.is_null() {
                             let node = unsafe { &*(value_ptr as *mut mpv_node) };
                             let tracks = parse_track_list(node);
-                            let _ = app_handle.emit("mpv://tracks-changed", MpvTracksPayload { tracks });
+                            let _ = app_handle
+                                .emit("mpv://tracks-changed", MpvTracksPayload { tracks });
                             emit_unified_event(&app_handle, "tracks-changed", None);
                         }
                     }
@@ -311,11 +419,19 @@ pub fn mpv_event_loop(
                             let title_ptr = unsafe { *(value_ptr as *mut *mut c_char) };
                             if let Some(title) = unsafe { c_str_to_string(title_ptr) } {
                                 let _ = app_handle.emit("mpv://media-title", &title);
-                                emit_unified_event(&app_handle, "media-title", Some(json!({ "title": title })));
+                                emit_unified_event(
+                                    &app_handle,
+                                    "media-title",
+                                    Some(json!({ "title": title })),
+                                );
                             }
                         } else if prop.format == mpv_format::MPV_FORMAT_NONE {
                             let _ = app_handle.emit("mpv://media-title", "");
-                            emit_unified_event(&app_handle, "media-title", Some(json!({ "title": "" })));
+                            emit_unified_event(
+                                &app_handle,
+                                "media-title",
+                                Some(json!({ "title": "" })),
+                            );
                         }
                     }
 
@@ -335,7 +451,9 @@ pub fn mpv_event_loop(
                             last_demuxer_cache_time = unsafe { *(value_ptr as *mut f64) };
                             if last_demuxer_cache_time.is_finite() {
                                 last_buffered_pos = compute_buffered_pos(
-                                    last_time_pos, last_duration, last_demuxer_cache_time,
+                                    last_time_pos,
+                                    last_duration,
+                                    last_demuxer_cache_time,
                                 );
                             }
                         }
@@ -352,7 +470,11 @@ pub fn mpv_event_loop(
                             let volume = unsafe { *(value_ptr as *mut f64) };
                             let normalized = (volume / 100.0).clamp(0.0, 1.0);
                             let _ = app_handle.emit("mpv://volume", normalized);
-                            emit_unified_event(&app_handle, "volume", Some(json!({ "volume": normalized })));
+                            emit_unified_event(
+                                &app_handle,
+                                "volume",
+                                Some(json!({ "volume": normalized })),
+                            );
                         }
                     }
 
@@ -361,7 +483,11 @@ pub fn mpv_event_loop(
                             let speed = unsafe { *(value_ptr as *mut f64) };
                             if speed.is_finite() && speed > 0.0 {
                                 let _ = app_handle.emit("mpv://speed", speed);
-                                emit_unified_event(&app_handle, "speed", Some(json!({ "speed": speed })));
+                                emit_unified_event(
+                                    &app_handle,
+                                    "speed",
+                                    Some(json!({ "speed": speed })),
+                                );
                             }
                         }
                     }
@@ -415,7 +541,12 @@ pub fn mpv_event_loop(
                     let text_s = if log_msg.text.is_null() {
                         "(null)".to_string()
                     } else {
-                        unsafe { CStr::from_ptr(log_msg.text).to_string_lossy().trim().to_string() }
+                        unsafe {
+                            CStr::from_ptr(log_msg.text)
+                                .to_string_lossy()
+                                .trim()
+                                .to_string()
+                        }
                     };
                     eprintln!("[mpv-log] {}: {}: {}", prefix_s, level_s, text_s);
                 }
@@ -432,7 +563,9 @@ pub fn mpv_event_loop(
         }
     }
 
-    unsafe { (api.mpv_destroy)(event_client); }
+    unsafe {
+        (api.mpv_destroy)(event_client);
+    }
     log::info!("mpv_event_loop: exited");
 }
 
@@ -440,13 +573,7 @@ pub fn mpv_event_loop(
 // Helper functions
 // ---------------------------------------------------------------------------
 
-fn observe(
-    api: &MpvApi,
-    client: *mut mpv_handle,
-    id: u64,
-    name: &str,
-    format: mpv_format,
-) {
+fn observe(api: &MpvApi, client: *mut mpv_handle, id: u64, name: &str, format: mpv_format) {
     let c_name = CString::new(name).expect("Property name contains null byte");
     let ret = unsafe { (api.mpv_observe_property)(client, id, c_name.as_ptr(), format) };
     if ret < 0 {
@@ -476,7 +603,11 @@ fn end_file_reason_label(reason: c_int) -> &'static str {
 }
 
 fn sanitize_f64(value: f64) -> f64 {
-    if value.is_finite() { value.max(0.0) } else { 0.0 }
+    if value.is_finite() {
+        value.max(0.0)
+    } else {
+        0.0
+    }
 }
 
 fn compute_buffered_pos(time_pos: f64, duration: f64, cache_time: f64) -> f64 {
@@ -484,7 +615,11 @@ fn compute_buffered_pos(time_pos: f64, duration: f64, cache_time: f64) -> f64 {
     let safe_cache = sanitize_f64(cache_time);
     // Some mpv builds report absolute cache-end, others "seconds ahead"
     let absolute = safe_cache.abs() > safe_pos.abs() && safe_cache > safe_pos;
-    let mut buffered = if absolute { safe_cache } else { safe_pos + safe_cache };
+    let mut buffered = if absolute {
+        safe_cache
+    } else {
+        safe_pos + safe_cache
+    };
     if duration.is_finite() && duration > 0.0 {
         buffered = buffered.min(duration);
     }
@@ -541,7 +676,9 @@ fn emit_unified_event(app_handle: &AppHandle, event_type: &str, extra: Option<se
 fn parse_track_list(node: &mpv_node) -> Vec<MpvTrackInfo> {
     let mut tracks = Vec::new();
 
-    if node.format != mpv_format::MPV_FORMAT_NODE_ARRAY && node.format != mpv_format::MPV_FORMAT_NODE_MAP {
+    if node.format != mpv_format::MPV_FORMAT_NODE_ARRAY
+        && node.format != mpv_format::MPV_FORMAT_NODE_MAP
+    {
         return tracks;
     }
 

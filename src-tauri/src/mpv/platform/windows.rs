@@ -13,17 +13,15 @@ use std::sync::OnceLock;
 use std::time::Duration;
 use tauri::AppHandle;
 
-use windows_sys::Win32::Foundation::{
-    GetLastError, HWND, POINT, RECT, ERROR_CLASS_ALREADY_EXISTS,
-};
+use windows_sys::Win32::Foundation::{GetLastError, ERROR_CLASS_ALREADY_EXISTS, HWND, POINT, RECT};
 use windows_sys::Win32::Graphics::Gdi::ClientToScreen;
 use windows_sys::Win32::System::LibraryLoader::GetModuleHandleW;
-use windows_sys::Win32::UI::Input::KeyboardAndMouse::SetFocus;
+use windows_sys::Win32::System::Threading::{AttachThreadInput, GetCurrentThreadId};
+use windows_sys::Win32::UI::Input::KeyboardAndMouse::{GetFocus, SetActiveWindow, SetFocus};
 use windows_sys::Win32::UI::WindowsAndMessaging::{
-    CreateWindowExW, DefWindowProcW, GetClientRect, GetWindow, IsWindow,
-    RegisterClassExW, SetForegroundWindow, SetWindowPos, ShowWindow, GW_CHILD,
-    HWND_TOP, SW_HIDE, SW_SHOW, SWP_NOACTIVATE, WNDCLASSEXW, WS_CLIPCHILDREN,
-    WS_EX_TOOLWINDOW, WS_POPUP,
+    CreateWindowExW, DefWindowProcW, GetClientRect, GetWindow, GetWindowThreadProcessId, IsWindow,
+    RegisterClassExW, SetForegroundWindow, SetWindowPos, ShowWindow, GW_CHILD, HWND_TOP,
+    SWP_NOACTIVATE, SW_HIDE, SW_SHOW, WNDCLASSEXW, WS_CLIPCHILDREN, WS_EX_TOOLWINDOW, WS_POPUP,
 };
 
 // ---------------------------------------------------------------------------
@@ -126,10 +124,9 @@ impl WindowsVideoHost {
         };
 
         if popup.is_null() {
-            return Err(format!(
-                "CreateWindowExW failed: last_error={}",
-                unsafe { GetLastError() }
-            ));
+            return Err(format!("CreateWindowExW failed: last_error={}", unsafe {
+                GetLastError()
+            }));
         }
 
         Ok(WindowsVideoHost {
@@ -185,6 +182,11 @@ impl WindowsVideoHost {
     /// Does not change the `visible` flag.
     pub fn sync(&self) -> Result<(), String> {
         self.dispatch(|owner, popup| sync_raw(owner, popup))
+    }
+
+    /// Focus mpv's child after the video output HWND has been created.
+    pub fn focus(&self) -> Result<(), String> {
+        self.dispatch(|_owner, popup| focus_child_raw(popup))
     }
 
     // ------------------------------------------------------------------
@@ -245,7 +247,10 @@ fn sync_raw(owner: isize, popup: isize) -> Result<(), String> {
             bottom: 0,
         };
         if GetClientRect(owner, &mut rect) == 0 {
-            return Err(format!("GetClientRect failed: last_error={}", GetLastError()));
+            return Err(format!(
+                "GetClientRect failed: last_error={}",
+                GetLastError()
+            ));
         }
 
         let width = rect.right - rect.left;
@@ -257,11 +262,17 @@ fn sync_raw(owner: isize, popup: isize) -> Result<(), String> {
 
         let mut pt = POINT { x: 0, y: 0 };
         if ClientToScreen(owner, &mut pt) == 0 {
-            return Err(format!("ClientToScreen failed: last_error={}", GetLastError()));
+            return Err(format!(
+                "ClientToScreen failed: last_error={}",
+                GetLastError()
+            ));
         }
 
         if SetWindowPos(popup, HWND_TOP, pt.x, pt.y, width, height, SWP_NOACTIVATE) == 0 {
-            return Err(format!("SetWindowPos failed: last_error={}", GetLastError()));
+            return Err(format!(
+                "SetWindowPos failed: last_error={}",
+                GetLastError()
+            ));
         }
     }
     Ok(())
@@ -278,13 +289,56 @@ fn show_raw(owner: isize, popup: isize) -> Result<(), String> {
         // success/failure. Do not read GetLastError after ShowWindow.
         ShowWindow(popup, SW_SHOW);
 
-        // Best-effort foreground activation.
+        // Best-effort activation. The mpv child usually does not exist until
+        // after loadfile, so the event loop focuses it again on FILE_LOADED.
+        SetForegroundWindow(popup);
+    }
+    Ok(())
+}
+
+/// Focus mpv's child window, temporarily joining its Win32 input queue when
+/// mpv created the child on a different thread.
+fn focus_child_raw(popup: isize) -> Result<(), String> {
+    unsafe {
+        let popup: HWND = popup as *mut _;
+        if IsWindow(popup) == 0 {
+            return Err("popup window is no longer valid".to_string());
+        }
+
+        let child = GetWindow(popup, GW_CHILD);
+        if child.is_null() {
+            return Err("mpv child window is not available yet".to_string());
+        }
+
         SetForegroundWindow(popup);
 
-        // Focus mpv's child window so keyboard input reaches uosc/native-OSC.
-        let child = GetWindow(popup, GW_CHILD);
-        if !child.is_null() {
-            SetFocus(child);
+        let current_thread = GetCurrentThreadId();
+        let child_thread = GetWindowThreadProcessId(child, std::ptr::null_mut());
+        if child_thread == 0 {
+            return Err(format!(
+                "GetWindowThreadProcessId failed: last_error={}",
+                GetLastError()
+            ));
+        }
+
+        let attach_needed = current_thread != child_thread;
+        if attach_needed && AttachThreadInput(current_thread, child_thread, 1) == 0 {
+            return Err(format!(
+                "AttachThreadInput failed: last_error={}",
+                GetLastError()
+            ));
+        }
+
+        SetActiveWindow(popup);
+        SetFocus(child);
+        let focused = GetFocus() == child;
+
+        if attach_needed {
+            AttachThreadInput(current_thread, child_thread, 0);
+        }
+
+        if !focused {
+            return Err("SetFocus did not focus the mpv child window".to_string());
         }
     }
     Ok(())
