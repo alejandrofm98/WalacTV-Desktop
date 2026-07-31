@@ -14,6 +14,8 @@ use std::ffi::{c_char, c_int, CStr, CString};
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 #[cfg(target_os = "windows")]
+use std::time::{Duration, Instant};
+#[cfg(target_os = "windows")]
 use tauri::Manager;
 use tauri::{AppHandle, Emitter};
 
@@ -125,10 +127,15 @@ pub fn mpv_event_loop(
 
     // mpv_request_log_messages is per-handle; keep important diagnostics while
     // avoiding verbose messages that may contain sensitive stream URLs.
-    if let Ok(level_c) = std::ffi::CString::new("warn") {
+    let log_level = if cfg!(target_os = "windows") {
+        "info"
+    } else {
+        "warn"
+    };
+    if let Ok(level_c) = std::ffi::CString::new(log_level) {
         unsafe { (api.mpv_request_log_messages)(event_client, level_c.as_ptr()) };
     }
-    eprintln!("[mpv-event] request_log_messages(warn) called on event client");
+    eprintln!("[mpv-event] request_log_messages({log_level}) called on event client");
 
     // Observe properties
     observe(
@@ -234,6 +241,8 @@ pub fn mpv_event_loop(
     let mut last_is_buffering: bool = false;
     let mut last_demuxer_cache_time: f64 = 0.0;
     let mut end_file_emitted: bool = false;
+    #[cfg(target_os = "windows")]
+    let mut last_input_snapshot = Instant::now() - Duration::from_secs(2);
 
     loop {
         if stop_flag.load(Ordering::Relaxed) {
@@ -242,6 +251,17 @@ pub fn mpv_event_loop(
 
         if take_back_request(&api, event_client) {
             let _ = app_handle.emit("player://close", ());
+        }
+
+        #[cfg(target_os = "windows")]
+        if last_input_snapshot.elapsed() >= Duration::from_secs(2) {
+            if let Some(host) = app_handle
+                .try_state::<crate::mpv::platform::windows::WindowsVideoHost>()
+                .filter(|host| host.is_visible())
+            {
+                let _ = host.log_input_snapshot();
+            }
+            last_input_snapshot = Instant::now();
         }
 
         let event = unsafe { (api.mpv_wait_event)(event_client, 0.1) };
@@ -268,6 +288,9 @@ pub fn mpv_event_loop(
                 end_file_emitted = false;
                 let _ = app_handle.emit("mpv://file-loaded", MpvFileLoadedPayload);
                 emit_unified_event(&app_handle, "file-loaded", None);
+
+                #[cfg(target_os = "windows")]
+                log_windows_mpv_state(&api, event_client);
 
                 #[cfg(target_os = "windows")]
                 if let Some(host) =
@@ -549,6 +572,18 @@ pub fn mpv_event_loop(
                         }
                     };
                     eprintln!("[mpv-log] {}: {}: {}", prefix_s, level_s, text_s);
+                    #[cfg(target_os = "windows")]
+                    {
+                        let prefix = prefix_s.to_ascii_lowercase();
+                        if ["uosc", "osc", "lua", "input", "win32"]
+                            .iter()
+                            .any(|value| prefix.contains(value))
+                        {
+                            crate::mpv::platform::windows::diagnostic_log(format!(
+                                "mpv[{prefix_s}/{level_s}] {text_s}"
+                            ));
+                        }
+                    }
                 }
             }
 
@@ -579,6 +614,30 @@ fn observe(api: &MpvApi, client: *mut mpv_handle, id: u64, name: &str, format: m
     if ret < 0 {
         log::warn!("observe_property({name}) failed: {ret}");
     }
+}
+
+#[cfg(target_os = "windows")]
+fn log_windows_mpv_state(api: &MpvApi, client: *mut mpv_handle) {
+    fn property(api: &MpvApi, client: *mut mpv_handle, name: &str) -> String {
+        let Ok(name) = CString::new(name) else {
+            return "invalid-name".to_string();
+        };
+        let value = unsafe { (api.mpv_get_property_string)(client, name.as_ptr()) };
+        if value.is_null() {
+            return "unavailable".to_string();
+        }
+        let result = unsafe { CStr::from_ptr(value).to_string_lossy().to_string() };
+        unsafe { (api.mpv_free)(value.cast()) };
+        result
+    }
+
+    crate::mpv::platform::windows::diagnostic_log(format!(
+        "file-loaded mpv-state script-names={:?} osc={:?} input-vo-keyboard={:?} input-cursor={:?}",
+        property(api, client, "script-names"),
+        property(api, client, "osc"),
+        property(api, client, "input-vo-keyboard"),
+        property(api, client, "input-cursor"),
+    ));
 }
 
 fn take_back_request(api: &MpvApi, client: *mut mpv_handle) -> bool {

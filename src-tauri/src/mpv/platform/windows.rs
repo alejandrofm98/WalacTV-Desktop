@@ -11,6 +11,7 @@
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::OnceLock;
 use std::time::Duration;
+use std::{fs::OpenOptions, io::Write};
 use tauri::AppHandle;
 
 use windows_sys::Win32::Foundation::{GetLastError, ERROR_CLASS_ALREADY_EXISTS, HWND, POINT, RECT};
@@ -19,10 +20,30 @@ use windows_sys::Win32::System::LibraryLoader::GetModuleHandleW;
 use windows_sys::Win32::System::Threading::{AttachThreadInput, GetCurrentThreadId};
 use windows_sys::Win32::UI::Input::KeyboardAndMouse::{GetFocus, SetActiveWindow, SetFocus};
 use windows_sys::Win32::UI::WindowsAndMessaging::{
-    CreateWindowExW, DefWindowProcW, GetClientRect, GetWindow, GetWindowThreadProcessId, IsWindow,
-    RegisterClassExW, SetForegroundWindow, SetWindowPos, ShowWindow, GW_CHILD, HWND_TOP,
-    SWP_NOACTIVATE, SW_HIDE, SW_SHOW, WNDCLASSEXW, WS_CLIPCHILDREN, WS_EX_TOOLWINDOW, WS_POPUP,
+    CreateWindowExW, DefWindowProcW, GetClassNameW, GetClientRect, GetCursorPos,
+    GetForegroundWindow, GetGUIThreadInfo, GetWindow, GetWindowRect, GetWindowThreadProcessId,
+    IsWindow, IsWindowVisible, RegisterClassExW, SetForegroundWindow, SetWindowPos, ShowWindow,
+    WindowFromPoint, GUITHREADINFO, GW_CHILD, HWND_TOP, SWP_NOACTIVATE, SW_HIDE, SW_SHOW,
+    WNDCLASSEXW, WS_CLIPCHILDREN, WS_EX_TOOLWINDOW, WS_POPUP,
 };
+
+fn diagnostic_path() -> std::path::PathBuf {
+    std::env::temp_dir().join("walactv-player.log")
+}
+
+pub fn diagnostic_log(message: impl AsRef<str>) {
+    let timestamp = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|duration| duration.as_millis())
+        .unwrap_or_default();
+    if let Ok(mut file) = OpenOptions::new()
+        .create(true)
+        .append(true)
+        .open(diagnostic_path())
+    {
+        let _ = writeln!(file, "[{timestamp}] {}", message.as_ref());
+    }
+}
 
 // ---------------------------------------------------------------------------
 // Window class registration (once per process)
@@ -101,6 +122,8 @@ impl WindowsVideoHost {
     ///
     /// Must be called from the Tauri main thread (typically in `setup()`).
     pub fn new(app: AppHandle, parent_hwnd: i64) -> Result<Self, String> {
+        let _ = std::fs::write(diagnostic_path(), "WalacTV Windows player diagnostics\n");
+        diagnostic_log(format!("creating host owner=0x{:x}", parent_hwnd as usize));
         ensure_window_class()
             .map_err(|err| format!("RegisterClassExW failed: last_error={err}"))?;
 
@@ -128,6 +151,8 @@ impl WindowsVideoHost {
                 GetLastError()
             }));
         }
+
+        diagnostic_log(format!("host created popup={}", describe_hwnd(popup)));
 
         Ok(WindowsVideoHost {
             app,
@@ -162,6 +187,7 @@ impl WindowsVideoHost {
         if result.is_ok() {
             self.visible.store(true, Ordering::Release);
         }
+        diagnostic_log(format!("show result={result:?}"));
         result
     }
 
@@ -174,6 +200,7 @@ impl WindowsVideoHost {
         if result.is_ok() {
             self.visible.store(false, Ordering::Release);
         }
+        diagnostic_log(format!("hide result={result:?}"));
         result
     }
 
@@ -186,7 +213,14 @@ impl WindowsVideoHost {
 
     /// Focus mpv's child after the video output HWND has been created.
     pub fn focus(&self) -> Result<(), String> {
-        self.dispatch(|_owner, popup| focus_child_raw(popup))
+        let result = self.dispatch(|_owner, popup| focus_child_raw(popup));
+        diagnostic_log(format!("focus result={result:?}"));
+        result
+    }
+
+    /// Record the current cursor hit-test and process-wide focus state.
+    pub fn log_input_snapshot(&self) -> Result<(), String> {
+        self.dispatch(|owner, popup| log_input_snapshot_raw(owner, popup))
     }
 
     // ------------------------------------------------------------------
@@ -340,6 +374,76 @@ fn focus_child_raw(popup: isize) -> Result<(), String> {
         if !focused {
             return Err("SetFocus did not focus the mpv child window".to_string());
         }
+    }
+    Ok(())
+}
+
+fn describe_hwnd(hwnd: HWND) -> String {
+    if hwnd.is_null() {
+        return "NULL".to_string();
+    }
+
+    unsafe {
+        let mut class_name = [0u16; 128];
+        let class_len = GetClassNameW(hwnd, class_name.as_mut_ptr(), class_name.len() as i32);
+        let class = String::from_utf16_lossy(&class_name[..class_len.max(0) as usize]);
+        let mut rect: RECT = std::mem::zeroed();
+        let has_rect = GetWindowRect(hwnd, &mut rect) != 0;
+        let thread = GetWindowThreadProcessId(hwnd, std::ptr::null_mut());
+        format!(
+            "0x{:x} class={class:?} visible={} thread={thread} rect={}",
+            hwnd as usize,
+            IsWindowVisible(hwnd) != 0,
+            if has_rect {
+                format!("{},{},{},{}", rect.left, rect.top, rect.right, rect.bottom)
+            } else {
+                "unavailable".to_string()
+            }
+        )
+    }
+}
+
+fn log_input_snapshot_raw(owner: isize, popup: isize) -> Result<(), String> {
+    unsafe {
+        let popup: HWND = popup as *mut _;
+        if IsWindow(popup) == 0 {
+            return Err("popup window is no longer valid".to_string());
+        }
+
+        let mut cursor = POINT { x: 0, y: 0 };
+        let cursor_ok = GetCursorPos(&mut cursor) != 0;
+        let under_cursor = if cursor_ok {
+            WindowFromPoint(cursor)
+        } else {
+            std::ptr::null_mut()
+        };
+        let child = GetWindow(popup, GW_CHILD);
+        let foreground = GetForegroundWindow();
+        let foreground_thread = if foreground.is_null() {
+            0
+        } else {
+            GetWindowThreadProcessId(foreground, std::ptr::null_mut())
+        };
+        let mut gui: GUITHREADINFO = std::mem::zeroed();
+        gui.cbSize = std::mem::size_of::<GUITHREADINFO>() as u32;
+        let focus = if foreground_thread != 0 && GetGUIThreadInfo(foreground_thread, &mut gui) != 0
+        {
+            gui.hwndFocus
+        } else {
+            std::ptr::null_mut()
+        };
+
+        diagnostic_log(format!(
+            "input cursor={},{} owner={} popup={} child={} under_cursor={} foreground={} focus={}",
+            cursor.x,
+            cursor.y,
+            describe_hwnd(owner as *mut _),
+            describe_hwnd(popup),
+            describe_hwnd(child),
+            describe_hwnd(under_cursor),
+            describe_hwnd(foreground),
+            describe_hwnd(focus),
+        ));
     }
     Ok(())
 }

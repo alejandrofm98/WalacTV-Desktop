@@ -296,9 +296,17 @@ impl MpvInstance {
             if !ptr.is_null() {
                 let names = unsafe { c_str_to_string(ptr).unwrap_or_default() };
                 eprintln!("[mpv-uosc] scripts loaded: {}", names);
+                #[cfg(target_os = "windows")]
+                crate::mpv::platform::windows::diagnostic_log(format!(
+                    "post-init script-names={names:?}"
+                ));
                 unsafe { (api.mpv_free)(ptr as *mut c_void) };
             } else {
                 eprintln!("[mpv-uosc] WARNING: could not read script-names property — uosc may not have loaded");
+                #[cfg(target_os = "windows")]
+                crate::mpv::platform::windows::diagnostic_log(
+                    "post-init script-names unavailable",
+                );
             }
         }
 
