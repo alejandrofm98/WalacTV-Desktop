@@ -223,6 +223,27 @@ pub fn mpv_init(
     // before the previous instance has been torn down; two mpv children cannot
     // safely share the same native host HWND.
     let mut player_guard = state.inner.lock();
+
+    // Keep the Windows mpv context alive for the lifetime of the app. Tearing
+    // down the native VO while its popup/input callbacks are active can crash
+    // inside libmpv; closing the player only stops playback and hides the host.
+    #[cfg(target_os = "windows")]
+    if let Some(instance) = player_guard.as_ref() {
+        let _ = instance.set_property_str("force-media-title", "");
+        let host = app.state::<WindowsVideoHost>();
+        host.sync()
+            .map_err(|e| format!("Failed to size video popup: {e}"))?;
+        host.show()
+            .map_err(|e| format!("Failed to show video popup: {e}"))?;
+
+        return Ok(serde_json::json!({
+            "mode": "wid",
+            "os": std::env::consts::OS,
+            "useCustom": false,
+            "nativeControls": true,
+        }));
+    }
+
     if let Some(previous) = player_guard.take() {
         #[cfg(target_os = "windows")]
         if let Some(host) = app.try_state::<WindowsVideoHost>() {
@@ -439,26 +460,37 @@ pub fn mpv_observe_property(
 
 /// Destroy the mpv player and release all resources.
 #[tauri::command]
+#[cfg(target_os = "windows")]
 pub fn mpv_destroy(app: AppHandle, state: State<'_, PlayerState>) -> Result<(), String> {
-    #[cfg(not(target_os = "windows"))]
-    let _ = &app;
+    let player_guard = state.inner.lock();
+    if let Some(instance) = player_guard.as_ref() {
+        let _ = instance.set_property_str("force-media-title", "");
+        let _ = instance.command(&["stop"]);
+    }
+    drop(player_guard);
 
+    if let Some(host) = app.try_state::<WindowsVideoHost>() {
+        let _ = host.hide();
+    }
+    log::info!("mpv_destroy: Windows player stopped and hidden");
+    Ok(())
+}
+
+/// Destroy the mpv player and release all resources.
+#[tauri::command]
+#[cfg(not(target_os = "windows"))]
+pub fn mpv_destroy(app: AppHandle, state: State<'_, PlayerState>) -> Result<(), String> {
     // Take the instance under the same lock held throughout mpv_init so destroy
     // cannot hide or tear down a newly initialized player midway through init.
     let mut player_guard = state.inner.lock();
     let instance = player_guard.take();
-
-    // On Windows, hide the video popup before destroying mpv.
-    #[cfg(target_os = "windows")]
-    if let Some(host) = app.try_state::<WindowsVideoHost>() {
-        let _ = host.hide();
-    }
 
     if let Some(instance) = instance {
         instance.destroy();
         log::info!("mpv_destroy: player destroyed");
     }
     drop(player_guard);
+    let _ = app;
     Ok(())
 }
 

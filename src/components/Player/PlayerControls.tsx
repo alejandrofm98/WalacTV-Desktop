@@ -353,29 +353,6 @@ export function PlayerControls({ item, activePanel, onPanelChange }: PlayerContr
           </button>
         )}
 
-        <div className={styles.volumeGroup}>
-          <button
-            className={styles.controlBtn}
-            onClick={toggleMute}
-            aria-label={isMuted ? 'Activar sonido' : 'Silenciar'}
-          >
-            <VolumeIcon size={20} />
-          </button>
-          <input
-            type="range"
-            className={styles.volumeSlider}
-            min={0}
-            max={1}
-            step={0.01}
-            value={effectiveVolume}
-            onChange={handleVolumeInput}
-            aria-label="Volumen"
-            style={
-              { '--volume-pct': `${effectiveVolume * 100}%` } as CSSProperties
-            }
-          />
-        </div>
-
         <div className={styles.spacer} />
 
         <div className={styles.rightCluster} ref={rightClusterRef}>
@@ -421,6 +398,29 @@ export function PlayerControls({ item, activePanel, onPanelChange }: PlayerContr
               <PictureInPicture2 size={20} />
             </button>
           )}
+
+          <div className={styles.volumeGroup}>
+            <button
+              className={styles.controlBtn}
+              onClick={toggleMute}
+              aria-label={isMuted ? 'Activar sonido' : 'Silenciar'}
+            >
+              <VolumeIcon size={20} />
+            </button>
+            <input
+              type="range"
+              className={styles.volumeSlider}
+              min={0}
+              max={1}
+              step={0.01}
+              value={effectiveVolume}
+              onChange={handleVolumeInput}
+              aria-label="Volumen"
+              style={
+                { '--volume-pct': `${effectiveVolume * 100}%` } as CSSProperties
+              }
+            />
+          </div>
 
           <button
             className={styles.controlBtn}

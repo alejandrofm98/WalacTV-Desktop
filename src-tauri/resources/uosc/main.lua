@@ -36,8 +36,9 @@ defaults = {
 	controls_spacing = 6,
 	controls_persistency = 'paused',
 
-	volume = 'right',
-	volume_size = 40,
+	-- Keep volume away from playback and display actions on the bottom-right.
+	volume = 'left',
+	volume_size = 36,
 	volume_persistency = 'paused',
 	volume_border = 1,
 	volume_step = 1,

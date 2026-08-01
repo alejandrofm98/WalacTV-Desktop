@@ -22,8 +22,7 @@ use commands::player::mpv_get_render_frame;
 use crate::mpv::platform::windows::WindowsVideoHost;
 use serde::Serialize;
 use tauri::image::Image;
-use tauri::{Emitter, Manager};
-use tauri_plugin_global_shortcut::{GlobalShortcutExt, ShortcutState};
+use tauri::Manager;
 
 #[derive(Serialize)]
 struct ScaleInfo {
@@ -146,28 +145,12 @@ pub fn run() {
                 });
             }
 
-            // Register global Escape shortcut so the player can always be
-            // closed, even when the mpv child window has keyboard focus.
-            match app.global_shortcut().register("Escape") {
-                Ok(_) => eprintln!("[global-shortcut] Escape registered globally"),
-                Err(e) => eprintln!("[global-shortcut] Failed to register Escape: {e}"),
-            };
-
             Ok(())
         })
         .plugin(tauri_plugin_http::init())
         .plugin(tauri_plugin_store::Builder::new().build())
         .plugin(tauri_plugin_updater::Builder::new().build())
         .plugin(tauri_plugin_process::init())
-        .plugin(
-            tauri_plugin_global_shortcut::Builder::new()
-                .with_handler(|app, _shortcut, event| {
-                    if event.state == ShortcutState::Pressed {
-                        let _ = app.emit("player://close", ());
-                    }
-                })
-                .build(),
-        )
         .invoke_handler(tauri::generate_handler![
             get_scale_info,
             mpv_init,

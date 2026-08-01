@@ -69,13 +69,13 @@ fn initial_options(_linux_use_custom: bool, uosc_available: bool) -> Vec<(&'stat
         ("ytdl", "no"),
         ("load-scripts", "yes"),
         ("keep-open", "yes"),
-        ("vo", "gpu"),
     ];
 
-    #[cfg(target_os = "linux")]
-    opts.push(("gpu-context", "x11egl"));
     #[cfg(any(target_os = "windows", target_os = "macos"))]
-    opts.push(("gpu-context", "auto"));
+    {
+        opts.push(("vo", "gpu"));
+        opts.push(("gpu-context", "auto"));
+    }
 
     if uosc_available {
         opts.push(("osc", "yes"));
@@ -197,7 +197,10 @@ impl MpvInstance {
             }
         }
 
-        // ── Window ID for embedding (before mpv_initialize) ────────────────
+        // Windows needs its popup host before initialization. On Linux and
+        // macOS, setting wid after initialization preserves the established
+        // X11/Wayland embedding path.
+        #[cfg(target_os = "windows")]
         if wid > 0 {
             if let Ok(c_wid) = CString::new(wid.to_string()) {
                 if let Ok(c_name) = CString::new("wid") {
@@ -287,6 +290,30 @@ impl MpvInstance {
                 super::ffi::mpv_error_string(ret),
                 ret,
             ));
+        }
+
+        #[cfg(target_os = "linux")]
+        for (name, value) in [("vo", "gpu"), ("gpu-context", "x11egl")] {
+            let c_name = CString::new(name).expect("static option name");
+            let c_value = CString::new(value).expect("static option value");
+            let ret = unsafe {
+                (api.mpv_set_property_string)(handle, c_name.as_ptr(), c_value.as_ptr())
+            };
+            if ret < 0 {
+                log::warn!("Setting {name}={value} returned {ret} after initialization");
+            }
+        }
+
+        #[cfg(not(target_os = "windows"))]
+        if wid > 0 {
+            if let Ok(c_wid) = CString::new(wid.to_string()) {
+                let ret = unsafe {
+                    (api.mpv_set_property_string)(handle, b"wid\0".as_ptr().cast(), c_wid.as_ptr())
+                };
+                if ret < 0 {
+                    log::warn!("Setting wid={wid} returned {ret} after initialization");
+                }
+            }
         }
 
         #[cfg(target_os = "windows")]
@@ -509,14 +536,27 @@ impl MpvInstance {
             loadmode.as_ptr(),
         ];
         if let Some(ref cstr) = pos_cstr {
-            // mpv 0.38 added the playlist index before per-file options.
-            // -1 preserves compatibility with older versions.
-            args.push(playlist_index.as_ptr());
             args.push(cstr.as_ptr());
         }
         args.push(std::ptr::null());
 
-        let ret = unsafe { (self.api.mpv_command)(self.handle, args.as_ptr()) };
+        let mut ret = unsafe { (self.api.mpv_command)(self.handle, args.as_ptr()) };
+
+        // mpv 0.38 inserted a playlist index before per-file options. Retry
+        // with the newer command shape when the 0.37 form is rejected.
+        if ret == -4 {
+            if let Some(ref cstr) = pos_cstr {
+                let modern_args = [
+                    b"loadfile\0".as_ptr().cast(),
+                    url.as_ptr(),
+                    loadmode.as_ptr(),
+                    playlist_index.as_ptr(),
+                    cstr.as_ptr(),
+                    std::ptr::null(),
+                ];
+                ret = unsafe { (self.api.mpv_command)(self.handle, modern_args.as_ptr()) };
+            }
+        }
         if ret < 0 {
             Err(format!(
                 "loadfile failed: {} (code {ret})",
@@ -588,8 +628,10 @@ impl MpvInstance {
     /// Stop the event loop thread gracefully.
     pub fn stop_event_loop(&self) {
         self.stop_flag.store(true, Ordering::SeqCst);
-        // Wake up mpv_wait_event so it breaks out of its loop quickly
-        unsafe { (self.api.mpv_wakeup)(self.handle); }
+        if !self.handle.is_null() {
+            // Wake up mpv_wait_event so it breaks out of its loop quickly.
+            unsafe { (self.api.mpv_wakeup)(self.handle); }
+        }
 
         if let Some(handle) = self.event_thread.lock().take() {
             let _ = handle.join();

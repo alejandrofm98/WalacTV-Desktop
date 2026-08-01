@@ -203,6 +203,9 @@
 .volumeGroup {
   display: flex;
   align-items: center;
+  margin-left: 4px;
+  padding-left: 4px;
+  border-left: 1px solid oklch(93% 0.008 252 / 0.18);
 }
 
 .volumeSlider {
@@ -223,7 +226,7 @@
 
 .volumeGroup:hover .volumeSlider,
 .volumeGroup:focus-within .volumeSlider {
-  width: 84px;
+  width: 92px;
   opacity: 1;
   margin-right: 8px;
 }
