@@ -1,5 +1,6 @@
 import { useState } from 'react'
 import type { CatalogItem, StreamOption } from '../api/types'
+import { resolveReplayStreamUrl } from '../api/client'
 import { useAppStore } from '../store/useAppStore'
 import styles from './EventDetail.module.css'
 
@@ -19,6 +20,17 @@ function formatStreamLabel(opt: StreamOption): string {
 export function EventDetail({ item }: Props) {
   const { closeDetail, openPlayer } = useAppStore()
   const [selectedStream, setSelectedStream] = useState(0)
+  const [loadingStream, setLoadingStream] = useState(false)
+
+  const handlePlay = async () => {
+    setLoadingStream(true)
+    const url = await resolveReplayStreamUrl(item.streamOptions[selectedStream])
+    setLoadingStream(false)
+    openPlayer({
+      ...item,
+      streamOptions: item.streamOptions.map((option, index) => index === selectedStream ? { ...option, url } : option),
+    }, selectedStream)
+  }
 
   return (
     <div className={styles.container}>
@@ -54,9 +66,9 @@ export function EventDetail({ item }: Props) {
           )}
         </div>
 
-        <button onClick={() => openPlayer(item, selectedStream)} className={styles.playBtn}>
+        <button onClick={handlePlay} className={styles.playBtn} disabled={loadingStream}>
           <span className={styles.playIcon}>▶</span>
-          Reproducir
+          {loadingStream ? 'Cargando...' : 'Reproducir'}
         </button>
 
         {item.description && (

@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef, useCallback } from 'react'
 import type { CatalogItem } from '../api/types'
-import { getCatalogPage, getGenres, search } from '../api/client'
+import { getAllSeriesEpisodes, getCatalogPage, getGenres, getUfcReplays, markSeriesEpisodesWatched, markWatched, search } from '../api/client'
 import { MediaCard } from './MediaCard'
 import { SearchableSelect } from './SearchableSelect'
 import { SearchInput } from './SearchInput'
@@ -13,7 +13,7 @@ const LANGUAGES = [
 ]
 
 export function DiscoverContent() {
-  const [type, setType] = useState<'movies' | 'series'>('movies')
+  const [type, setType] = useState<'movies' | 'series' | 'ufc'>('movies')
   const [country, setCountry] = useState<string | undefined>()
   const [genre, setGenre] = useState<string | undefined>()
   const [genres, setGenres] = useState<string[]>([])
@@ -32,6 +32,10 @@ export function DiscoverContent() {
 
   // Reload genres when country changes, reload items on any filter change
   useEffect(() => {
+    if (type === 'ufc') {
+      setGenres([])
+      return
+    }
     getGenres(type, country).then((r) => setGenres(r.genres ?? [])).catch(() => {})
   }, [type, country])
 
@@ -40,6 +44,14 @@ export function DiscoverContent() {
     setLoading(true)
     setPage(1)
     setError(null)
+
+    if (type === 'ufc') {
+      getUfcReplays(1, query.trim() || undefined)
+        .then((r) => { setItems(r.items); setHasNext(r.has_next) })
+        .catch((e) => setError(e.message ?? 'Error'))
+        .finally(() => setLoading(false))
+      return
+    }
 
     if (!query.trim()) {
       getCatalogPage({ content_type: type, country, genre, page: 1, page_size: 48 })
@@ -70,11 +82,14 @@ export function DiscoverContent() {
     const next = page + 1
     setLoadingMore(true)
     setLoadError(false)
-    getCatalogPage({ content_type: type, country, genre, page: next, page_size: 48 })
+    const request = type === 'ufc'
+      ? getUfcReplays(next, query.trim() || undefined)
+      : getCatalogPage({ content_type: type, country, genre, page: next, page_size: 48 })
+    request
       .then((r) => { setItems((p) => [...p, ...r.items]); setHasNext(r.has_next); setPage(next) })
       .catch(() => setLoadError(true))
       .finally(() => setLoadingMore(false))
-  }, [page, type, country, genre, hasNext, loadingMore])
+  }, [page, type, country, genre, query, hasNext, loadingMore])
 
   useEffect(() => {
     const observer = new IntersectionObserver(
@@ -98,6 +113,20 @@ export function DiscoverContent() {
     }
   }, [loadMore, hasNext, loading, loadingMore, loadError, detailOpen])
 
+  const handleMarkWatched = useCallback(async (item: CatalogItem) => {
+    try {
+      if (item.kind === 'SERIES') {
+        const episodes = await getAllSeriesEpisodes(item.stableId)
+        await markSeriesEpisodesWatched(item.stableId, episodes)
+      } else {
+        await markWatched(item.stableId)
+      }
+      setItems((current) => current.map((entry) => entry.stableId === item.stableId ? { ...entry, isWatched: true } : entry))
+    } catch (err) {
+      console.error('mark catalog item watched failed', err)
+    }
+  }, [])
+
   return (
     <div className={styles.container}>
       <div className={styles.content}>
@@ -114,11 +143,15 @@ export function DiscoverContent() {
               className={`${styles.typeBtn} ${type === 'series' ? styles.typeBtnActive : ''}`}
               onClick={() => setType('series')}
             >Series</button>
+            <button
+              className={`${styles.typeBtn} ${type === 'ufc' ? styles.typeBtnActive : ''}`}
+              onClick={() => setType('ufc')}
+            >UFC</button>
           </div>
-          <SearchableSelect label="Idioma" options={LANGUAGES} value={country} onChange={setCountry} />
-          <SearchableSelect label="Género" options={genres} value={genre} onChange={setGenre} />
+          {type !== 'ufc' && <SearchableSelect label="Idioma" options={LANGUAGES} value={country} onChange={setCountry} />}
+          {type !== 'ufc' && <SearchableSelect label="Género" options={genres} value={genre} onChange={setGenre} />}
           <SearchInput
-            placeholder={type === 'movies' ? 'Buscar peliculas...' : 'Buscar series...'}
+            placeholder={type === 'ufc' ? 'Buscar eventos UFC...' : type === 'movies' ? 'Buscar peliculas...' : 'Buscar series...'}
             value={query}
             onChange={setQuery}
           />
@@ -141,6 +174,7 @@ export function DiscoverContent() {
                   height={284}
                   showText
                   onClick={() => openDetail(item)}
+                  onMarkWatched={type === 'ufc' ? undefined : () => handleMarkWatched(item)}
                 />
               ))}
             </div>

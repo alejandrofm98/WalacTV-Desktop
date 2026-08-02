@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef, useCallback, useMemo } from 'react'
 import { Play, CheckCircle, ChevronDown, ArrowLeft } from 'lucide-react'
 import type { CatalogItem, WatchProgressItem } from '../api/types'
-import { getAllSeriesEpisodes, cwGroupKey } from '../api/client'
+import { getAllSeriesEpisodes, getWatchProgress, markSeriesEpisodesWatched, cwGroupKey } from '../api/client'
 import { useAppStore } from '../store/useAppStore'
 import styles from './SeriesDetail.module.css'
 
@@ -43,12 +43,13 @@ function getEpisodeStatus(
 }
 
 export function SeriesDetail({ item }: Props) {
-  const { closeDetail, openPlayer, continueWatchingEntries } = useAppStore()
+  const { closeDetail, openPlayer, continueWatchingEntries, setContinueWatching } = useAppStore()
   const [episodes, setEpisodes] = useState<CatalogItem[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [selectedSeason, setSelectedSeason] = useState<number | null>(null)
   const [dropdownOpen, setDropdownOpen] = useState(false)
+  const [contextEpisode, setContextEpisode] = useState<CatalogItem | null>(null)
 
   const seriesId = item.stableId || item.seriesName || item.normalizedTitle || item.title
   const preselectedRef = useRef(false)
@@ -164,6 +165,28 @@ export function SeriesDetail({ item }: Props) {
     if (firstUnwatched) openPlayer(firstUnwatched)
   }, [firstUnwatched, openPlayer])
 
+  const markEpisodesWatched = useCallback(async (targets: CatalogItem[]) => {
+    if (targets.length === 0) return
+    try {
+      await markSeriesEpisodesWatched(seriesId, targets)
+      const marked = new Set(targets.map((ep) => `${ep.seasonNumber}|${ep.episodeNumber}`))
+      setEpisodes((current) => current.map((ep) =>
+        marked.has(`${ep.seasonNumber}|${ep.episodeNumber}`) ? { ...ep, isWatched: true } : ep,
+      ))
+      const { items } = await getWatchProgress(20)
+      const entries = new Map<string, WatchProgressItem>()
+      for (const progress of items) {
+        const key = cwGroupKey(progress.contentType, progress.seriesName, progress.contentId)
+        if (!entries.has(key)) entries.set(key, progress)
+      }
+      setContinueWatching(entries)
+    } catch (err) {
+      console.error('mark series episodes watched failed', err)
+    } finally {
+      setContextEpisode(null)
+    }
+  }, [seriesId, setContinueWatching])
+
   // Close dropdown on outside click
   useEffect(() => {
     if (!dropdownOpen) return
@@ -175,6 +198,13 @@ export function SeriesDetail({ item }: Props) {
     document.addEventListener('mousedown', handler)
     return () => document.removeEventListener('mousedown', handler)
   }, [dropdownOpen])
+
+  useEffect(() => {
+    if (!contextEpisode) return
+    const close = () => setContextEpisode(null)
+    document.addEventListener('mousedown', close)
+    return () => document.removeEventListener('mousedown', close)
+  }, [contextEpisode])
 
   const selectedSeasonLabel = selectedSeason != null
     ? `Temporada ${selectedSeason}`
@@ -305,6 +335,7 @@ export function SeriesDetail({ item }: Props) {
                     role="button"
                     tabIndex={0}
                     onClick={() => openPlayer(ep)}
+                    onContextMenu={(e) => { e.preventDefault(); setContextEpisode(ep) }}
                     onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); openPlayer(ep) } }}
                     aria-label={`Reproducir T${ep.seasonNumber ?? '?'} E${ep.episodeNumber ?? '?'}: ${ep.tmdbTitle ?? ep.title}`}
                   >
@@ -364,6 +395,22 @@ export function SeriesDetail({ item }: Props) {
                         )}
                       </div>
                     </div>
+                    {contextEpisode?.seasonNumber === ep.seasonNumber && contextEpisode?.episodeNumber === ep.episodeNumber && (
+                      <div className={styles.episodeContextMenu} role="menu" onMouseDown={(e) => e.stopPropagation()}>
+                        <button type="button" onClick={(e) => { e.stopPropagation(); markEpisodesWatched([ep]) }}>
+                          Marcar este capítulo como visto
+                        </button>
+                        <button type="button" onClick={(e) => { e.stopPropagation(); markEpisodesWatched(episodes.filter((item) => item.seasonNumber === ep.seasonNumber)) }}>
+                          Marcar toda la temporada como vista
+                        </button>
+                        <button type="button" onClick={(e) => { e.stopPropagation(); markEpisodesWatched(episodes.filter((item) =>
+                          (item.seasonNumber ?? 0) < (ep.seasonNumber ?? 0) ||
+                          (item.seasonNumber === ep.seasonNumber && (item.episodeNumber ?? 0) <= (ep.episodeNumber ?? 0)),
+                        )) }}>
+                          Marcar capítulos anteriores como vistos
+                        </button>
+                      </div>
+                    )}
                   </div>
                 )
               })}

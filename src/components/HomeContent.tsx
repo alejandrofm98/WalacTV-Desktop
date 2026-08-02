@@ -1,7 +1,7 @@
 import { useMemo, useCallback, useEffect, useRef, useState } from 'react'
 import { useAppStore } from '../store/useAppStore'
 import { SectionRow } from './SectionRow'
-import { getContentById, getSeriesEpisodes, cwGroupKey, markWatched, saveWatchProgress, getAllSeriesEpisodes, getWatchProgress, removeWatchProgress } from '../api/client'
+import { getContentById, getSeriesEpisodes, cwGroupKey, markSeriesEpisodesWatched, markWatched, saveWatchProgress, getAllSeriesEpisodes, getWatchProgress, removeWatchProgress } from '../api/client'
 import type { CatalogItem, BrowseSection, WatchProgressItem } from '../api/types'
 import { pickFirstUnwatched } from '../utils/series'
 import styles from './HomeContent.module.css'
@@ -42,7 +42,7 @@ export function HomeContent() {
 
   const displayHero = hoveredHero ?? defaultHero ?? selectedHero
 
-  const handleCardClick = useCallback(async (item: CatalogItem) => {
+  const handleCardClick = useCallback(async (item: CatalogItem, startOver = false) => {
     const cwKey = cwGroupKey(
       item.kind === 'SERIES' ? 'series' : 'movie',
       item.seriesName,
@@ -74,7 +74,7 @@ export function HomeContent() {
         )
       }
       if (fullItem && fullItem.streamOptions.length > 0) {
-        openPlayer(fullItem, 0, cw.positionMs)
+        openPlayer(fullItem, 0, startOver ? 0 : cw.positionMs)
         return
       }
     }
@@ -94,6 +94,26 @@ export function HomeContent() {
       openPlayer(item)
     }
   }, [continueWatchingEntries, openPlayer, openDetail])
+
+  const handleCatalogMarkWatched = useCallback(async (item: CatalogItem) => {
+    try {
+      if (item.kind === 'SERIES') {
+        const episodes = await getAllSeriesEpisodes(item.stableId)
+        await markSeriesEpisodesWatched(item.stableId, episodes)
+      } else {
+        await markWatched(item.stableId)
+      }
+      const { items } = await getWatchProgress(20)
+      const map = new Map<string, WatchProgressItem>()
+      for (const entry of items) {
+        const key = cwGroupKey(entry.contentType, entry.seriesName, entry.contentId)
+        if (!map.has(key)) map.set(key, entry)
+      }
+      setContinueWatching(map)
+    } catch (err) {
+      console.error('mark catalog item watched failed', err)
+    }
+  }, [setContinueWatching])
 
   const handleCwViewDetail = useCallback((item: CatalogItem, entry: WatchProgressItem) => {
     if (item.kind === 'SERIES') {
@@ -288,10 +308,12 @@ export function HomeContent() {
             onCwViewDetail={handleCwViewDetail}
             onCwMarkWatched={handleCwMarkWatched}
             onCwRemove={handleCwRemove}
+            onCwStartOver={(item) => handleCardClick(item, true)}
+            onMarkWatched={handleCatalogMarkWatched}
           />
         )}
         {otherSections.map((s, i) => (
-          <SectionRow key={`${s.title}-${i}`} section={s} onCardClick={handleCardClick} onCardHover={handleCardHover} />
+          <SectionRow key={`${s.title}-${i}`} section={s} onCardClick={handleCardClick} onCardHover={handleCardHover} onMarkWatched={handleCatalogMarkWatched} />
         ))}
       </div>
     </div>

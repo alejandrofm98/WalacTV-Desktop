@@ -9,6 +9,7 @@ import { usePlayerControls } from '../../player/usePlayerControls'
 import { usePlayerStore } from '../../player/usePlayerStore'
 import { useRenderFrame } from '../../player/useRenderFrame'
 import { getVolume } from '../../settings'
+import { markWatched } from '../../api/client'
 import { PlayerOverlay } from './PlayerOverlay'
 import { PlayerIntroSkip } from './PlayerIntroSkip'
 import { PlayerErrorState } from './PlayerErrorState'
@@ -62,6 +63,27 @@ export function Player() {
     getDuration,
     isPlaying,
   })
+
+  useEffect(() => {
+    if (!playerItem || (playerItem.kind !== 'MOVIE' && playerItem.kind !== 'SERIES')) return
+
+    const handleEnded = () => {
+      const markComplete = async () => {
+        await markWatched(
+          playerItem.stableId,
+          playerItem.seasonNumber,
+          playerItem.episodeNumber,
+          true,
+        )
+      }
+      markComplete().catch((error) => {
+        console.warn('[Player] no se pudo marcar el contenido como completado:', error)
+      })
+    }
+
+    service.addEventListener('ended', handleEnded)
+    return () => service.removeEventListener('ended', handleEnded)
+  }, [playerItem, service])
 
   // Intro skip
   const { activeSegment, skip: doSkip } = useIntroSkip({

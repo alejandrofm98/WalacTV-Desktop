@@ -5,8 +5,17 @@ import { classifyMpvError } from './PlayerError'
 import { usePlayerStore } from './usePlayerStore'
 import { API_URL } from '../config'
 import { getUsername, getPassword } from '../credentials'
+import { getPlaybackTrackPreference, getPreferredLanguage, updatePlaybackTrackPreference } from '../api/client'
 
 type PlayerServiceEvent = 'state' | 'error' | 'trackschanged' | 'fullscreenchange' | 'pipchange' | 'ended'
+
+function normalizeTrackLanguage(language: string): string {
+  const normalized = language.trim().toLowerCase().split(/[-_]/)[0]
+  if (normalized === 'eng' || normalized === 'en') return 'EN'
+  if (normalized === 'spa' || normalized === 'es') return 'ES'
+  if (normalized === 'lat' || normalized === 'latam') return 'LATAM'
+  return normalized.toUpperCase()
+}
 
 /**
  * Singleton service that wraps libmpv via Tauri commands.
@@ -21,6 +30,7 @@ export class PlayerService extends EventTarget {
   private _attached = false
   private _loadGeneration = 0
   private _currentItemId: string | null = null
+  private _currentItem: PlayerItem | null = null
   private _currentStreamUrl: string | null = null
   private _state: PlayerState = 'idle'
   private _unlisteners: UnlistenFn[] = []
@@ -33,6 +43,10 @@ export class PlayerService extends EventTarget {
   private _audioTracks: AudioTrack[] = []
   private _subTracks: SubTrack[] = []
   private _variantTracks: VariantTrack[] = []
+  private _trackStateInitialized = false
+  private _trackPreferenceLoading = false
+  private _lastAudioTrackId: number | null = null
+  private _lastSubtitleTrackId: number | null = null
 
   // Bound handlers for cleanup
   private _fullscreenChangeBound: (() => void) | null = null
@@ -135,6 +149,7 @@ export class PlayerService extends EventTarget {
     this._duration = 0
     this._currentStreamUrl = null
     this._currentItemId = null
+    this._currentItem = null
     this._videoEl = null
     this._pipVideoEl = null
     this._containerEl = null
@@ -168,6 +183,11 @@ export class PlayerService extends EventTarget {
     this._loadGeneration++
     const gen = this._loadGeneration
     this._currentItemId = item.stableId
+    this._currentItem = item
+    this._trackStateInitialized = false
+    this._trackPreferenceLoading = false
+    this._lastAudioTrackId = null
+    this._lastSubtitleTrackId = null
     this._isLive = item.kind === 'CHANNEL' || item.kind === 'EVENT'
 
     console.log(
@@ -270,6 +290,7 @@ export class PlayerService extends EventTarget {
     this._loadGeneration++
     this._currentStreamUrl = null
     this._currentItemId = null
+    this._currentItem = null
     usePlayerStore.getState().setCurrentItem(null)
     try {
       await invoke('mpv_command', { args: ['stop'] })
@@ -375,6 +396,14 @@ export class PlayerService extends EventTarget {
 
   selectAudioTrack(track: AudioTrack): void {
     invoke('mpv_set_property', { name: 'aid', value: track.id }).catch(() => {})
+    this._lastAudioTrackId = track.id
+    const item = this._currentItem
+    if (item && !this._isLive) {
+      updatePlaybackTrackPreference(item, {
+        audioLanguage: normalizeTrackLanguage(track.language),
+        audioLabel: track.label,
+      }).catch(() => {})
+    }
   }
 
   selectAudioLanguage(lang: string, _role?: string): void {
@@ -387,6 +416,19 @@ export class PlayerService extends EventTarget {
 
   selectTextTrack(track: SubTrack | null): void {
     invoke('mpv_set_property', { name: 'sid', value: track?.id ?? 0 }).catch(() => {})
+    this._lastSubtitleTrackId = track?.id ?? 0
+    const item = this._currentItem
+    if (item && !this._isLive) {
+      updatePlaybackTrackPreference(item, track ? {
+        subtitleLanguage: normalizeTrackLanguage(track.language),
+        subtitleLabel: track.label,
+        subtitlesDisabled: false,
+      } : {
+        subtitleLanguage: undefined,
+        subtitleLabel: undefined,
+        subtitlesDisabled: true,
+      }).catch(() => {})
+    }
   }
 
   setTextVisibility(visible: boolean): void {
@@ -493,6 +535,7 @@ export class PlayerService extends EventTarget {
 
       case 'tracks-changed':
         await this._refreshTracks()
+        await this._syncTrackPreferences()
         this._emit('trackschanged')
         break
 
@@ -509,10 +552,13 @@ export class PlayerService extends EventTarget {
           usePlayerStore.getState().setError(error)
           this._emit('error', error)
           this._setState('error')
-        } else {
+        } else if (reason === 'eof') {
           usePlayerStore.getState().setPlaying(false)
           this._setState('ended')
           this._emit('ended')
+        } else {
+          usePlayerStore.getState().setPlaying(false)
+          this._setState('idle')
         }
         break
       }
@@ -547,6 +593,75 @@ export class PlayerService extends EventTarget {
       this._variantTracks = variant
     } catch {
       // Tracks not yet available — keep previous cache
+    }
+  }
+
+  private async _syncTrackPreferences(): Promise<void> {
+    const item = this._currentItem
+    if (!item || this._isLive) return
+    if (this._audioTracks.length === 0 && this._subTracks.length === 0) return
+    if (this._trackPreferenceLoading) return
+
+    const activeAudio = this._audioTracks.find((track) => track.active) ?? null
+    const activeSubtitle = this._subTracks.find((track) => track.active) ?? null
+
+    if (!this._trackStateInitialized) {
+      this._trackStateInitialized = true
+      this._trackPreferenceLoading = true
+      const preference = await getPlaybackTrackPreference(item).catch(() => null)
+      const preferredAudioLanguage = preference?.audioLanguage || getPreferredLanguage()
+      const audioMatch = this._audioTracks.find((track) =>
+        normalizeTrackLanguage(track.language) === normalizeTrackLanguage(preferredAudioLanguage) ||
+        (!!preference?.audioLabel && track.label.toLowerCase() === preference.audioLabel.toLowerCase())
+      )
+      if (audioMatch) {
+        await invoke('mpv_set_property', { name: 'aid', value: audioMatch.id }).catch(() => {})
+      }
+      this._lastAudioTrackId = audioMatch?.id ?? activeAudio?.id ?? null
+
+      if (preference?.subtitlesDisabled === true) {
+        await invoke('mpv_set_property', { name: 'sid', value: 0 }).catch(() => {})
+        this._lastSubtitleTrackId = 0
+      } else if (preference?.subtitlesDisabled === false) {
+        const subtitleMatch = this._subTracks.find((track) =>
+          (!!preference.subtitleLanguage &&
+            normalizeTrackLanguage(track.language) === normalizeTrackLanguage(preference.subtitleLanguage)) ||
+          (!!preference.subtitleLabel && track.label.toLowerCase() === preference.subtitleLabel.toLowerCase())
+        )
+        if (subtitleMatch) {
+          await invoke('mpv_set_property', { name: 'sid', value: subtitleMatch.id }).catch(() => {})
+        }
+        this._lastSubtitleTrackId = subtitleMatch?.id ?? activeSubtitle?.id ?? 0
+      } else {
+        this._lastSubtitleTrackId = activeSubtitle?.id ?? 0
+      }
+      this._trackPreferenceLoading = false
+      return
+    }
+
+    const activeAudioId = activeAudio?.id ?? null
+    if (activeAudioId !== this._lastAudioTrackId) {
+      this._lastAudioTrackId = activeAudioId
+      if (activeAudio) {
+        await updatePlaybackTrackPreference(item, {
+          audioLanguage: normalizeTrackLanguage(activeAudio.language),
+          audioLabel: activeAudio.label,
+        })
+      }
+    }
+
+    const activeSubtitleId = activeSubtitle?.id ?? 0
+    if (activeSubtitleId !== this._lastSubtitleTrackId) {
+      this._lastSubtitleTrackId = activeSubtitleId
+      await updatePlaybackTrackPreference(item, activeSubtitle ? {
+        subtitleLanguage: normalizeTrackLanguage(activeSubtitle.language),
+        subtitleLabel: activeSubtitle.label,
+        subtitlesDisabled: false,
+      } : {
+        subtitleLanguage: undefined,
+        subtitleLabel: undefined,
+        subtitlesDisabled: true,
+      })
     }
   }
 
@@ -615,6 +730,7 @@ export class PlayerService extends EventTarget {
     this._duration = 0
     this._currentStreamUrl = null
     this._currentItemId = null
+    this._currentItem = null
     this._videoEl = null
     this._pipVideoEl = null
     this._containerEl = null

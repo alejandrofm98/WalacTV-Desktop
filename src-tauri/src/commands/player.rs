@@ -161,7 +161,7 @@ fn resolve_uosc_paths(app: &AppHandle) -> (Option<String>, Option<String>) {
 /// - `useCustom`: true on Linux when compositor is active and HTML controls
 ///   should be used (mpv OSC disabled, child window lowered).
 #[tauri::command]
-pub fn mpv_init(
+pub async fn mpv_init(
     app: AppHandle,
     state: State<'_, PlayerState>,
     window: tauri::Window,
@@ -367,7 +367,7 @@ pub fn mpv_init(
 
 /// Load a media file or URL for playback.
 #[tauri::command]
-pub fn mpv_loadfile(
+pub async fn mpv_loadfile(
     state: State<'_, PlayerState>,
     url: String,
     start_position: Option<f64>,
@@ -382,7 +382,7 @@ pub fn mpv_loadfile(
 /// Set an mpv property.
 /// Accepts property value as a JSON value (string, number, bool).
 #[tauri::command]
-pub fn mpv_set_property(
+pub async fn mpv_set_property(
     state: State<'_, PlayerState>,
     name: String,
     value: serde_json::Value,
@@ -407,7 +407,7 @@ pub fn mpv_set_property(
 
 /// Get an mpv property as a JSON value.
 #[tauri::command]
-pub fn mpv_get_property(
+pub async fn mpv_get_property(
     state: State<'_, PlayerState>,
     name: String,
 ) -> Result<serde_json::Value, String> {
@@ -431,7 +431,7 @@ pub fn mpv_get_property(
 
 /// Run an arbitrary mpv command with string arguments.
 #[tauri::command]
-pub fn mpv_command(
+pub async fn mpv_command(
     state: State<'_, PlayerState>,
     args: Vec<String>,
 ) -> Result<(), String> {
@@ -441,7 +441,7 @@ pub fn mpv_command(
 
 /// Observe a property so the event loop emits changes to the frontend.
 #[tauri::command]
-pub fn mpv_observe_property(
+pub async fn mpv_observe_property(
     state: State<'_, PlayerState>,
     id: u64,
     name: String,
@@ -461,7 +461,7 @@ pub fn mpv_observe_property(
 /// Destroy the mpv player and release all resources.
 #[tauri::command]
 #[cfg(target_os = "windows")]
-pub fn mpv_destroy(app: AppHandle, state: State<'_, PlayerState>) -> Result<(), String> {
+pub async fn mpv_destroy(app: AppHandle, state: State<'_, PlayerState>) -> Result<(), String> {
     let player_guard = state.inner.lock();
     if let Some(instance) = player_guard.as_ref() {
         let _ = instance.set_property_str("force-media-title", "");
@@ -479,7 +479,7 @@ pub fn mpv_destroy(app: AppHandle, state: State<'_, PlayerState>) -> Result<(), 
 /// Destroy the mpv player and release all resources.
 #[tauri::command]
 #[cfg(not(target_os = "windows"))]
-pub fn mpv_destroy(app: AppHandle, state: State<'_, PlayerState>) -> Result<(), String> {
+pub async fn mpv_destroy(app: AppHandle, state: State<'_, PlayerState>) -> Result<(), String> {
     // Take the instance under the same lock held throughout mpv_init so destroy
     // cannot hide or tear down a newly initialized player midway through init.
     let mut player_guard = state.inner.lock();
@@ -496,7 +496,7 @@ pub fn mpv_destroy(app: AppHandle, state: State<'_, PlayerState>) -> Result<(), 
 
 /// Get the current player state info (initialized, playing).
 #[tauri::command]
-pub fn mpv_get_state(state: State<'_, PlayerState>) -> Result<PlayerStateInfo, String> {
+pub async fn mpv_get_state(state: State<'_, PlayerState>) -> Result<PlayerStateInfo, String> {
     let guard = state.inner.lock();
     match guard.as_ref() {
         Some(instance) => Ok(PlayerStateInfo {
@@ -518,7 +518,7 @@ pub fn mpv_get_state(state: State<'_, PlayerState>) -> Result<PlayerStateInfo, S
 /// Returns an empty frame (all-zeros header) if no frame is available yet.
 #[cfg(target_os = "linux")]
 #[tauri::command]
-pub fn mpv_get_render_frame(
+pub async fn mpv_get_render_frame(
     state: State<'_, PlayerState>,
 ) -> Result<Response, String> {
     let guard = state.inner.lock();
@@ -555,7 +555,7 @@ pub fn mpv_get_render_frame(
 
 /// Get available audio tracks.
 #[tauri::command]
-pub fn mpv_get_audio_tracks(
+pub async fn mpv_get_audio_tracks(
     _state: State<'_, PlayerState>,
 ) -> Result<Vec<crate::mpv::events::MpvTrackInfo>, String> {
     // Track list is obtained via observed property; return empty list for now.
@@ -565,7 +565,7 @@ pub fn mpv_get_audio_tracks(
 
 /// Get available subtitle tracks.
 #[tauri::command]
-pub fn mpv_get_sub_tracks(
+pub async fn mpv_get_sub_tracks(
     _state: State<'_, PlayerState>,
 ) -> Result<Vec<crate::mpv::events::MpvTrackInfo>, String> {
     Ok(Vec::new())
@@ -587,7 +587,7 @@ pub struct VariantTrack {
 }
 
 #[tauri::command]
-pub fn mpv_get_variant_tracks(
+pub async fn mpv_get_variant_tracks(
     state: State<'_, PlayerState>,
 ) -> Result<Vec<VariantTrack>, String> {
     with_player(&state, |instance| {
@@ -633,7 +633,7 @@ pub fn mpv_get_variant_tracks(
 /// Values are clamped to [16, 3840]. Zeros are ignored (the command returns
 /// without updating).
 #[tauri::command]
-pub fn mpv_set_render_size(
+pub async fn mpv_set_render_size(
     state: State<'_, PlayerState>,
     width: u32,
     height: u32,
@@ -656,7 +656,7 @@ pub fn mpv_set_render_size(
 /// into the user's local data directory. Returns the installation path
 /// on success or an error description on failure.
 #[tauri::command]
-pub fn ensure_libmpv_installed_command() -> Result<String, String> {
+pub async fn ensure_libmpv_installed_command() -> Result<String, String> {
     let result = ensure_libmpv_installed()?;
     log::info!("ensure_libmpv_installed: {result}");
     Ok(result)
@@ -664,7 +664,7 @@ pub fn ensure_libmpv_installed_command() -> Result<String, String> {
 
 /// Check whether libmpv was loaded successfully and report version info.
 #[tauri::command]
-pub fn mpv_check_health(
+pub async fn mpv_check_health(
     _state: State<'_, PlayerState>,
 ) -> Result<MpvVersionInfo, String> {
     let loaded = _state.api.lock().is_some();

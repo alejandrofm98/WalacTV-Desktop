@@ -293,6 +293,7 @@
 
 /* ── Episode Row ───────────────────────────────── */
 .episodeRow {
+  position: relative;
   display: flex;
   gap: 16px;
   align-items: center;
@@ -329,6 +330,42 @@
 
 .episodeRowActive:hover {
   background: oklch(62% 0.17 155 / 0.14);
+}
+
+.episodeContextMenu {
+  position: absolute;
+  z-index: 5;
+  top: 12px;
+  right: 16px;
+  width: 255px;
+  padding: 5px;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  border: 1px solid oklch(100% 0 0 / 0.12);
+  border-radius: var(--radius-sm);
+  background: oklch(17% 0.018 252 / 0.98);
+  box-shadow: var(--shadow-md);
+  backdrop-filter: blur(16px);
+}
+
+.episodeContextMenu button {
+  border: 0;
+  border-radius: var(--radius-xs);
+  padding: 9px 10px;
+  background: transparent;
+  color: var(--text-primary);
+  font: inherit;
+  font-size: 12px;
+  font-weight: 600;
+  text-align: left;
+  cursor: pointer;
+}
+
+.episodeContextMenu button:hover,
+.episodeContextMenu button:focus-visible {
+  background: var(--focus-bg);
+  outline: none;
 }
 
 /* ── Episode Thumbnail ─────────────────────────── */

@@ -1,5 +1,5 @@
 import { fetch } from '@tauri-apps/plugin-http'
-import type { CatalogItem, WatchProgressItem, BrowseSection, StreamOption, CalendarResponse } from './types'
+import type { CatalogItem, WatchProgressItem, BrowseSection, StreamOption, CalendarResponse, PlaybackTrackPreference } from './types'
 import { useAppStore } from '../store/useAppStore'
 import { getUsername, getPassword, saveCredentials } from '../credentials'
 import { BASE, API_URL } from '../config'
@@ -123,19 +123,24 @@ function mapStreamOptions(raw: any[]): StreamOption[] {
   }))
 }
 
-function mapKind(type: string): CatalogItem['kind'] {
-  const t = (type ?? '').toLowerCase()
+function mapKind(raw: any): CatalogItem['kind'] {
+  const t = (raw.type ?? '').toLowerCase()
   if (t === 'movie') return 'MOVIE'
   if (t === 'series' || t === 'series_group') return 'SERIES'
   if (t === 'channel') return 'CHANNEL'
   if (t === 'event') return 'EVENT'
+  // Raw catalog rows (e.g. TENDENCIAS sections) can omit `type`. Infer series
+  // from series-specific fields so they open SeriesDetail instead of MovieDetail.
+  if (raw.series_key || raw.series_name || raw.total_seasons != null || raw.total_episodes != null) {
+    return 'SERIES'
+  }
   return 'MOVIE'
 }
 
 function mapItem(raw: any): CatalogItem {
   const streamOpts = mapStreamOptions(raw.stream_options)
   // ponytail: fallback live URL when backend omits stream_options
-  const kind = mapKind(raw.type)
+  const kind = mapKind(raw)
   const streamId = raw.provider_id != null ? String(raw.provider_id) : String(raw.id ?? '')
   if (streamOpts.length === 0 && (kind === 'CHANNEL' || kind === 'EVENT') && streamId) {
     const fallbackRaw = `${IPTV_BASE}/live/{{USERNAME}}/{{PASSWORD}}/${streamId}`
@@ -150,6 +155,7 @@ function mapItem(raw: any): CatalogItem {
     : null
   return {
     stableId: String(raw.id ?? raw.provider_id ?? ''),
+    catalogId: raw.id != null ? String(raw.id) : null,
     providerId: raw.provider_id != null ? String(raw.provider_id) : null,
     title: raw.title ?? '',
     subtitle: raw.subtitle ?? raw.series_name ?? '',
@@ -163,6 +169,8 @@ function mapItem(raw: any): CatalogItem {
     normalizedTitle: raw.normalized_title ?? null,
     normalizedGroup: raw.normalized_group ?? null,
     seriesName: raw.series_name ?? null,
+    seriesKey: raw.series_key ?? null,
+    seriesProviderId: raw.series_provider_id != null ? String(raw.series_provider_id) : null,
     seasonNumber: raw.season_number ?? null,
     episodeNumber: raw.episode_number ?? null,
     streamOptions: streamOpts,
@@ -230,6 +238,57 @@ function mapWatchProgress(raw: any): WatchProgressItem {
   }
 }
 
+function mapReplay(raw: any): CatalogItem {
+  const streamOptions: StreamOption[] = (raw.video_sources ?? []).flatMap((group: any, sourceIndex: number) =>
+    (group.sources ?? []).map((source: any, buttonIndex: number) => {
+      const replaySourceIndex = source.source_index ?? sourceIndex
+      const replayButtonIndex = source.button_index ?? buttonIndex
+      const proxyUrl = `${BASE}/api/replays/${encodeURIComponent(raw.slug)}/stream/${replaySourceIndex}/${replayButtonIndex}?token=${encodeURIComponent(_token)}`
+      const rawUrl = source.stream_url || proxyUrl
+      return {
+        label: group.group ? `${group.group} · ${source.label ?? 'Fuente'}` : source.label ?? 'Fuente',
+        url: rawUrl,
+        rawUrl,
+        provider: source.provider,
+        providerVideoId: source.provider_video_id,
+      }
+    }),
+  )
+
+  return {
+    stableId: `replay:${raw.slug}`,
+    title: raw.title ?? '',
+    subtitle: raw.event_date ?? '',
+    description: raw.description || (raw.match_card ?? []).join('\n'),
+    imageUrl: normalizeRemoteImageUrl(raw.featured_image_url),
+    kind: 'EVENT',
+    group: 'UFC',
+    badgeText: 'UFC',
+    streamOptions,
+    genres: [],
+    year: raw.event_date ? Number(String(raw.event_date).slice(0, 4)) || null : null,
+  }
+}
+
+export async function resolveReplayStreamUrl(option: StreamOption): Promise<string> {
+  if (option.provider !== 'dailymotion' || !option.providerVideoId) return option.url
+
+  try {
+    const metadataUrl = new URL(`https://www.dailymotion.com/player/metadata/video/${option.providerVideoId}`)
+    metadataUrl.searchParams.set('embedder', 'https://dailywrestling.cc/')
+    const response = await fetch(metadataUrl, { headers: { 'User-Agent': 'Mozilla/5.0' } })
+    if (!response.ok) return option.url
+    const metadata = await response.json() as { qualities?: Record<string, Array<{ url?: string }>> }
+    const qualities = metadata.qualities ?? {}
+    const numericQuality = Object.keys(qualities)
+      .filter((quality) => /^\d+$/.test(quality))
+      .sort((a, b) => Number(b) - Number(a))[0]
+    return qualities[numericQuality]?.[0]?.url ?? qualities.auto?.[0]?.url ?? option.url
+  } catch {
+    return option.url
+  }
+}
+
 // Auth
 export async function login(username: string, password: string) {
   const form = new URLSearchParams()
@@ -283,6 +342,16 @@ export async function getCatalogPage(params: {
     items: (raw.items ?? []).map(mapItem),
     total: raw.total,
     page: raw.page,
+    has_next: raw.has_next,
+  }
+}
+
+export async function getUfcReplays(page = 1, search?: string) {
+  const q = new URLSearchParams({ page: String(page), page_size: '48', event_type: 'UFC' })
+  if (search) q.set('search', search)
+  const raw = await get<{ items: any[]; has_next: boolean }>(`/api/replays?${q}`)
+  return {
+    items: (raw.items ?? []).map(mapReplay),
     has_next: raw.has_next,
   }
 }
@@ -410,12 +479,68 @@ export async function removeWatchProgress(id: string): Promise<void> {
   await del(`/api/watch-progress/${encodeURIComponent(id)}`)
 }
 
-export async function markWatched(contentId: string, season?: number | null, episode?: number | null): Promise<void> {
+export async function markWatched(
+  contentId: string,
+  season?: number | null,
+  episode?: number | null,
+  completed = false,
+): Promise<void> {
   const params = new URLSearchParams()
   if (season != null) params.set('season', String(season))
   if (episode != null) params.set('episode', String(episode))
+  if (completed) params.set('completed', 'true')
   const qs = params.toString() ? `?${params}` : ''
   await post(`/api/watch-progress/${encodeURIComponent(contentId)}/mark-watched${qs}`)
+}
+
+export async function markSeriesEpisodesWatched(
+  contentId: string,
+  episodes: Array<{ seasonNumber?: number | null; episodeNumber?: number | null }>,
+): Promise<void> {
+  await Promise.all(episodes.map((episode) =>
+    markWatched(contentId, episode.seasonNumber, episode.episodeNumber),
+  ))
+}
+
+function playbackPreferencePath(item: CatalogItem): string | null {
+  if (item.kind !== 'MOVIE' && item.kind !== 'SERIES') return null
+  const catalogId = item.kind === 'SERIES' ? item.seriesKey : item.catalogId
+  if (!catalogId) return null
+  return `/api/playback-preferences/${item.kind.toLowerCase()}/${encodeURIComponent(catalogId)}`
+}
+
+export async function getPlaybackTrackPreference(
+  item: CatalogItem,
+): Promise<PlaybackTrackPreference | null> {
+  const path = playbackPreferencePath(item)
+  if (!path) return null
+  const response = await fetch(`${BASE}${path}`, { headers: headers() })
+  handleAuthError(response)
+  if (response.status === 404) return null
+  if (!response.ok) throw new Error(`${response.status} ${response.statusText}`)
+  const raw = await response.json() as Record<string, unknown>
+  return {
+    audioLanguage: raw.audio_language as string | undefined,
+    audioLabel: raw.audio_label as string | undefined,
+    subtitleLanguage: raw.subtitle_language as string | undefined,
+    subtitleLabel: raw.subtitle_label as string | undefined,
+    subtitlesDisabled: raw.subtitles_disabled as boolean | undefined,
+  }
+}
+
+export async function updatePlaybackTrackPreference(
+  item: CatalogItem,
+  patch: Partial<PlaybackTrackPreference>,
+): Promise<void> {
+  const path = playbackPreferencePath(item)
+  if (!path) return
+  const body: Record<string, unknown> = {}
+  if ('audioLanguage' in patch) body.audio_language = patch.audioLanguage ?? null
+  if ('audioLabel' in patch) body.audio_label = patch.audioLabel ?? null
+  if ('subtitleLanguage' in patch) body.subtitle_language = patch.subtitleLanguage ?? null
+  if ('subtitleLabel' in patch) body.subtitle_label = patch.subtitleLabel ?? null
+  if ('subtitlesDisabled' in patch) body.subtitles_disabled = patch.subtitlesDisabled ?? null
+  await put(path, body)
 }
 
 // Countries, Groups

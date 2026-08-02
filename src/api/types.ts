@@ -4,6 +4,8 @@ export interface StreamOption {
   label: string
   url: string
   rawUrl: string
+  provider?: string
+  providerVideoId?: string
   providerId?: string
   quality?: string | null
   headers?: Record<string, string>
@@ -11,6 +13,7 @@ export interface StreamOption {
 
 export interface CatalogItem {
   stableId: string
+  catalogId?: string | null
   providerId?: string | null
   title: string
   subtitle: string
@@ -25,6 +28,7 @@ export interface CatalogItem {
   normalizedGroup?: string | null
   seriesName?: string | null
   seriesKey?: string | null
+  seriesProviderId?: string | null
   seasonNumber?: number | null
   episodeNumber?: number | null
   streamOptions: StreamOption[]
@@ -47,6 +51,14 @@ export interface CatalogItem {
   titleEn?: string | null
   episodeType?: string | null
   imdbId?: string | null
+}
+
+export interface PlaybackTrackPreference {
+  audioLanguage?: string
+  audioLabel?: string
+  subtitleLanguage?: string
+  subtitleLabel?: string
+  subtitlesDisabled?: boolean
 }
 
 export interface WatchProgressItem {

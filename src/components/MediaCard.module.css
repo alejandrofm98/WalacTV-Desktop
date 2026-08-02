@@ -143,62 +143,56 @@
   backdrop-filter: blur(4px);
 }
 
-/* ── Continue-watching actions overlay ───────────── */
-.cwActions {
-  position: absolute;
-  top: 8px;
-  right: 8px;
-  display: flex;
-  flex-direction: row;
-  gap: 6px;
-  z-index: 4;
-  opacity: 0;
-  pointer-events: none;
-  transition: opacity 0.18s ease;
+/* ── Context menu ────────────────────────────────── */
+.contextMenuBackdrop {
+  position: fixed;
+  z-index: 100;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  padding: clamp(20px, 5vw, 72px);
+  background: oklch(6% 0.018 252 / 0.58);
 }
 
-.card:hover .cwActions,
-.card:focus-within .cwActions {
-  opacity: 1;
-  pointer-events: auto;
+.contextMenu {
+  width: min(50vw, 620px);
+  min-width: min(50vw, 360px);
+  max-height: calc(100vh - clamp(40px, 10vw, 144px));
+  overflow-y: auto;
+  padding: 10px;
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  border: 1px solid oklch(100% 0 0 / 0.12);
+  border-radius: var(--radius-lg);
+  background: var(--surface-elevated);
+  box-shadow: var(--shadow-lg);
 }
 
-.cwBtn {
-  width: 32px;
-  height: 32px;
-  padding: 0;
-  border: 1px solid oklch(100% 0 0 / 0.1);
-  border-radius: 50%;
-  background: oklch(20% 0 0 / 0.45);
-  backdrop-filter: blur(8px);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  cursor: pointer;
+.contextMenuItem {
+  border: 0;
+  border-radius: var(--radius-sm);
+  padding: 16px 18px;
+  background: transparent;
   color: var(--text-primary);
-  transition: background 0.18s ease, color 0.18s ease, transform 0.18s ease;
+  font: inherit;
+  font-size: clamp(15px, 1.4vw, 19px);
+  font-weight: 600;
+  text-align: left;
+  line-height: 1.35;
+  white-space: normal;
+  cursor: pointer;
+  transition: background 0.12s ease;
 }
 
-.cwBtn:hover {
-  background: oklch(20% 0 0 / 0.7);
-  transform: scale(1.08);
+.contextMenuItem:hover,
+.contextMenuItem:focus-visible {
+  background: var(--focus-bg);
+  outline: none;
 }
 
-.cwBtn:focus-visible {
-  outline: 2px solid var(--focus-border);
-  outline-offset: 1px;
-}
-
-.cwBtnInfo {
-  color: var(--accent);
-}
-
-.cwBtnRemove {
+.contextMenuItemDanger {
   color: var(--live);
-}
-
-.cwBtnMark {
-  color: var(--success);
 }
 
 /* ── Progress bar ────────────────────────────────── */

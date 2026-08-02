@@ -7,6 +7,7 @@ let _volume = 1
 let _preferredQuality: 'auto' | number = 'auto'
 let _language = 'ES'
 
+
 // ── Volume ───────────────────────────────────────────────────────────
 export async function loadSettings(): Promise<void> {
   const vol = await store.get<number>('volume')

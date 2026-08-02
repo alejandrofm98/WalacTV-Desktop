@@ -1,4 +1,5 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
+import { createPortal } from 'react-dom'
 import type { CatalogItem } from '../api/types'
 import { useAppStore } from '../store/useAppStore'
 import styles from './MediaCard.module.css'
@@ -15,15 +16,17 @@ interface Props {
   onViewDetail?: () => void
   onMarkWatched?: () => void
   onRemove?: () => void
+  onStartOver?: () => void
 }
 
 const CARD_W = 170
 const CARD_H = 240
 const TEXT_AREA_H = 46
 
-export function MediaCard({ item, width = CARD_W, height = CARD_H, showText = false, progressPercent, topBadges, onClick, onHover, onViewDetail, onMarkWatched, onRemove }: Props) {
+export function MediaCard({ item, width = CARD_W, height = CARD_H, showText = false, progressPercent, topBadges, onClick, onHover, onViewDetail, onMarkWatched, onRemove, onStartOver }: Props) {
   const [focused, setFocused] = useState(false)
   const [imgError, setImgError] = useState(false)
+  const [menuOpen, setMenuOpen] = useState(false)
   const playerOpening = useAppStore((s) => s.playerOpening)
   const playerItem = useAppStore((s) => s.playerItem)
   const isVod = item.kind === 'MOVIE' || item.kind === 'SERIES'
@@ -50,6 +53,21 @@ export function MediaCard({ item, width = CARD_W, height = CARD_H, showText = fa
 
   const isHiddenBadge = ['EN VIVO', 'CINE', 'SERIES', 'SERIE', 'PELICULA', 'PELICULAS'].includes(item.badgeText?.trim().toUpperCase() || '')
 
+  useEffect(() => {
+    if (!menuOpen) return
+    const closeOnEscape = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') setMenuOpen(false)
+    }
+    document.addEventListener('keydown', closeOnEscape)
+    return () => document.removeEventListener('keydown', closeOnEscape)
+  }, [menuOpen])
+
+  const hasMenu = onViewDetail || onStartOver || onMarkWatched || onRemove
+  const runMenuAction = (action: () => void) => {
+    setMenuOpen(false)
+    action()
+  }
+
   return (
     <div
       tabIndex={0}
@@ -59,6 +77,11 @@ export function MediaCard({ item, width = CARD_W, height = CARD_H, showText = fa
       onBlur={() => setFocused(false)}
       onMouseEnter={() => onHover?.(item)}
       onClick={onClick}
+      onContextMenu={(e) => {
+        if (!hasMenu) return
+        e.preventDefault()
+        setMenuOpen(true)
+      }}
       onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); onClick() } }}
       className={cardClass}
       style={{ width, minWidth: width, height }}
@@ -102,54 +125,49 @@ export function MediaCard({ item, width = CARD_W, height = CARD_H, showText = fa
         </div>
       ))}
 
-      {(onViewDetail || onMarkWatched || onRemove) && (
-        <div className={styles.cwActions}>
-          {onViewDetail && (
-            <button
-              type="button"
-              className={`${styles.cwBtn} ${styles.cwBtnInfo}`}
-              onClick={(e) => { e.stopPropagation(); e.preventDefault(); onViewDetail() }}
-              onKeyDown={(e) => e.stopPropagation()}
-              aria-label="Ver detalle"
-              title="Ver detalle"
-            >
-              <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-                <circle cx="12" cy="12" r="10" />
-                <line x1="12" y1="11" x2="12" y2="17" />
-                <circle cx="12" cy="7" r="0.6" fill="currentColor" stroke="none" />
-              </svg>
-            </button>
-          )}
-          {onMarkWatched && (
-            <button
-              type="button"
-              className={`${styles.cwBtn} ${styles.cwBtnMark}`}
-              onClick={(e) => { e.stopPropagation(); e.preventDefault(); onMarkWatched() }}
-              onKeyDown={(e) => e.stopPropagation()}
-              aria-label="Marcar como vista"
-              title="Marcar como vista"
-            >
-              <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-                <polyline points="20 6 9 17 4 12" />
-              </svg>
-            </button>
-          )}
-          {onRemove && (
-            <button
-              type="button"
-              className={`${styles.cwBtn} ${styles.cwBtnRemove}`}
-              onClick={(e) => { e.stopPropagation(); e.preventDefault(); onRemove() }}
-              onKeyDown={(e) => e.stopPropagation()}
-              aria-label="Eliminar de continuar viendo"
-              title="Eliminar de continuar viendo"
-            >
-              <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-                <line x1="6" y1="6" x2="18" y2="18" />
-                <line x1="18" y1="6" x2="6" y2="18" />
-              </svg>
-            </button>
-          )}
-        </div>
+      {hasMenu && menuOpen && createPortal(
+        <div className={styles.contextMenuBackdrop} onMouseDown={() => setMenuOpen(false)}>
+          <div
+            className={styles.contextMenu}
+            role="menu"
+            aria-label={`Opciones para ${displayTitle}`}
+            onMouseDown={(e) => e.stopPropagation()}
+          >
+            {onViewDetail && (
+              <button
+                type="button"
+                className={styles.contextMenuItem}
+                onClick={(e) => { e.stopPropagation(); runMenuAction(onViewDetail) }}
+              >
+                Ir a detalles
+              </button>
+            )}
+            {onStartOver && (
+              <button type="button" className={styles.contextMenuItem} onClick={(e) => { e.stopPropagation(); runMenuAction(onStartOver) }}>
+                Empezar desde el principio
+              </button>
+            )}
+            {onMarkWatched && (
+              <button
+                type="button"
+                className={styles.contextMenuItem}
+                onClick={(e) => { e.stopPropagation(); runMenuAction(onMarkWatched) }}
+              >
+                Marcar como vista
+              </button>
+            )}
+            {onRemove && (
+              <button
+                type="button"
+                className={`${styles.contextMenuItem} ${styles.contextMenuItemDanger}`}
+                onClick={(e) => { e.stopPropagation(); runMenuAction(onRemove) }}
+              >
+                Limpiar progreso
+              </button>
+            )}
+          </div>
+        </div>,
+        document.body,
       )}
 
       {/* Progress bar */}

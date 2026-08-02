@@ -12,9 +12,11 @@ interface Props {
   onCwViewDetail?: (item: CatalogItem, entry: WatchProgressItem) => void
   onCwMarkWatched?: (entry: WatchProgressItem) => void
   onCwRemove?: (entry: WatchProgressItem) => void
+  onCwStartOver?: (item: CatalogItem) => void
+  onMarkWatched?: (item: CatalogItem) => void
 }
 
-export function SectionRow({ section, onCardClick, onCardHover, continueWatching, onCwViewDetail, onCwMarkWatched, onCwRemove }: Props) {
+export function SectionRow({ section, onCardClick, onCardHover, continueWatching, onCwViewDetail, onCwMarkWatched, onCwRemove, onCwStartOver, onMarkWatched }: Props) {
   const scrollRef = useRef<HTMLDivElement>(null)
   const [canScrollLeft, setCanScrollLeft] = useState(false)
   const [canScrollRight, setCanScrollRight] = useState(true)
@@ -100,8 +102,9 @@ export function SectionRow({ section, onCardClick, onCardHover, continueWatching
                 onClick={() => onCardClick(item)}
                 onHover={onCardHover}
                 onViewDetail={isCwSection && cw ? () => onCwViewDetail?.(item, cw) : undefined}
-                onMarkWatched={isCwSection && cw ? () => onCwMarkWatched?.(cw) : undefined}
+                onMarkWatched={isCwSection && cw ? () => onCwMarkWatched?.(cw) : (item.kind === 'MOVIE' || item.kind === 'SERIES' ? () => onMarkWatched?.(item) : undefined)}
                 onRemove={isCwSection && cw ? () => onCwRemove?.(cw) : undefined}
+                onStartOver={isCwSection && cw ? () => onCwStartOver?.(item) : undefined}
               />
             )
           })}

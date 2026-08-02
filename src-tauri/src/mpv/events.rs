@@ -37,6 +37,8 @@ const WIDTH_ID: u64 = 11;
 const HEIGHT_ID: u64 = 12;
 #[cfg(target_os = "windows")]
 const FULLSCREEN_ID: u64 = 13;
+const AUDIO_TRACK_ID: u64 = 14;
+const SUBTITLE_TRACK_ID: u64 = 15;
 
 // ---------------------------------------------------------------------------
 // Payload structs for Tauri events
@@ -165,6 +167,20 @@ pub fn mpv_event_loop(
         TRACK_LIST_ID,
         "track-list",
         mpv_format::MPV_FORMAT_NODE,
+    );
+    observe(
+        &api,
+        event_client,
+        AUDIO_TRACK_ID,
+        "aid",
+        mpv_format::MPV_FORMAT_STRING,
+    );
+    observe(
+        &api,
+        event_client,
+        SUBTITLE_TRACK_ID,
+        "sid",
+        mpv_format::MPV_FORMAT_STRING,
     );
     observe(
         &api,
@@ -435,6 +451,10 @@ pub fn mpv_event_loop(
                                 .emit("mpv://tracks-changed", MpvTracksPayload { tracks });
                             emit_unified_event(&app_handle, "tracks-changed", None);
                         }
+                    }
+
+                    AUDIO_TRACK_ID | SUBTITLE_TRACK_ID => {
+                        emit_unified_event(&app_handle, "tracks-changed", None);
                     }
 
                     MEDIA_TITLE_ID => {

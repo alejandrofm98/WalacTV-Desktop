@@ -1,0 +1,24 @@
+{
+  "version": "1.0.0",
+  "updatedAt": "2026-07-31T00:00:00.000Z",
+  "dependencies": [
+    {
+      "name": "airspace",
+      "resolvedVersion": "450a7b4166b4ba65cf9a246e80c928a36dc4dbf3",
+      "repoUrl": "https://github.com/lukr54/airspace.git",
+      "ref": "450a7b4166b4ba65cf9a246e80c928a36dc4dbf3",
+      "path": ".slim/clonedeps/repos/lukr54__airspace",
+      "packagePath": "tauri-plugin-airspace",
+      "reason": "Reference implementation for Tauri 2, mpv, Win32 airspace, HWND hosting, and overlay lifecycle"
+    },
+    {
+      "name": "OpenPlayer",
+      "resolvedVersion": "e30be4f58974634fe02a2a39277b2fbc66d05d96",
+      "repoUrl": "https://github.com/AreChen/OpenPlayer.git",
+      "ref": "e30be4f58974634fe02a2a39277b2fbc66d05d96",
+      "path": ".slim/clonedeps/repos/AreChen__OpenPlayer",
+      "packagePath": "apps/desktop/src-tauri/src",
+      "reason": "Reference implementation for Windows libmpv host and transparent Tauri overlay window lifecycle"
+    }
+  ]
+}
