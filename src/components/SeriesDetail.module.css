@@ -196,20 +196,24 @@
 /* ── Season Dropdown ───────────────────────────── */
 .seasonSelector {
   position: relative;
+  display: flex;
+  justify-content: center;
   flex-shrink: 0;
-  padding: 16px 40px 8px;
+  padding: 24px 40px 16px;
 }
 
 .seasonDropdown {
   display: inline-flex;
   align-items: center;
+  justify-content: space-between;
   gap: 8px;
+  min-width: min(360px, 100%);
   background: var(--surface);
   color: var(--text-primary);
   border: 1px solid var(--surface-variant);
   border-radius: var(--radius-sm);
-  padding: 8px 14px;
-  font-size: 14px;
+  padding: 12px 18px;
+  font-size: 16px;
   font-weight: 600;
   font-family: var(--font-body);
   cursor: pointer;
@@ -231,9 +235,10 @@
 .seasonMenu {
   position: absolute;
   top: 100%;
-  left: 40px;
+  left: 50%;
+  width: min(360px, calc(100% - 80px));
   margin-top: 4px;
-  min-width: 200px;
+  transform: translateX(-50%);
   background: var(--surface-elevated);
   border: 1px solid var(--surface-variant);
   border-radius: var(--radius-md);
@@ -245,15 +250,17 @@
 }
 
 @keyframes dropdownFadeIn {
-  from { opacity: 0; transform: translateY(-4px); }
-  to   { opacity: 1; transform: translateY(0); }
+  from { opacity: 0; }
+  to   { opacity: 1; }
 }
 
 .seasonOption {
   display: flex;
   align-items: center;
-  padding: 8px 14px;
-  font-size: 13px;
+  justify-content: center;
+  min-height: 44px;
+  padding: 10px 18px;
+  font-size: 15px;
   font-weight: 500;
   color: var(--text-secondary);
   cursor: pointer;

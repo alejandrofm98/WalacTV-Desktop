@@ -161,7 +161,7 @@ function mapItem(raw: any): CatalogItem {
     subtitle: raw.subtitle ?? raw.series_name ?? '',
     description: raw.overview || raw.overview_es || raw.tmdb_overview || raw.tmdb_overview_es || raw.overview_en || raw.tmdb_overview_en || raw.description || raw.subtitle || '',
     imageUrl,
-    kind: mapKind(raw.type),
+    kind,
     group: raw.group ?? raw.normalized_group ?? '',
     badgeText: raw.badge_text ?? '',
     channelNumber: raw.channel_number ?? null,
