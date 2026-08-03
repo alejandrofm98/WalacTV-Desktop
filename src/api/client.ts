@@ -445,6 +445,88 @@ export async function getWatchProgress(limit = 20) {
   }
 }
 
+// Watched items (marcadas como vistas, no solo en progreso)
+export async function getWatchedItems(limit = 500) {
+  const raw = await get<{ items: any[] }>(`/api/watch-progress/watched?limit=${limit}`)
+  return {
+    items: (raw.items ?? []).map(mapWatchProgress),
+  }
+}
+
+function normKey(value: string | null | undefined): string {
+  return (value ?? '').trim().toLowerCase()
+}
+
+/**
+ * Construye un matcher que dice si un item de catalogo esta visto, usando la
+ * lista global de contenidos marcados como vistos. Solo marca (nunca desmarca).
+ */
+export function buildWatchedMatcher(watched: WatchProgressItem[]): (item: CatalogItem) => boolean {
+  const movieIds = new Set<string>()
+  const movieTitles = new Set<string>()
+  const seriesIds = new Set<string>()
+  const seriesNames = new Set<string>()
+  for (const w of watched) {
+    const id = w.contentId
+    if (w.contentType === 'series') {
+      seriesIds.add(id)
+      if (w.seriesName) seriesNames.add(normKey(w.seriesName))
+      if (w.title) seriesNames.add(normKey(w.title))
+      if (w.tmdbTitle) seriesNames.add(normKey(w.tmdbTitle))
+    } else {
+      movieIds.add(id)
+      if (w.title) movieTitles.add(normKey(w.title))
+      if (w.tmdbTitle) movieTitles.add(normKey(w.tmdbTitle))
+    }
+  }
+
+  return (item: CatalogItem): boolean => {
+    if (item.kind === 'MOVIE') {
+      const byId = [item.stableId, item.catalogId, item.providerId]
+        .some((v) => v != null && movieIds.has(String(v)))
+      return byId || movieTitles.has(normKey(item.title))
+    }
+    if (item.kind === 'SERIES') {
+      const byId = [item.stableId, item.seriesKey, item.seriesProviderId]
+        .some((v) => v != null && seriesIds.has(String(v)))
+      const byName = [item.seriesName, item.title, item.tmdbTitle]
+        .some((v) => v != null && seriesNames.has(normKey(String(v))))
+      return byId || byName
+    }
+    return false
+  }
+}
+
+/**
+ * Aplica el estado "visto" a los items de las secciones usando la lista global
+ * de contenidos marcados como vistos. Solo marca (nunca desmarca), asi que es
+ * seguro aplicarla encima de un is_watched que ya venga del backend.
+ */
+export function applyWatchedState(
+  sections: BrowseSection[],
+  watched: WatchProgressItem[],
+): BrowseSection[] {
+  if (watched.length === 0) return sections
+  const isWatched = buildWatchedMatcher(watched)
+  return sections.map((section) => {
+    if (!section.items.some(isWatched)) return section
+    return {
+      ...section,
+      items: section.items.map((item) => (isWatched(item) ? { ...item, isWatched: true } : item)),
+    }
+  })
+}
+
+/** Version para listas planas de items (Discover, Search). */
+export function applyWatchedToItems(
+  items: CatalogItem[],
+  watched: WatchProgressItem[],
+): CatalogItem[] {
+  if (watched.length === 0) return items
+  const isWatched = buildWatchedMatcher(watched)
+  return items.map((item) => (isWatched(item) ? { ...item, isWatched: true } : item))
+}
+
 /** Stable group key for continue-watching entries. Mirrors Android WalacTV:
  *  series collapse to one tile per series (grouped by series_name); movies keep
  *  their own content_id. Used both in the store Map and in the SectionRow lookups

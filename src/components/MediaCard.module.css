@@ -129,18 +129,18 @@
 /* ── Watched badge ──────────────────────────────── */
 .watchedBadge {
   position: absolute;
-  top: 7px;
-  right: 7px;
+  top: 8px;
+  right: 8px;
   z-index: 3;
   display: flex;
   align-items: center;
   justify-content: center;
-  width: 24px;
-  height: 24px;
-  background: var(--success-dim);
-  color: var(--success);
+  width: 22px;
+  height: 22px;
+  background: var(--success-solid);
+  color: oklch(14% 0.03 155);
   border-radius: var(--radius-full);
-  backdrop-filter: blur(4px);
+  box-shadow: 0 2px 8px oklch(0% 0 0 / 0.5), 0 0 0 1px oklch(100% 0 0 / 0.08);
 }
 
 /* ── Context menu ────────────────────────────────── */

@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef, useCallback } from 'react'
-import type { CatalogItem } from '../api/types'
-import { getAllSeriesEpisodes, getCatalogPage, getGenres, getUfcReplays, markSeriesEpisodesWatched, markWatched, search } from '../api/client'
+import type { CatalogItem, WatchProgressItem } from '../api/types'
+import { getAllSeriesEpisodes, getCatalogPage, getGenres, getUfcReplays, getWatchedItems, applyWatchedToItems, markSeriesEpisodesWatched, markWatched, search } from '../api/client'
 import { MediaCard } from './MediaCard'
 import { SearchableSelect } from './SearchableSelect'
 import { SearchInput } from './SearchInput'
@@ -26,9 +26,22 @@ export function DiscoverContent() {
   const [loadError, setLoadError] = useState(false)
   const [query, setQuery] = useState('')
   const searchTimeout = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const watchedRef = useRef<WatchProgressItem[]>([])
   const openDetail = useAppStore((s) => s.openDetail)
   const detailOpen = useAppStore((s) => !!s.detailItem)
   const observerTarget = useRef<HTMLDivElement>(null)
+
+  const applyWatched = useCallback((list: CatalogItem[]) => applyWatchedToItems(list, watchedRef.current), [])
+
+  // Carga global de "vistos" para marcar el tick en los posters
+  useEffect(() => {
+    getWatchedItems(500)
+      .then((w) => {
+        watchedRef.current = w.items
+        setItems((current) => applyWatchedToItems(current, w.items))
+      })
+      .catch(() => {})
+  }, [applyWatched])
 
   // Reload genres when country changes, reload items on any filter change
   useEffect(() => {
@@ -47,7 +60,7 @@ export function DiscoverContent() {
 
     if (type === 'ufc') {
       getUfcReplays(1, query.trim() || undefined)
-        .then((r) => { setItems(r.items); setHasNext(r.has_next) })
+        .then((r) => { setItems(applyWatched(r.items)); setHasNext(r.has_next) })
         .catch((e) => setError(e.message ?? 'Error'))
         .finally(() => setLoading(false))
       return
@@ -55,7 +68,7 @@ export function DiscoverContent() {
 
     if (!query.trim()) {
       getCatalogPage({ content_type: type, country, genre, page: 1, page_size: 48 })
-        .then((r) => { setItems(r.items); setHasNext(r.has_next) })
+        .then((r) => { setItems(applyWatched(r.items)); setHasNext(r.has_next) })
         .catch((e) => setError(e.message ?? 'Error'))
         .finally(() => setLoading(false))
       return
@@ -64,7 +77,7 @@ export function DiscoverContent() {
     searchTimeout.current = setTimeout(() => {
       search(query.trim(), 1, { country, types: type, genre })
         .then((r) => {
-          setItems(r.results)
+          setItems(applyWatched(r.results))
           setHasNext(false)
           setPage(1)
         })
@@ -86,10 +99,10 @@ export function DiscoverContent() {
       ? getUfcReplays(next, query.trim() || undefined)
       : getCatalogPage({ content_type: type, country, genre, page: next, page_size: 48 })
     request
-      .then((r) => { setItems((p) => [...p, ...r.items]); setHasNext(r.has_next); setPage(next) })
+      .then((r) => { setItems((p) => applyWatched([...p, ...r.items])); setHasNext(r.has_next); setPage(next) })
       .catch(() => setLoadError(true))
       .finally(() => setLoadingMore(false))
-  }, [page, type, country, genre, query, hasNext, loadingMore])
+  }, [page, type, country, genre, query, hasNext, loadingMore, applyWatched])
 
   useEffect(() => {
     const observer = new IntersectionObserver(

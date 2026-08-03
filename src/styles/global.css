@@ -24,6 +24,7 @@
   --live-dim:         oklch(56% 0.22 27 / 0.18);
   --success:          oklch(62% 0.17 155);    /* green */
   --success-dim:      oklch(62% 0.17 155 / 0.18);
+  --success-solid:    oklch(72% 0.18 155);    /* filled watched check */
 
   /* ── Text ────────────────────────────────────── */
   --text-primary:     oklch(93% 0.008 252);

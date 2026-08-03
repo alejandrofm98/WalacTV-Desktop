@@ -1,5 +1,6 @@
 import { useState, useEffect, useRef, useCallback, useMemo } from 'react'
-import { Play, CheckCircle, ChevronDown, ArrowLeft } from 'lucide-react'
+import { createPortal } from 'react-dom'
+import { Play, ChevronDown, ArrowLeft } from 'lucide-react'
 import type { CatalogItem, WatchProgressItem } from '../api/types'
 import { getAllSeriesEpisodes, getWatchProgress, markSeriesEpisodesWatched, cwGroupKey } from '../api/client'
 import { useAppStore } from '../store/useAppStore'
@@ -383,7 +384,11 @@ export function SeriesDetail({ item }: Props) {
                         {status.variant === 'watched' && (
                           <span className={styles.statusWatched}>
                             <span className={styles.statusLabel}>Visto</span>
-                            <CheckCircle className={styles.statusCheck} size={16} aria-hidden="true" />
+                            <span className={styles.statusBadge} aria-hidden="true">
+                              <svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" strokeWidth="3.5" strokeLinecap="round" strokeLinejoin="round">
+                                <polyline points="20 6 9 17 4 12" />
+                              </svg>
+                            </span>
                           </span>
                         )}
                         {status.variant === 'inProgress' && epProgress > 0 && (
@@ -395,22 +400,6 @@ export function SeriesDetail({ item }: Props) {
                         )}
                       </div>
                     </div>
-                    {contextEpisode?.seasonNumber === ep.seasonNumber && contextEpisode?.episodeNumber === ep.episodeNumber && (
-                      <div className={styles.episodeContextMenu} role="menu" onMouseDown={(e) => e.stopPropagation()}>
-                        <button type="button" onClick={(e) => { e.stopPropagation(); markEpisodesWatched([ep]) }}>
-                          Marcar este capítulo como visto
-                        </button>
-                        <button type="button" onClick={(e) => { e.stopPropagation(); markEpisodesWatched(episodes.filter((item) => item.seasonNumber === ep.seasonNumber)) }}>
-                          Marcar toda la temporada como vista
-                        </button>
-                        <button type="button" onClick={(e) => { e.stopPropagation(); markEpisodesWatched(episodes.filter((item) =>
-                          (item.seasonNumber ?? 0) < (ep.seasonNumber ?? 0) ||
-                          (item.seasonNumber === ep.seasonNumber && (item.episodeNumber ?? 0) <= (ep.episodeNumber ?? 0)),
-                        )) }}>
-                          Marcar capítulos anteriores como vistos
-                        </button>
-                      </div>
-                    )}
                   </div>
                 )
               })}
@@ -418,6 +407,25 @@ export function SeriesDetail({ item }: Props) {
           )}
         </div>
       </div>
+      {contextEpisode && createPortal(
+        <div className={styles.episodeContextMenuBackdrop} onMouseDown={() => setContextEpisode(null)}>
+          <div className={styles.episodeContextMenu} role="menu" onMouseDown={(e) => e.stopPropagation()}>
+            <button type="button" onClick={() => markEpisodesWatched([contextEpisode])}>
+              Marcar este capítulo como visto
+            </button>
+            <button type="button" onClick={() => markEpisodesWatched(episodes.filter((ep) => ep.seasonNumber === contextEpisode.seasonNumber))}>
+              Marcar toda la temporada como vista
+            </button>
+            <button type="button" onClick={() => markEpisodesWatched(episodes.filter((ep) =>
+              (ep.seasonNumber ?? 0) < (contextEpisode.seasonNumber ?? 0) ||
+              (ep.seasonNumber === contextEpisode.seasonNumber && (ep.episodeNumber ?? 0) <= (contextEpisode.episodeNumber ?? 0)),
+            ))}>
+              Marcar capítulos anteriores como vistos
+            </button>
+          </div>
+        </div>,
+        document.body,
+      )}
     </div>
   )
 }

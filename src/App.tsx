@@ -1,7 +1,7 @@
 import { useEffect, useRef } from 'react'
 import { invoke } from '@tauri-apps/api/core'
 import { useAppStore } from './store/useAppStore'
-import { login as apiLogin, setToken, getToken, getHomeCatalog, getWatchProgress, getPreferredLanguage, cwGroupKey } from './api/client'
+import { login as apiLogin, setToken, getToken, getHomeCatalog, getWatchProgress, getWatchedItems, applyWatchedState, getPreferredLanguage, cwGroupKey } from './api/client'
 import { loadCredentials } from './credentials'
 import { checkForUpdates } from './updater'
 import { LoginScreen } from './components/LoginScreen'
@@ -75,15 +75,17 @@ export default function App() {
     useAppStore.setState({ loading: true, error: null })
     try {
       const lang = getPreferredLanguage()
-      const [home, cw] = await Promise.all([
+      const [home, cw, watched] = await Promise.all([
         getHomeCatalog(lang).catch(() => null),
         getWatchProgress(20).catch(() => ({ items: [] })),
+        getWatchedItems(500).catch(() => ({ items: [] })),
       ])
 
       let hero: CatalogItem | null = null
       if (home) {
-        setHomeSections(home.sections)
-        hero = home.sections
+        const sections = watched.items.length ? applyWatchedState(home.sections, watched.items) : home.sections
+        setHomeSections(sections)
+        hero = sections
           .flatMap((s) => s.items)
           .find((i) => i.kind === 'MOVIE' || i.kind === 'SERIES') ?? null
       }

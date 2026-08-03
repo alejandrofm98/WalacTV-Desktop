@@ -1,13 +1,13 @@
 import { useMemo, useCallback, useEffect, useRef, useState } from 'react'
 import { useAppStore } from '../store/useAppStore'
 import { SectionRow } from './SectionRow'
-import { getContentById, getSeriesEpisodes, cwGroupKey, markSeriesEpisodesWatched, markWatched, saveWatchProgress, getAllSeriesEpisodes, getWatchProgress, removeWatchProgress } from '../api/client'
+import { getContentById, getSeriesEpisodes, cwGroupKey, markSeriesEpisodesWatched, markWatched, saveWatchProgress, getAllSeriesEpisodes, getWatchProgress, getWatchedItems, applyWatchedState, removeWatchProgress } from '../api/client'
 import type { CatalogItem, BrowseSection, WatchProgressItem } from '../api/types'
 import { pickFirstUnwatched } from '../utils/series'
 import styles from './HomeContent.module.css'
 
 export function HomeContent() {
-  const { homeSections, selectedHero, continueWatchingEntries, openPlayer, openDetail, removeContinueWatchingEntry, setContinueWatching } = useAppStore()
+  const { homeSections, selectedHero, continueWatchingEntries, openPlayer, openDetail, removeContinueWatchingEntry, setContinueWatching, setHomeSections } = useAppStore()
 
   const [hoveredHero, setHoveredHero] = useState<CatalogItem | null>(null)
   const hoverTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null)
@@ -95,6 +95,15 @@ export function HomeContent() {
     }
   }, [continueWatchingEntries, openPlayer, openDetail])
 
+  const refreshWatchedState = useCallback(async () => {
+    try {
+      const watched = await getWatchedItems(500)
+      setHomeSections(applyWatchedState(useAppStore.getState().homeSections, watched.items))
+    } catch (err) {
+      console.error('refresh watched state failed', err)
+    }
+  }, [setHomeSections])
+
   const handleCatalogMarkWatched = useCallback(async (item: CatalogItem) => {
     try {
       if (item.kind === 'SERIES') {
@@ -110,10 +119,11 @@ export function HomeContent() {
         if (!map.has(key)) map.set(key, entry)
       }
       setContinueWatching(map)
+      refreshWatchedState()
     } catch (err) {
       console.error('mark catalog item watched failed', err)
     }
-  }, [setContinueWatching])
+  }, [setContinueWatching, refreshWatchedState])
 
   const handleCwViewDetail = useCallback((item: CatalogItem, entry: WatchProgressItem) => {
     if (item.kind === 'SERIES') {
@@ -168,10 +178,11 @@ export function HomeContent() {
         if (!map.has(key)) map.set(key, item)
       }
       setContinueWatching(map)
+      refreshWatchedState()
     } catch (err) {
       console.error('CW reload failed', err)
     }
-  }, [removeContinueWatchingEntry, setContinueWatching])
+  }, [removeContinueWatchingEntry, setContinueWatching, refreshWatchedState])
 
   const handleCwRemove = useCallback(async (entry: WatchProgressItem) => {
     const cwKey = cwGroupKey(entry.contentType, entry.seriesName, entry.contentId)
@@ -187,10 +198,11 @@ export function HomeContent() {
         if (!map.has(key)) map.set(key, item)
       }
       setContinueWatching(map)
+      refreshWatchedState()
     } catch (err) {
       console.error('CW reload failed', err)
     }
-  }, [removeContinueWatchingEntry, setContinueWatching])
+  }, [removeContinueWatchingEntry, setContinueWatching, refreshWatchedState])
 
 
   // Build continue watching section from entries if backend doesn't provide one

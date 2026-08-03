@@ -196,24 +196,20 @@
 /* ── Season Dropdown ───────────────────────────── */
 .seasonSelector {
   position: relative;
-  display: flex;
-  justify-content: center;
   flex-shrink: 0;
-  padding: 24px 40px 16px;
+  padding: 16px 40px 8px;
 }
 
 .seasonDropdown {
   display: inline-flex;
   align-items: center;
-  justify-content: space-between;
   gap: 8px;
-  min-width: min(360px, 100%);
   background: var(--surface);
   color: var(--text-primary);
   border: 1px solid var(--surface-variant);
   border-radius: var(--radius-sm);
-  padding: 12px 18px;
-  font-size: 16px;
+  padding: 8px 14px;
+  font-size: 14px;
   font-weight: 600;
   font-family: var(--font-body);
   cursor: pointer;
@@ -235,10 +231,9 @@
 .seasonMenu {
   position: absolute;
   top: 100%;
-  left: 50%;
-  width: min(360px, calc(100% - 80px));
+  left: 40px;
   margin-top: 4px;
-  transform: translateX(-50%);
+  min-width: 200px;
   background: var(--surface-elevated);
   border: 1px solid var(--surface-variant);
   border-radius: var(--radius-md);
@@ -250,17 +245,15 @@
 }
 
 @keyframes dropdownFadeIn {
-  from { opacity: 0; }
-  to   { opacity: 1; }
+  from { opacity: 0; transform: translateY(-4px); }
+  to   { opacity: 1; transform: translateY(0); }
 }
 
 .seasonOption {
   display: flex;
   align-items: center;
-  justify-content: center;
-  min-height: 44px;
-  padding: 10px 18px;
-  font-size: 15px;
+  padding: 8px 14px;
+  font-size: 13px;
   font-weight: 500;
   color: var(--text-secondary);
   cursor: pointer;
@@ -339,34 +332,45 @@
   background: oklch(62% 0.17 155 / 0.14);
 }
 
+.episodeContextMenuBackdrop {
+  position: fixed;
+  z-index: 100;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  padding: clamp(20px, 5vw, 72px);
+  background: oklch(6% 0.018 252 / 0.58);
+}
+
 .episodeContextMenu {
-  position: absolute;
-  z-index: 5;
-  top: 12px;
-  right: 16px;
-  width: 255px;
-  padding: 5px;
+  width: min(50vw, 620px);
+  min-width: min(50vw, 360px);
+  max-height: calc(100vh - clamp(40px, 10vw, 144px));
+  overflow-y: auto;
+  padding: 10px;
   display: flex;
   flex-direction: column;
-  gap: 2px;
+  gap: 5px;
   border: 1px solid oklch(100% 0 0 / 0.12);
-  border-radius: var(--radius-sm);
-  background: oklch(17% 0.018 252 / 0.98);
-  box-shadow: var(--shadow-md);
-  backdrop-filter: blur(16px);
+  border-radius: var(--radius-lg);
+  background: var(--surface-elevated);
+  box-shadow: var(--shadow-lg);
 }
 
 .episodeContextMenu button {
   border: 0;
-  border-radius: var(--radius-xs);
-  padding: 9px 10px;
+  border-radius: var(--radius-sm);
+  padding: 16px 18px;
   background: transparent;
   color: var(--text-primary);
   font: inherit;
-  font-size: 12px;
+  font-size: clamp(15px, 1.4vw, 19px);
   font-weight: 600;
   text-align: left;
+  line-height: 1.35;
+  white-space: normal;
   cursor: pointer;
+  transition: background 0.12s ease;
 }
 
 .episodeContextMenu button:hover,
@@ -516,11 +520,17 @@
   font-weight: 600;
 }
 
-.statusCheck {
+.statusBadge {
   display: flex;
   align-items: center;
   justify-content: center;
+  width: 20px;
+  height: 20px;
+  background: var(--success-solid);
+  color: oklch(14% 0.03 155);
   border-radius: var(--radius-full);
+  box-shadow: 0 2px 8px oklch(0% 0 0 / 0.5), 0 0 0 1px oklch(100% 0 0 / 0.08);
+  flex-shrink: 0;
 }
 
 .statusInProgress {
