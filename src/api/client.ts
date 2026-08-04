@@ -447,9 +447,19 @@ export async function getWatchProgress(limit = 20) {
 
 // Watched items (marcadas como vistas, no solo en progreso)
 export async function getWatchedItems(limit = 500) {
-  const raw = await get<{ items: any[] }>(`/api/watch-progress/watched?limit=${limit}`)
+  const all: any[] = []
+  let offset = 0
+  const MAX_WATCHED_ITEMS = 10_000
+  while (offset < MAX_WATCHED_ITEMS) {
+    const raw = await get<{ items: any[]; total?: number }>(`/api/watch-progress/watched?limit=${limit}&offset=${offset}`)
+    const items = raw.items ?? []
+    all.push(...items)
+    const total = raw.total ?? offset + items.length
+    offset += items.length
+    if (items.length === 0 || offset >= total) break
+  }
   return {
-    items: (raw.items ?? []).map(mapWatchProgress),
+    items: all.map(mapWatchProgress),
   }
 }
 
