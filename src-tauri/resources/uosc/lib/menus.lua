@@ -201,6 +201,16 @@ function create_self_updating_menu_opener(opts)
 	end
 end
 
+local function get_audio_language_title(lang)
+	if not lang or lang == '' then return nil end
+	local code = lang:lower():match('^[^_%-]+')
+	if code == 'spa' or code == 'es' or code == 'esp' then return 'Español' end
+	if code == 'eng' or code == 'en' then return 'Inglés' end
+	if code == 'lat' or code == 'latam' then return 'Español latino' end
+	if code == 'und' then return nil end
+	return lang:upper()
+end
+
 ---@param opts {title: string; type: string; prop: string; enable_prop?: string; secondary?: {prop: string; icon: string; enable_prop?: string}; load_command: string; download_command?: string}
 function create_select_tracklist_type_menu_opener(opts)
 	local snd = opts.secondary
@@ -281,8 +291,15 @@ function create_select_tracklist_type_menu_opener(opts)
 					h(t('external'))
 				end
 
+				local title = track.title and trim(track.title) or nil
+				local generic_title = not title or title == '' or title:match('^%d+$')
+					or title:lower():match('^track%s+%d+$') or title:lower():match('^audio%s+%d+$')
+				if opts.type == 'audio' and generic_title then
+					title = get_audio_language_title(track.lang) or title
+				end
+
 				items[#items + 1] = {
-					title = (track.title and track.title or t('Track %s', track.id)),
+					title = title or t('Track %s', track.id),
 					hint = table.concat(hint_values, ', '),
 					value = track.id,
 					active = track_selected or snd_selected,

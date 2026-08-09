@@ -62,3 +62,37 @@
   text-overflow: ellipsis;
   white-space: nowrap;
 }
+
+.topRight {
+  margin-left: auto;
+  flex-shrink: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 3px;
+  padding-top: 4px;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+  text-align: right;
+}
+
+.clock {
+  font-size: 21px;
+  font-weight: 300;
+  letter-spacing: 0.01em;
+  line-height: 1.1;
+  color: var(--text-primary);
+  text-shadow: 0 1px 8px oklch(0% 0 0 / 0.7);
+}
+
+.ends {
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--text-secondary);
+  text-shadow: 0 1px 8px oklch(0% 0 0 / 0.7);
+}
+
+.ends b {
+  font-weight: 600;
+  color: var(--text-primary);
+}

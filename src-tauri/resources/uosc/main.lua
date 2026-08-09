@@ -30,7 +30,7 @@ defaults = {
 	timeline_heatmap = 'no',
 
 	controls =
-	'command:replay_10:seek -10 relative?Retroceder 10 segundos,play-pause,command:forward_10:seek 10 relative?Avanzar 10 segundos,space,<video,audio>subtitles,<has_many_audio>audio,<stream>stream-quality,menu,gap,fullscreen',
+	'command:replay_10:seek -10 relative?Retroceder 10 segundos,play-pause,command:forward_10:seek 10 relative?Avanzar 10 segundos,space,<video,audio>subtitles,<has_many_audio>audio,gap,fullscreen',
 	controls_size = 38,
 	controls_margin = 18,
 	controls_spacing = 6,

@@ -9,12 +9,37 @@ import { getPlaybackTrackPreference, getPreferredLanguage, updatePlaybackTrackPr
 
 type PlayerServiceEvent = 'state' | 'error' | 'trackschanged' | 'fullscreenchange' | 'pipchange' | 'ended'
 
+interface MpvTrackListEntry {
+  id?: number
+  type?: string
+  title?: string
+  lang?: string
+  selected?: boolean
+  forced?: boolean
+  external?: boolean
+  'external-filename'?: string
+  'ff-index'?: number
+}
+
 function normalizeTrackLanguage(language: string): string {
   const normalized = language.trim().toLowerCase().split(/[-_]/)[0]
   if (normalized === 'eng' || normalized === 'en') return 'EN'
   if (normalized === 'spa' || normalized === 'es') return 'ES'
   if (normalized === 'lat' || normalized === 'latam') return 'LATAM'
   return normalized.toUpperCase()
+}
+
+function externalAudioTitle(label: string): string | null {
+  const normalized = label
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .trim()
+    .toUpperCase()
+    .split(/[\s_-]/)[0]
+  if (normalized === 'EN' || normalized === 'ENG' || normalized === 'ENGLISH' || normalized === 'INGLES') {
+    return 'Inglés'
+  }
+  return null
 }
 
 /**
@@ -32,6 +57,9 @@ export class PlayerService extends EventTarget {
   private _currentItemId: string | null = null
   private _currentItem: PlayerItem | null = null
   private _currentStreamUrl: string | null = null
+  private _alternativeAudioLoadedForUrl: string | null = null
+  private _streamSwitchInProgress = false
+  private _pendingExternalAudioTrack: AudioTrack | null = null
   private _state: PlayerState = 'idle'
   private _unlisteners: UnlistenFn[] = []
   private _currentTime = 0
@@ -148,6 +176,9 @@ export class PlayerService extends EventTarget {
     this._currentTime = 0
     this._duration = 0
     this._currentStreamUrl = null
+    this._alternativeAudioLoadedForUrl = null
+    this._streamSwitchInProgress = false
+    this._pendingExternalAudioTrack = null
     this._currentItemId = null
     this._currentItem = null
     this._videoEl = null
@@ -184,6 +215,9 @@ export class PlayerService extends EventTarget {
     const gen = this._loadGeneration
     this._currentItemId = item.stableId
     this._currentItem = item
+    this._alternativeAudioLoadedForUrl = null
+    this._streamSwitchInProgress = false
+    this._pendingExternalAudioTrack = null
     this._trackStateInitialized = false
     this._trackPreferenceLoading = false
     this._lastAudioTrackId = null
@@ -236,14 +270,18 @@ export class PlayerService extends EventTarget {
           invoke('mpv_set_property', { name: 'user-data/walactv/subtitle', value: subtitle }),
         ])
 
+        this._currentStreamUrl = url
         await invoke('mpv_loadfile', { url, startPosition: startPosition ?? null })
 
-        this._currentStreamUrl = url
         usePlayerStore.getState().setOpening(false)
         this._setState('playing')
         return i
       } catch (err: any) {
         console.error(`[PlayerService] Load error #${i}:`, err)
+        if (this._currentStreamUrl === this._resolveStreamUrl(option)) {
+          this._currentStreamUrl = null
+          this._alternativeAudioLoadedForUrl = null
+        }
 
         const classified = classifyMpvError(err)
         const isLast = i === streamOptions.length - 1
@@ -289,6 +327,9 @@ export class PlayerService extends EventTarget {
   async unload(): Promise<void> {
     this._loadGeneration++
     this._currentStreamUrl = null
+    this._alternativeAudioLoadedForUrl = null
+    this._streamSwitchInProgress = false
+    this._pendingExternalAudioTrack = null
     this._currentItemId = null
     this._currentItem = null
     usePlayerStore.getState().setCurrentItem(null)
@@ -395,6 +436,8 @@ export class PlayerService extends EventTarget {
   }
 
   selectAudioTrack(track: AudioTrack): void {
+    if (this._switchToExternalAudioTrack(track)) return
+
     invoke('mpv_set_property', { name: 'aid', value: track.id }).catch(() => {})
     this._lastAudioTrackId = track.id
     const item = this._currentItem
@@ -511,6 +554,96 @@ export class PlayerService extends EventTarget {
     return resolvedUrl
   }
 
+  private _switchToExternalAudioTrack(track: AudioTrack): boolean {
+    const item = this._currentItem
+    const targetUrl = track.externalFilename
+    if (!item || !targetUrl || this._isLive) return false
+    if (this._streamSwitchInProgress) return true
+
+    const option = item.streamOptions.find((candidate) => this._resolveStreamUrl(candidate) === targetUrl)
+    if (!option || targetUrl === this._currentStreamUrl) return false
+
+    const previousUrl = this._currentStreamUrl
+    const previousAudioTrackId = this._lastAudioTrackId
+    this._streamSwitchInProgress = true
+    this._pendingExternalAudioTrack = track
+    this._currentStreamUrl = targetUrl
+    this._alternativeAudioLoadedForUrl = null
+    usePlayerStore.getState().setStreamLabel(option.label)
+    usePlayerStore.getState().setOpening(true)
+    this._setState('loading')
+
+    invoke('mpv_loadfile', {
+      url: targetUrl,
+      startPosition: Math.max(0, this._currentTime * 1000),
+    }).catch((err) => {
+      console.warn(`[PlayerService] No se pudo cambiar al stream "${option.label}":`, err)
+      this._currentStreamUrl = previousUrl
+      this._alternativeAudioLoadedForUrl = null
+      this._streamSwitchInProgress = false
+      this._pendingExternalAudioTrack = null
+      usePlayerStore.getState().setOpening(false)
+      this._setState(this._isPaused ? 'paused' : 'playing')
+      if (previousAudioTrackId != null) {
+        invoke('mpv_set_property', { name: 'aid', value: previousAudioTrackId }).catch(() => {})
+      }
+    })
+    return true
+  }
+
+  private async _restorePendingAudioTrack(): Promise<void> {
+    const pending = this._pendingExternalAudioTrack
+    if (!pending) return
+
+    await this._refreshTracks()
+    const embeddedTracks = this._audioTracks.filter((track) => !track.external)
+    const target = (pending.ffIndex != null
+      ? embeddedTracks.find((track) => track.ffIndex === pending.ffIndex)
+      : undefined)
+      ?? embeddedTracks.find((track) =>
+        track.language === pending.language && track.label === pending.label
+      )
+
+    if (!target) {
+      console.warn('[PlayerService] No se encontro la pista seleccionada en el nuevo stream')
+      return
+    }
+
+    await invoke('mpv_set_property', { name: 'aid', value: target.id })
+    this._lastAudioTrackId = target.id
+    const item = this._currentItem
+    if (item) {
+      updatePlaybackTrackPreference(item, {
+        audioLanguage: normalizeTrackLanguage(target.language),
+        audioLabel: target.label,
+      }).catch(() => {})
+    }
+  }
+
+  private async _loadAlternativeAudioTracks(): Promise<void> {
+    const item = this._currentItem
+    const currentUrl = this._currentStreamUrl
+    if (!item || this._isLive || !currentUrl) return
+    if (this._alternativeAudioLoadedForUrl === currentUrl) return
+
+    this._alternativeAudioLoadedForUrl = currentUrl
+    const seenUrls = new Set([currentUrl])
+    for (const option of item.streamOptions) {
+      const url = this._resolveStreamUrl(option)
+      if (seenUrls.has(url)) continue
+      seenUrls.add(url)
+      try {
+        const title = externalAudioTitle(option.label)
+        const args = title
+          ? ['audio-add', url, 'auto', title]
+          : ['audio-add', url, 'auto']
+        await invoke('mpv_command', { args })
+      } catch (err) {
+        console.warn(`[PlayerService] No se pudo agregar audio alternativo "${option.label}":`, err)
+      }
+    }
+  }
+
   // ── mpv event handling ───────────────────────────────────────────
 
   private async _handleMpvEvent(payload: MpvEvent): Promise<void> {
@@ -543,6 +676,9 @@ export class PlayerService extends EventTarget {
         const reason = payload.reason ?? 'unknown'
         console.debug(`[PlayerService] end-file: reason="${reason}"`)
         if (reason === 'error') {
+          this._streamSwitchInProgress = false
+          this._pendingExternalAudioTrack = null
+          usePlayerStore.getState().setOpening(false)
           const error: PlayerError = {
             kind: 'network',
             message: 'No se pudo cargar el stream.',
@@ -565,6 +701,19 @@ export class PlayerService extends EventTarget {
 
       case 'file-loaded':
         console.debug('[PlayerService] file-loaded: el archivo se cargo correctamente')
+        if (this._streamSwitchInProgress) {
+          try {
+            await this._restorePendingAudioTrack()
+          } catch (err) {
+            console.warn('[PlayerService] No se pudo restaurar la pista del nuevo stream:', err)
+          } finally {
+            this._streamSwitchInProgress = false
+            this._pendingExternalAudioTrack = null
+            usePlayerStore.getState().setOpening(false)
+            this._setState(this._isPaused ? 'paused' : 'playing')
+          }
+        }
+        await this._loadAlternativeAudioTracks()
         break
 
       case 'playback-restart':
@@ -583,13 +732,32 @@ export class PlayerService extends EventTarget {
 
   private async _refreshTracks(): Promise<void> {
     try {
-      const [audio, sub, variant] = await Promise.all([
-        invoke<AudioTrack[]>('mpv_get_audio_tracks'),
-        invoke<SubTrack[]>('mpv_get_sub_tracks'),
+      const [trackListJson, variant] = await Promise.all([
+        invoke<string>('mpv_get_property', { name: 'track-list' }),
         invoke<VariantTrack[]>('mpv_get_variant_tracks'),
       ])
-      this._audioTracks = audio
-      this._subTracks = sub
+      const tracks = JSON.parse(trackListJson) as MpvTrackListEntry[]
+      this._audioTracks = tracks
+        .filter((track) => track.type === 'audio' && typeof track.id === 'number')
+        .map((track) => ({
+          id: track.id as number,
+          language: track.lang?.trim() || 'und',
+          label: track.title?.trim() || track.lang?.trim() || `Track ${track.id}`,
+          active: track.selected === true,
+          roles: [],
+          external: track.external === true,
+          externalFilename: track['external-filename'],
+          ffIndex: track['ff-index'],
+        }))
+      this._subTracks = tracks
+        .filter((track) => track.type === 'sub' && typeof track.id === 'number')
+        .map((track) => ({
+          id: track.id as number,
+          language: track.lang?.trim() || 'und',
+          label: track.title?.trim() || track.lang?.trim() || `Track ${track.id}`,
+          active: track.selected === true,
+          forced: track.forced === true,
+        }))
       this._variantTracks = variant
     } catch {
       // Tracks not yet available — keep previous cache
@@ -604,6 +772,10 @@ export class PlayerService extends EventTarget {
 
     const activeAudio = this._audioTracks.find((track) => track.active) ?? null
     const activeSubtitle = this._subTracks.find((track) => track.active) ?? null
+
+    if (activeAudio?.external && activeAudio.externalFilename) {
+      if (this._streamSwitchInProgress || this._switchToExternalAudioTrack(activeAudio)) return
+    }
 
     if (!this._trackStateInitialized) {
       this._trackStateInitialized = true
@@ -729,6 +901,9 @@ export class PlayerService extends EventTarget {
     this._currentTime = 0
     this._duration = 0
     this._currentStreamUrl = null
+    this._alternativeAudioLoadedForUrl = null
+    this._streamSwitchInProgress = false
+    this._pendingExternalAudioTrack = null
     this._currentItemId = null
     this._currentItem = null
     this._videoEl = null

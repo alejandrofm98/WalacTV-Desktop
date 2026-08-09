@@ -27,6 +27,9 @@ export interface AudioTrack {
   label: string
   active: boolean
   roles: string[]
+  external?: boolean
+  externalFilename?: string
+  ffIndex?: number
 }
 
 export interface SubTrack {

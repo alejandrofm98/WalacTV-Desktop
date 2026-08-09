@@ -34,6 +34,7 @@ export function usePlayerProgress({
   const buildBody = useRef((posMs: number, durMs: number): WatchProgressUpsertBody | null => {
     const cur = item
     if (!cur || !cur.stableId) return null
+    if (cur.kind !== 'MOVIE' && cur.kind !== 'SERIES') return null
     const rawDuration = durMs > 0 ? durMs : (cur.runtimeMinutes || 0) * 60000
     return {
       content_type: cur.kind === 'SERIES' ? 'series' : 'movie',
