@@ -23,9 +23,9 @@
 #![cfg(target_os = "linux")]
 
 use crate::mpv::ffi::{
-    mpv_format, mpv_handle, mpv_opengl_init_params, mpv_render_context, mpv_render_param,
+    mpv_format, mpv_handle, mpv_opengl_init_params, mpv_render_context, mpv_render_param, MpvApi,
     MPV_RENDER_PARAM_API_TYPE, MPV_RENDER_PARAM_INVALID, MPV_RENDER_PARAM_OPENGL_FBO,
-    MPV_RENDER_PARAM_OPENGL_INIT_PARAMS, MpvApi,
+    MPV_RENDER_PARAM_OPENGL_INIT_PARAMS,
 };
 use libloading::Library;
 use std::ffi::{c_char, c_void, CString};
@@ -133,13 +133,18 @@ pub(crate) unsafe extern "C" fn mpv_get_proc_address(
 struct EglApi {
     _lib: Library,
     egl_get_display: unsafe extern "C" fn(*mut c_void) -> *mut c_void,
-    egl_get_platform_display: unsafe extern "C" fn(EGLenum, *mut c_void, *const EGLint) -> *mut c_void,
+    egl_get_platform_display:
+        unsafe extern "C" fn(EGLenum, *mut c_void, *const EGLint) -> *mut c_void,
     has_platform_display: bool,
-    egl_initialize:
-        unsafe extern "C" fn(*mut c_void, *mut EGLint, *mut EGLint) -> EGLBoolean,
+    egl_initialize: unsafe extern "C" fn(*mut c_void, *mut EGLint, *mut EGLint) -> EGLBoolean,
     egl_bind_api: unsafe extern "C" fn(EGLint) -> EGLBoolean,
-    egl_choose_config:
-        unsafe extern "C" fn(*mut c_void, *const EGLint, *mut *mut c_void, EGLint, *mut EGLint) -> EGLBoolean,
+    egl_choose_config: unsafe extern "C" fn(
+        *mut c_void,
+        *const EGLint,
+        *mut *mut c_void,
+        EGLint,
+        *mut EGLint,
+    ) -> EGLBoolean,
     egl_create_context:
         unsafe extern "C" fn(*mut c_void, *mut c_void, *mut c_void, *const EGLint) -> *mut c_void,
     egl_create_pbuffer_surface:
@@ -190,26 +195,71 @@ fn load_egl() -> Result<&'static EglApi, String> {
             };
         }
 
-        sym!(eglGetDisplay, unsafe extern "C" fn(*mut c_void) -> *mut c_void);
+        sym!(
+            eglGetDisplay,
+            unsafe extern "C" fn(*mut c_void) -> *mut c_void
+        );
         let (eglGetPlatformDisplay, has_platform_display) = {
             let platform_fn = lib
                 .get::<unsafe extern "C" fn(EGLenum, *mut c_void, *const EGLint) -> *mut c_void>(b"eglGetPlatformDisplayEXT\0")
                 .or_else(|_| lib.get::<unsafe extern "C" fn(EGLenum, *mut c_void, *const EGLint) -> *mut c_void>(b"eglGetPlatformDisplay\0"));
             match platform_fn {
                 Ok(s) => (*s, true),
-                Err(_) => (egl_get_platform_display_stub as unsafe extern "C" fn(EGLenum, *mut c_void, *const EGLint) -> *mut c_void, false),
+                Err(_) => (
+                    egl_get_platform_display_stub
+                        as unsafe extern "C" fn(EGLenum, *mut c_void, *const EGLint) -> *mut c_void,
+                    false,
+                ),
             }
         };
-        sym!(eglInitialize, unsafe extern "C" fn(*mut c_void, *mut EGLint, *mut EGLint) -> EGLBoolean);
+        sym!(
+            eglInitialize,
+            unsafe extern "C" fn(*mut c_void, *mut EGLint, *mut EGLint) -> EGLBoolean
+        );
         sym!(eglBindAPI, unsafe extern "C" fn(EGLint) -> EGLBoolean);
-        sym!(eglChooseConfig, unsafe extern "C" fn(*mut c_void, *const EGLint, *mut *mut c_void, EGLint, *mut EGLint) -> EGLBoolean);
-        sym!(eglCreateContext, unsafe extern "C" fn(*mut c_void, *mut c_void, *mut c_void, *const EGLint) -> *mut c_void);
-        sym!(eglCreatePbufferSurface, unsafe extern "C" fn(*mut c_void, *mut c_void, *const EGLint) -> *mut c_void);
-        sym!(eglDestroySurface, unsafe extern "C" fn(*mut c_void, *mut c_void) -> EGLBoolean);
-        sym!(eglMakeCurrent, unsafe extern "C" fn(*mut c_void, *mut c_void, *mut c_void, *mut c_void) -> EGLBoolean);
-        sym!(eglDestroyContext, unsafe extern "C" fn(*mut c_void, *mut c_void) -> EGLBoolean);
-        sym!(eglTerminate, unsafe extern "C" fn(*mut c_void) -> EGLBoolean);
-        sym!(eglGetProcAddress, unsafe extern "C" fn(*const c_char) -> *mut c_void);
+        sym!(
+            eglChooseConfig,
+            unsafe extern "C" fn(
+                *mut c_void,
+                *const EGLint,
+                *mut *mut c_void,
+                EGLint,
+                *mut EGLint,
+            ) -> EGLBoolean
+        );
+        sym!(
+            eglCreateContext,
+            unsafe extern "C" fn(
+                *mut c_void,
+                *mut c_void,
+                *mut c_void,
+                *const EGLint,
+            ) -> *mut c_void
+        );
+        sym!(
+            eglCreatePbufferSurface,
+            unsafe extern "C" fn(*mut c_void, *mut c_void, *const EGLint) -> *mut c_void
+        );
+        sym!(
+            eglDestroySurface,
+            unsafe extern "C" fn(*mut c_void, *mut c_void) -> EGLBoolean
+        );
+        sym!(
+            eglMakeCurrent,
+            unsafe extern "C" fn(*mut c_void, *mut c_void, *mut c_void, *mut c_void) -> EGLBoolean
+        );
+        sym!(
+            eglDestroyContext,
+            unsafe extern "C" fn(*mut c_void, *mut c_void) -> EGLBoolean
+        );
+        sym!(
+            eglTerminate,
+            unsafe extern "C" fn(*mut c_void) -> EGLBoolean
+        );
+        sym!(
+            eglGetProcAddress,
+            unsafe extern "C" fn(*const c_char) -> *mut c_void
+        );
         sym!(eglGetError, unsafe extern "C" fn() -> EGLint);
 
         let _ = EGL_GET_PROC_ADDR.set(eglGetProcAddress);
@@ -295,11 +345,19 @@ fn create_egl_context(display_ptr: *mut c_void) -> Result<CreatedEglContext, Str
                 }
             } else {
                 // Has native display — try Wayland first, then X11
-                let w = (api.egl_get_platform_display)(EGL_PLATFORM_WAYLAND_EXT, display_ptr, std::ptr::null());
+                let w = (api.egl_get_platform_display)(
+                    EGL_PLATFORM_WAYLAND_EXT,
+                    display_ptr,
+                    std::ptr::null(),
+                );
                 if !w.is_null() && w != EGL_NO_DISPLAY {
                     w
                 } else {
-                    let x = (api.egl_get_platform_display)(EGL_PLATFORM_X11_EXT, display_ptr, std::ptr::null());
+                    let x = (api.egl_get_platform_display)(
+                        EGL_PLATFORM_X11_EXT,
+                        display_ptr,
+                        std::ptr::null(),
+                    );
                     if !x.is_null() && x != EGL_NO_DISPLAY {
                         x
                     } else {
@@ -358,7 +416,9 @@ fn create_egl_context(display_ptr: *mut c_void) -> Result<CreatedEglContext, Str
         });
     }
 
-    unsafe { (api.egl_terminate)(egl_display); }
+    unsafe {
+        (api.egl_terminate)(egl_display);
+    }
     Err("No se pudo crear ningun contexto EGL (ES3, ES2, ni OpenGL desktop)".to_string())
 }
 
@@ -376,16 +436,24 @@ fn try_create_es_context(
     if unsafe { (api.egl_bind_api)(EGL_OPENGL_ES_API) } == 0 {
         let egl_err = unsafe { (api.egl_get_error)() };
         eprintln!("EGL bind API ES{} fallo: 0x{egl_err:x}", version);
-        return Err(format!("eglBindAPI(EGL_OPENGL_ES_API) fallo (EGL error 0x{egl_err:x})"));
+        return Err(format!(
+            "eglBindAPI(EGL_OPENGL_ES_API) fallo (EGL error 0x{egl_err:x})"
+        ));
     }
 
     let config_attribs: &[EGLint] = &[
-        EGL_RED_SIZE, 8,
-        EGL_GREEN_SIZE, 8,
-        EGL_BLUE_SIZE, 8,
-        EGL_ALPHA_SIZE, 8,
-        EGL_RENDERABLE_TYPE, renderable_bit,
-        EGL_SURFACE_TYPE, EGL_PBUFFER_BIT,
+        EGL_RED_SIZE,
+        8,
+        EGL_GREEN_SIZE,
+        8,
+        EGL_BLUE_SIZE,
+        8,
+        EGL_ALPHA_SIZE,
+        8,
+        EGL_RENDERABLE_TYPE,
+        renderable_bit,
+        EGL_SURFACE_TYPE,
+        EGL_PBUFFER_BIT,
         EGL_NONE,
     ];
     let mut egl_config: *mut c_void = std::ptr::null_mut();
@@ -403,11 +471,16 @@ fn try_create_es_context(
         // Retry with relaxed attributes (drop ALPHA_SIZE — some Mesa drivers
         // don't expose RGBA8 pbuffer configs under surfaceless/Wayland).
         let relaxed_attribs: &[EGLint] = &[
-            EGL_RED_SIZE, 8,
-            EGL_GREEN_SIZE, 8,
-            EGL_BLUE_SIZE, 8,
-            EGL_RENDERABLE_TYPE, renderable_bit,
-            EGL_SURFACE_TYPE, EGL_PBUFFER_BIT,
+            EGL_RED_SIZE,
+            8,
+            EGL_GREEN_SIZE,
+            8,
+            EGL_BLUE_SIZE,
+            8,
+            EGL_RENDERABLE_TYPE,
+            renderable_bit,
+            EGL_SURFACE_TYPE,
+            EGL_PBUFFER_BIT,
             EGL_NONE,
         ];
         let ok = unsafe {
@@ -421,32 +494,53 @@ fn try_create_es_context(
         };
         if ok == 0 || num_configs == 0 {
             let egl_err = unsafe { (api.egl_get_error)() };
-            eprintln!("EGL choose config ES{} fallo (relaxed tambien): 0x{egl_err:x}", version);
-            return Err(format!("eglChooseConfig ES{}: no config compatible (EGL error 0x{egl_err:x})", version));
+            eprintln!(
+                "EGL choose config ES{} fallo (relaxed tambien): 0x{egl_err:x}",
+                version
+            );
+            return Err(format!(
+                "eglChooseConfig ES{}: no config compatible (EGL error 0x{egl_err:x})",
+                version
+            ));
         }
-        log::info!("EGL ES{} config obtenido con atributos relajados (sin ALPHA_SIZE)", version);
+        log::info!(
+            "EGL ES{} config obtenido con atributos relajados (sin ALPHA_SIZE)",
+            version
+        );
     }
 
     let pbuffer_attribs: &[EGLint] = &[EGL_WIDTH, 1, EGL_HEIGHT, 1, EGL_NONE];
-    let pbuffer_surface =
-        unsafe { (api.egl_create_pbuffer_surface)(egl_display, egl_config, pbuffer_attribs.as_ptr()) };
+    let pbuffer_surface = unsafe {
+        (api.egl_create_pbuffer_surface)(egl_display, egl_config, pbuffer_attribs.as_ptr())
+    };
     if pbuffer_surface.is_null() || pbuffer_surface == EGL_NO_SURFACE {
         let egl_err = unsafe { (api.egl_get_error)() };
         eprintln!("EGL pbuffer surface ES{} fallo: 0x{egl_err:x}", version);
-        return Err(format!("eglCreatePbufferSurface ES{} fallo (EGL error 0x{egl_err:x})", version));
+        return Err(format!(
+            "eglCreatePbufferSurface ES{} fallo (EGL error 0x{egl_err:x})",
+            version
+        ));
     }
 
-    let context_attribs: &[EGLint] = &[
-        EGL_CONTEXT_CLIENT_VERSION, version,
-        EGL_NONE,
-    ];
-    let egl_context =
-        unsafe { (api.egl_create_context)(egl_display, egl_config, EGL_NO_CONTEXT, context_attribs.as_ptr()) };
+    let context_attribs: &[EGLint] = &[EGL_CONTEXT_CLIENT_VERSION, version, EGL_NONE];
+    let egl_context = unsafe {
+        (api.egl_create_context)(
+            egl_display,
+            egl_config,
+            EGL_NO_CONTEXT,
+            context_attribs.as_ptr(),
+        )
+    };
     if egl_context.is_null() || egl_context == EGL_NO_CONTEXT {
         let egl_err = unsafe { (api.egl_get_error)() };
         eprintln!("EGL ES{} context fallo: 0x{egl_err:x}", version);
-        unsafe { (api.egl_destroy_surface)(egl_display, pbuffer_surface); }
-        return Err(format!("eglCreateContext ES{} fallo (EGL error 0x{egl_err:x})", version));
+        unsafe {
+            (api.egl_destroy_surface)(egl_display, pbuffer_surface);
+        }
+        return Err(format!(
+            "eglCreateContext ES{} fallo (EGL error 0x{egl_err:x})",
+            version
+        ));
     }
 
     log::info!("EGL context: OpenGL ES {}.0", version);
@@ -464,16 +558,24 @@ fn try_create_desktop_gl_context(
     if unsafe { (api.egl_bind_api)(EGL_OPENGL_API) } == 0 {
         let egl_err = unsafe { (api.egl_get_error)() };
         eprintln!("EGL bind API OpenGL fallo: 0x{egl_err:x}");
-        return Err(format!("eglBindAPI(EGL_OPENGL_API) fallo (EGL error 0x{egl_err:x})"));
+        return Err(format!(
+            "eglBindAPI(EGL_OPENGL_API) fallo (EGL error 0x{egl_err:x})"
+        ));
     }
 
     let config_attribs: &[EGLint] = &[
-        EGL_RED_SIZE, 8,
-        EGL_GREEN_SIZE, 8,
-        EGL_BLUE_SIZE, 8,
-        EGL_ALPHA_SIZE, 8,
-        EGL_RENDERABLE_TYPE, EGL_OPENGL_BIT,
-        EGL_SURFACE_TYPE, EGL_PBUFFER_BIT,
+        EGL_RED_SIZE,
+        8,
+        EGL_GREEN_SIZE,
+        8,
+        EGL_BLUE_SIZE,
+        8,
+        EGL_ALPHA_SIZE,
+        8,
+        EGL_RENDERABLE_TYPE,
+        EGL_OPENGL_BIT,
+        EGL_SURFACE_TYPE,
+        EGL_PBUFFER_BIT,
         EGL_NONE,
     ];
     let mut egl_config: *mut c_void = std::ptr::null_mut();
@@ -490,11 +592,16 @@ fn try_create_desktop_gl_context(
     if ok == 0 || num_configs == 0 {
         // Retry with relaxed attributes (drop ALPHA_SIZE).
         let relaxed_attribs: &[EGLint] = &[
-            EGL_RED_SIZE, 8,
-            EGL_GREEN_SIZE, 8,
-            EGL_BLUE_SIZE, 8,
-            EGL_RENDERABLE_TYPE, EGL_OPENGL_BIT,
-            EGL_SURFACE_TYPE, EGL_PBUFFER_BIT,
+            EGL_RED_SIZE,
+            8,
+            EGL_GREEN_SIZE,
+            8,
+            EGL_BLUE_SIZE,
+            8,
+            EGL_RENDERABLE_TYPE,
+            EGL_OPENGL_BIT,
+            EGL_SURFACE_TYPE,
+            EGL_PBUFFER_BIT,
             EGL_NONE,
         ];
         let ok = unsafe {
@@ -509,28 +616,42 @@ fn try_create_desktop_gl_context(
         if ok == 0 || num_configs == 0 {
             let egl_err = unsafe { (api.egl_get_error)() };
             eprintln!("EGL choose config OpenGL fallo (relaxed tambien): 0x{egl_err:x}");
-            return Err(format!("eglChooseConfig OpenGL: no config compatible (EGL error 0x{egl_err:x})"));
+            return Err(format!(
+                "eglChooseConfig OpenGL: no config compatible (EGL error 0x{egl_err:x})"
+            ));
         }
         log::info!("EGL OpenGL config obtenido con atributos relajados (sin ALPHA_SIZE)");
     }
 
     let pbuffer_attribs: &[EGLint] = &[EGL_WIDTH, 1, EGL_HEIGHT, 1, EGL_NONE];
-    let pbuffer_surface =
-        unsafe { (api.egl_create_pbuffer_surface)(egl_display, egl_config, pbuffer_attribs.as_ptr()) };
+    let pbuffer_surface = unsafe {
+        (api.egl_create_pbuffer_surface)(egl_display, egl_config, pbuffer_attribs.as_ptr())
+    };
     if pbuffer_surface.is_null() || pbuffer_surface == EGL_NO_SURFACE {
         let egl_err = unsafe { (api.egl_get_error)() };
         eprintln!("EGL pbuffer surface OpenGL fallo: 0x{egl_err:x}");
-        return Err(format!("eglCreatePbufferSurface OpenGL fallo (EGL error 0x{egl_err:x})"));
+        return Err(format!(
+            "eglCreatePbufferSurface OpenGL fallo (EGL error 0x{egl_err:x})"
+        ));
     }
 
     let context_attribs: &[EGLint] = &[
-        EGL_CONTEXT_MAJOR_VERSION, 3,
-        EGL_CONTEXT_MINOR_VERSION, 3,
-        EGL_CONTEXT_OPENGL_PROFILE_MASK, EGL_CONTEXT_OPENGL_CORE_PROFILE_BIT,
+        EGL_CONTEXT_MAJOR_VERSION,
+        3,
+        EGL_CONTEXT_MINOR_VERSION,
+        3,
+        EGL_CONTEXT_OPENGL_PROFILE_MASK,
+        EGL_CONTEXT_OPENGL_CORE_PROFILE_BIT,
         EGL_NONE,
     ];
-    let egl_context =
-        unsafe { (api.egl_create_context)(egl_display, egl_config, EGL_NO_CONTEXT, context_attribs.as_ptr()) };
+    let egl_context = unsafe {
+        (api.egl_create_context)(
+            egl_display,
+            egl_config,
+            EGL_NO_CONTEXT,
+            context_attribs.as_ptr(),
+        )
+    };
     let egl_context = if !egl_context.is_null() && egl_context != EGL_NO_CONTEXT {
         log::info!("EGL context: OpenGL 3.3 core profile");
         egl_context
@@ -538,17 +659,24 @@ fn try_create_desktop_gl_context(
         let egl_err = unsafe { (api.egl_get_error)() };
         eprintln!("EGL OpenGL 3.3 core context fallo: 0x{egl_err:x}, intentando 3.0 compatibility");
         let fallback: &[EGLint] = &[
-            EGL_CONTEXT_MAJOR_VERSION, 3,
-            EGL_CONTEXT_MINOR_VERSION, 0,
+            EGL_CONTEXT_MAJOR_VERSION,
+            3,
+            EGL_CONTEXT_MINOR_VERSION,
+            0,
             EGL_NONE,
         ];
-        let ctx =
-            unsafe { (api.egl_create_context)(egl_display, egl_config, EGL_NO_CONTEXT, fallback.as_ptr()) };
+        let ctx = unsafe {
+            (api.egl_create_context)(egl_display, egl_config, EGL_NO_CONTEXT, fallback.as_ptr())
+        };
         if ctx.is_null() || ctx == EGL_NO_CONTEXT {
             let egl_err2 = unsafe { (api.egl_get_error)() };
             eprintln!("EGL OpenGL 3.0 context fallo: 0x{egl_err2:x}");
-            unsafe { (api.egl_destroy_surface)(egl_display, pbuffer_surface); }
-            return Err(format!("eglCreateContext OpenGL fallo (EGL error 0x{egl_err2:x})"));
+            unsafe {
+                (api.egl_destroy_surface)(egl_display, pbuffer_surface);
+            }
+            return Err(format!(
+                "eglCreateContext OpenGL fallo (EGL error 0x{egl_err2:x})"
+            ));
         }
         log::info!("EGL context: OpenGL 3.0 compatibility");
         ctx
@@ -606,8 +734,17 @@ struct GlFunctions {
     gl_delete_framebuffers: unsafe extern "C" fn(GLsizei, *const GLuint),
     gl_gen_textures: unsafe extern "C" fn(GLsizei, *mut GLuint),
     gl_bind_texture: unsafe extern "C" fn(GLenum, GLuint),
-    gl_tex_image_2d:
-        unsafe extern "C" fn(GLenum, GLint, GLint, GLsizei, GLsizei, GLint, GLenum, GLenum, *const c_void),
+    gl_tex_image_2d: unsafe extern "C" fn(
+        GLenum,
+        GLint,
+        GLint,
+        GLsizei,
+        GLsizei,
+        GLint,
+        GLenum,
+        GLenum,
+        *const c_void,
+    ),
     gl_tex_parameter_i: unsafe extern "C" fn(GLenum, GLenum, GLint),
     gl_delete_textures: unsafe extern "C" fn(GLsizei, *const GLuint),
     gl_read_pixels:
@@ -639,21 +776,83 @@ fn load_gl() -> Result<GlFunctions, String> {
         };
     }
 
-    gl_fn!(gl_gen_framebuffers, unsafe extern "C" fn(GLsizei, *mut GLuint), "glGenFramebuffers");
-    gl_fn!(gl_bind_framebuffer, unsafe extern "C" fn(GLenum, GLuint), "glBindFramebuffer");
-    gl_fn!(gl_framebuffer_texture_2d, unsafe extern "C" fn(GLenum, GLenum, GLenum, GLuint, GLint), "glFramebufferTexture2D");
-    gl_fn!(gl_check_framebuffer_status, unsafe extern "C" fn(GLenum) -> GLenum, "glCheckFramebufferStatus");
-    gl_fn!(gl_delete_framebuffers, unsafe extern "C" fn(GLsizei, *const GLuint), "glDeleteFramebuffers");
-    gl_fn!(gl_gen_textures, unsafe extern "C" fn(GLsizei, *mut GLuint), "glGenTextures");
-    gl_fn!(gl_bind_texture, unsafe extern "C" fn(GLenum, GLuint), "glBindTexture");
-    gl_fn!(gl_tex_image_2d, unsafe extern "C" fn(GLenum, GLint, GLint, GLsizei, GLsizei, GLint, GLenum, GLenum, *const c_void), "glTexImage2D");
-    gl_fn!(gl_tex_parameter_i, unsafe extern "C" fn(GLenum, GLenum, GLint), "glTexParameteri");
-    gl_fn!(gl_delete_textures, unsafe extern "C" fn(GLsizei, *const GLuint), "glDeleteTextures");
-    gl_fn!(gl_read_pixels, unsafe extern "C" fn(GLint, GLint, GLsizei, GLsizei, GLenum, GLenum, *mut c_void), "glReadPixels");
-    gl_fn!(gl_pixel_store_i, unsafe extern "C" fn(GLenum, GLint), "glPixelStorei");
+    gl_fn!(
+        gl_gen_framebuffers,
+        unsafe extern "C" fn(GLsizei, *mut GLuint),
+        "glGenFramebuffers"
+    );
+    gl_fn!(
+        gl_bind_framebuffer,
+        unsafe extern "C" fn(GLenum, GLuint),
+        "glBindFramebuffer"
+    );
+    gl_fn!(
+        gl_framebuffer_texture_2d,
+        unsafe extern "C" fn(GLenum, GLenum, GLenum, GLuint, GLint),
+        "glFramebufferTexture2D"
+    );
+    gl_fn!(
+        gl_check_framebuffer_status,
+        unsafe extern "C" fn(GLenum) -> GLenum,
+        "glCheckFramebufferStatus"
+    );
+    gl_fn!(
+        gl_delete_framebuffers,
+        unsafe extern "C" fn(GLsizei, *const GLuint),
+        "glDeleteFramebuffers"
+    );
+    gl_fn!(
+        gl_gen_textures,
+        unsafe extern "C" fn(GLsizei, *mut GLuint),
+        "glGenTextures"
+    );
+    gl_fn!(
+        gl_bind_texture,
+        unsafe extern "C" fn(GLenum, GLuint),
+        "glBindTexture"
+    );
+    gl_fn!(
+        gl_tex_image_2d,
+        unsafe extern "C" fn(
+            GLenum,
+            GLint,
+            GLint,
+            GLsizei,
+            GLsizei,
+            GLint,
+            GLenum,
+            GLenum,
+            *const c_void,
+        ),
+        "glTexImage2D"
+    );
+    gl_fn!(
+        gl_tex_parameter_i,
+        unsafe extern "C" fn(GLenum, GLenum, GLint),
+        "glTexParameteri"
+    );
+    gl_fn!(
+        gl_delete_textures,
+        unsafe extern "C" fn(GLsizei, *const GLuint),
+        "glDeleteTextures"
+    );
+    gl_fn!(
+        gl_read_pixels,
+        unsafe extern "C" fn(GLint, GLint, GLsizei, GLsizei, GLenum, GLenum, *mut c_void),
+        "glReadPixels"
+    );
+    gl_fn!(
+        gl_pixel_store_i,
+        unsafe extern "C" fn(GLenum, GLint),
+        "glPixelStorei"
+    );
     gl_fn!(gl_finish, unsafe extern "C" fn(), "glFinish");
     gl_fn!(gl_get_error, unsafe extern "C" fn() -> GLenum, "glGetError");
-    gl_fn!(gl_clear_color, unsafe extern "C" fn(GLfloat, GLfloat, GLfloat, GLfloat), "glClearColor");
+    gl_fn!(
+        gl_clear_color,
+        unsafe extern "C" fn(GLfloat, GLfloat, GLfloat, GLfloat),
+        "glClearColor"
+    );
     gl_fn!(gl_clear, unsafe extern "C" fn(GLenum), "glClear");
 
     Ok(GlFunctions {
@@ -708,7 +907,13 @@ fn create_fbo(gl: &GlFunctions, width: u32, height: u32) -> Result<(GLuint, GLui
         (gl.gl_tex_parameter_i)(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR as GLint);
         (gl.gl_tex_parameter_i)(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR as GLint);
 
-        (gl.gl_framebuffer_texture_2d)(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, tex_id, 0);
+        (gl.gl_framebuffer_texture_2d)(
+            GL_FRAMEBUFFER,
+            GL_COLOR_ATTACHMENT0,
+            GL_TEXTURE_2D,
+            tex_id,
+            0,
+        );
 
         let status = (gl.gl_check_framebuffer_status)(GL_FRAMEBUFFER);
         if status != GL_FRAMEBUFFER_COMPLETE {
@@ -833,7 +1038,11 @@ impl OffscreenRenderContext {
     /// `display_ptr` is a platform-specific display handle:
     /// - Wayland: `wl_display*`
     /// - X11 / fallback: `std::ptr::null_mut()` (EGL_DEFAULT_DISPLAY works for pbuffer)
-    pub fn new(
+    ///
+    /// # Safety
+    /// `mpv_handle` and `display_ptr` must remain valid for the context creation
+    /// call and must refer to handles owned by the caller.
+    pub unsafe fn new(
         mpv_handle: *mut mpv_handle,
         api: &Arc<MpvApi>,
         display_ptr: *mut c_void,
@@ -846,7 +1055,9 @@ impl OffscreenRenderContext {
         with_egl_current(&egl, || -> Result<(GLuint, GLuint), String> {
             let gl = load_gl()?;
             let (fbo_id, tex_id) = create_fbo(&gl, 1920, 1080)?;
-            unsafe { (gl.gl_pixel_store_i)(GL_PACK_ALIGNMENT, 4); }
+            unsafe {
+                (gl.gl_pixel_store_i)(GL_PACK_ALIGNMENT, 4);
+            }
             Ok((fbo_id, tex_id))
         })
         .and_then(|(fbo_id, tex_id)| {
@@ -876,7 +1087,11 @@ impl OffscreenRenderContext {
             with_egl_current(&egl, || -> Result<*mut mpv_render_context, String> {
                 let mut mpv_rc: *mut mpv_render_context = std::ptr::null_mut();
                 let ret = unsafe {
-                    (api.mpv_render_context_create)(&mut mpv_rc, mpv_handle, create_params.as_mut_ptr())
+                    (api.mpv_render_context_create)(
+                        &mut mpv_rc,
+                        mpv_handle,
+                        create_params.as_mut_ptr(),
+                    )
                 };
                 if ret < 0 || mpv_rc.is_null() {
                     Err(format!(
@@ -929,7 +1144,10 @@ impl OffscreenRenderContext {
         }
         self.stop_flag.store(false, Ordering::SeqCst);
 
-        let egl = self.egl.take().ok_or_else(|| "EGL context ya movido al thread de render".to_string())?;
+        let egl = self
+            .egl
+            .take()
+            .ok_or_else(|| "EGL context ya movido al thread de render".to_string())?;
         // Cast raw pointers to usize for thread-safety, cast back inside closure
         let mpv_rc_val = self.mpv_rc as usize;
         let mpv_handle_val = self.mpv_handle as usize;
@@ -1000,8 +1218,8 @@ impl OffscreenRenderContext {
 
                     // Read target render size from frontend (clamped to safety cap 1920x1080)
                     let (target_w, target_h) = *target_size.lock().unwrap();
-                    let max_w = target_w.min(1920).max(16);
-                    let max_h = target_h.min(1080).max(16);
+                    let max_w = target_w.clamp(16, 1920);
+                    let max_h = target_h.clamp(16, 1080);
 
                     let (render_w, render_h) = if dw > 0 && dh > 0 {
                         cap_resolution(dw, dh, max_w, max_h)
@@ -1079,7 +1297,7 @@ impl OffscreenRenderContext {
                     }
 
                     render_count = render_count.wrapping_add(1);
-                    if render_count % 30 == 0 {
+                    if render_count.is_multiple_of(30) {
                         let (frame_count, px0, px_mid) = frame_buffer
                             .lock()
                             .map(|fb| {
@@ -1153,7 +1371,9 @@ impl OffscreenRenderContext {
         }
         // Free the update callback context (no longer needed after thread ends)
         if !self.update_ctx_ptr.is_null() {
-            unsafe { drop(Box::from_raw(self.update_ctx_ptr as *mut MpvUpdateCtx)); }
+            unsafe {
+                drop(Box::from_raw(self.update_ctx_ptr as *mut MpvUpdateCtx));
+            }
             self.update_ctx_ptr = std::ptr::null_mut();
         }
     }
@@ -1178,7 +1398,9 @@ impl Drop for OffscreenRenderContext {
         // Si el render thread arranco, ya libero mpv_rc y lo nullamos en stop()
         // Si no arranco (mpv_rc aun no nulo), liberamos aqui
         if !self.mpv_rc.is_null() {
-            unsafe { (self.api.mpv_render_context_free)(self.mpv_rc); }
+            unsafe {
+                (self.api.mpv_render_context_free)(self.mpv_rc);
+            }
             self.mpv_rc = std::ptr::null_mut();
         }
     }
@@ -1218,7 +1440,11 @@ fn read_mpv_property_f64(api: &MpvApi, handle: *mut mpv_handle, prop: &str) -> f
             &mut val as *mut f64 as *mut c_void,
         )
     };
-    if ret < 0 { 0.0 } else { val }
+    if ret < 0 {
+        0.0
+    } else {
+        val
+    }
 }
 
 fn read_mpv_dimension(api: &MpvApi, handle: *mut mpv_handle, prop: &str) -> i32 {
@@ -1235,5 +1461,9 @@ fn read_mpv_dimension(api: &MpvApi, handle: *mut mpv_handle, prop: &str) -> i32 
             &mut val as *mut i64 as *mut c_void,
         )
     };
-    if ret < 0 { 0 } else { val as i32 }
+    if ret < 0 {
+        0
+    } else {
+        val as i32
+    }
 }

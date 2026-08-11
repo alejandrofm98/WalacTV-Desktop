@@ -9,8 +9,8 @@
 
 pub mod ffi;
 pub use ffi::MpvError;
-pub mod handle;
 pub mod events;
+pub mod handle;
 pub mod platform;
 
 #[cfg(target_os = "linux")]

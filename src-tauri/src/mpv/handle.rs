@@ -3,16 +3,14 @@
 //! Lifecycle management, property get/set, command execution, and platform
 //! window embedding. Based on Soia's handle.rs pattern.
 
-use crate::mpv::ffi::{
-    c_str_to_string, mpv_format, mpv_handle, MpvApi,
-};
 use crate::mpv::events::mpv_event_loop;
+use crate::mpv::ffi::{c_str_to_string, mpv_format, mpv_handle, MpvApi};
+use parking_lot::Mutex;
 use std::ffi::{c_void, CString};
 use std::os::raw::{c_char, c_int};
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 use std::thread::JoinHandle;
-use parking_lot::Mutex;
 
 // ---------------------------------------------------------------------------
 // LinuxLoweringState — state for lowering mpv child window (Linux only)
@@ -42,7 +40,7 @@ pub struct LinuxLoweringState {
 fn ensure_numeric_locale() {
     // SAFETY: libmpv requires LC_NUMERIC to be "C" before mpv_create().
     unsafe {
-        libc::setlocale(libc::LC_NUMERIC, b"C\0".as_ptr().cast());
+        libc::setlocale(libc::LC_NUMERIC, c"C".as_ptr());
     }
 }
 
@@ -64,7 +62,10 @@ fn ensure_numeric_locale() {
 /// - Windows with uosc: default bindings + keyboard enabled.
 /// - Windows fallback: native OSC with full input enabled.
 /// - macOS: no OSC, no mpv keyboard (HTML controls).
-fn initial_options(_linux_use_custom: bool, uosc_available: bool) -> Vec<(&'static str, &'static str)> {
+fn initial_options(
+    _linux_use_custom: bool,
+    uosc_available: bool,
+) -> Vec<(&'static str, &'static str)> {
     let mut opts: Vec<(&'static str, &'static str)> = vec![
         ("ytdl", "no"),
         ("load-scripts", "yes"),
@@ -189,7 +190,9 @@ impl MpvInstance {
         for (name, value) in initial_options(linux_use_custom, uosc_available) {
             if let Ok(c_name) = CString::new(name) {
                 if let Ok(c_value) = CString::new(value) {
-                    let ret = unsafe { (api.mpv_set_option_string)(handle, c_name.as_ptr(), c_value.as_ptr()) };
+                    let ret = unsafe {
+                        (api.mpv_set_option_string)(handle, c_name.as_ptr(), c_value.as_ptr())
+                    };
                     if ret < 0 {
                         log::warn!("mpv_set_option_string({name}={value}) returned {ret}");
                     }
@@ -217,7 +220,9 @@ impl MpvInstance {
 
         // ── UOSC-specific options (Linux and Windows) ──
         #[cfg(any(target_os = "linux", target_os = "windows"))]
-        if let (Some(ref loader_path), Some(ref fonts_dir)) = (uosc_main_path.as_ref(), uosc_fonts_dir.as_ref()) {
+        if let (Some(ref loader_path), Some(ref fonts_dir)) =
+            (uosc_main_path.as_ref(), uosc_fonts_dir.as_ref())
+        {
             eprintln!("[mpv-uosc] Applying uosc options: loader={loader_path}, fonts={fonts_dir}");
 
             // Load uosc via uosc.lua wrapper which sets package.path
@@ -226,17 +231,31 @@ impl MpvInstance {
             //    package.path.
             if let Ok(c_value) = CString::new(loader_path.as_str()) {
                 if let Ok(c_name) = CString::new("scripts") {
-                    let ret = unsafe { (api.mpv_set_option_string)(handle, c_name.as_ptr(), c_value.as_ptr()) };
+                    let ret = unsafe {
+                        (api.mpv_set_option_string)(handle, c_name.as_ptr(), c_value.as_ptr())
+                    };
                     eprintln!("[mpv-uosc] set_option scripts={loader_path} returned {ret}");
                     if ret < 0 {
                         eprintln!("[mpv-uosc] 'scripts' failed ({ret}), trying 'script'...");
                         if let Ok(c_name2) = CString::new("script") {
-                            let ret2 = unsafe { (api.mpv_set_option_string)(handle, c_name2.as_ptr(), c_value.as_ptr()) };
+                            let ret2 = unsafe {
+                                (api.mpv_set_option_string)(
+                                    handle,
+                                    c_name2.as_ptr(),
+                                    c_value.as_ptr(),
+                                )
+                            };
                             eprintln!("[mpv-uosc] set_option script={loader_path} returned {ret2}");
                             if ret2 < 0 {
                                 eprintln!("[mpv-uosc] 'script' also failed ({ret2}), trying 'scripts-append'...");
                                 if let Ok(c_name3) = CString::new("scripts-append") {
-                                    let ret3 = unsafe { (api.mpv_set_option_string)(handle, c_name3.as_ptr(), c_value.as_ptr()) };
+                                    let ret3 = unsafe {
+                                        (api.mpv_set_option_string)(
+                                            handle,
+                                            c_name3.as_ptr(),
+                                            c_value.as_ptr(),
+                                        )
+                                    };
                                     eprintln!("[mpv-uosc] set_option scripts-append={loader_path} returned {ret3}");
                                     if ret3 < 0 {
                                         eprintln!("[mpv-uosc] All script-load options failed — uosc will NOT load");
@@ -251,7 +270,9 @@ impl MpvInstance {
             // Set subtitle fonts directory for libass (uosc icon/texture fonts)
             if let Ok(c_name) = CString::new("sub-fonts-dir") {
                 if let Ok(c_value) = CString::new(fonts_dir.as_str()) {
-                    let ret_val = unsafe { (api.mpv_set_option_string)(handle, c_name.as_ptr(), c_value.as_ptr()) };
+                    let ret_val = unsafe {
+                        (api.mpv_set_option_string)(handle, c_name.as_ptr(), c_value.as_ptr())
+                    };
                     eprintln!("[mpv-uosc] set_option sub-fonts-dir={fonts_dir} returned {ret_val}");
                 }
             }
@@ -259,7 +280,9 @@ impl MpvInstance {
             // Set OSD fonts directory for libass (uosc icon font via osd-overlay renderer)
             if let Ok(c_name) = CString::new("osd-fonts-dir") {
                 if let Ok(c_value) = CString::new(fonts_dir.as_str()) {
-                    let ret_val = unsafe { (api.mpv_set_option_string)(handle, c_name.as_ptr(), c_value.as_ptr()) };
+                    let ret_val = unsafe {
+                        (api.mpv_set_option_string)(handle, c_name.as_ptr(), c_value.as_ptr())
+                    };
                     eprintln!("[mpv-uosc] set_option osd-fonts-dir={fonts_dir} returned {ret_val}");
                 }
             }
@@ -273,9 +296,11 @@ impl MpvInstance {
                 if let Ok(c_value) = CString::new(
                     "uosc-scale=1,uosc-proximity_in=40,uosc-proximity_out=120,\
                      uosc-timeline_style=bar,uosc-timeline_size=52,\
-                     uosc-controls_size=38,uosc-top_bar=always"
+                     uosc-controls_size=38,uosc-top_bar=always",
                 ) {
-                    let ret = unsafe { (api.mpv_set_option_string)(handle, c_name.as_ptr(), c_value.as_ptr()) };
+                    let ret = unsafe {
+                        (api.mpv_set_option_string)(handle, c_name.as_ptr(), c_value.as_ptr())
+                    };
                     eprintln!("[mpv-uosc] set_option script-opts=... returned {ret}");
                 }
             }
@@ -296,9 +321,8 @@ impl MpvInstance {
         for (name, value) in [("vo", "gpu"), ("gpu-context", "x11egl")] {
             let c_name = CString::new(name).expect("static option name");
             let c_value = CString::new(value).expect("static option value");
-            let ret = unsafe {
-                (api.mpv_set_property_string)(handle, c_name.as_ptr(), c_value.as_ptr())
-            };
+            let ret =
+                unsafe { (api.mpv_set_property_string)(handle, c_name.as_ptr(), c_value.as_ptr()) };
             if ret < 0 {
                 log::warn!("Setting {name}={value} returned {ret} after initialization");
             }
@@ -308,7 +332,7 @@ impl MpvInstance {
         if wid > 0 {
             if let Ok(c_wid) = CString::new(wid.to_string()) {
                 let ret = unsafe {
-                    (api.mpv_set_property_string)(handle, b"wid\0".as_ptr().cast(), c_wid.as_ptr())
+                    (api.mpv_set_property_string)(handle, c"wid".as_ptr(), c_wid.as_ptr())
                 };
                 if ret < 0 {
                     log::warn!("Setting wid={wid} returned {ret} after initialization");
@@ -322,7 +346,7 @@ impl MpvInstance {
         // Log loaded scripts to confirm uosc loaded (Linux and Windows)
         #[cfg(any(target_os = "linux", target_os = "windows"))]
         if uosc_main_path.is_some() {
-            let ptr = unsafe { (api.mpv_get_property_string)(handle, b"script-names\0".as_ptr().cast()) };
+            let ptr = unsafe { (api.mpv_get_property_string)(handle, c"script-names".as_ptr()) };
             if !ptr.is_null() {
                 let names = unsafe { c_str_to_string(ptr).unwrap_or_default() };
                 eprintln!("[mpv-uosc] scripts loaded: {}", names);
@@ -334,16 +358,14 @@ impl MpvInstance {
             } else {
                 eprintln!("[mpv-uosc] WARNING: could not read script-names property — uosc may not have loaded");
                 #[cfg(target_os = "windows")]
-                crate::mpv::platform::windows::diagnostic_log(
-                    "post-init script-names unavailable",
-                );
+                crate::mpv::platform::windows::diagnostic_log("post-init script-names unavailable");
             }
         }
 
         // Set hwdec to auto-safe (post-init, runtime-configurable)
         if let Ok(c_hwdec) = CString::new("auto-safe") {
             let _ = unsafe {
-                (api.mpv_set_property_string)(handle, b"hwdec\0".as_ptr().cast(), c_hwdec.as_ptr())
+                (api.mpv_set_property_string)(handle, c"hwdec".as_ptr(), c_hwdec.as_ptr())
             };
         }
 
@@ -388,13 +410,18 @@ impl MpvInstance {
 
     /// Set a string property on the mpv instance.
     pub fn set_property_str(&self, name: &str, value: &str) -> Result<(), String> {
-        let c_name = CString::new(name).map_err(|_| "Property name contains null byte".to_string())?;
-        let c_value = CString::new(value).map_err(|_| "Property value contains null byte".to_string())?;
+        let c_name =
+            CString::new(name).map_err(|_| "Property name contains null byte".to_string())?;
+        let c_value =
+            CString::new(value).map_err(|_| "Property value contains null byte".to_string())?;
         let ret = unsafe {
             (self.api.mpv_set_property_string)(self.handle, c_name.as_ptr(), c_value.as_ptr())
         };
         if ret < 0 {
-            Err(format!("Failed to set '{name}': {} (code {ret})", super::ffi::mpv_error_string(ret)))
+            Err(format!(
+                "Failed to set '{name}': {} (code {ret})",
+                super::ffi::mpv_error_string(ret)
+            ))
         } else {
             Ok(())
         }
@@ -417,7 +444,8 @@ impl MpvInstance {
 
     /// Get a property as a string.
     pub fn get_property_str(&self, name: &str) -> Result<String, String> {
-        let c_name = CString::new(name).map_err(|_| "Property name contains null byte".to_string())?;
+        let c_name =
+            CString::new(name).map_err(|_| "Property name contains null byte".to_string())?;
         let ptr = unsafe { (self.api.mpv_get_property_string)(self.handle, c_name.as_ptr()) };
         if ptr.is_null() {
             return Err(format!("Property '{name}' not available"));
@@ -429,7 +457,8 @@ impl MpvInstance {
 
     /// Get a property as f64.
     pub fn get_property_f64(&self, name: &str) -> Result<f64, String> {
-        let c_name = CString::new(name).map_err(|_| "Property name contains null byte".to_string())?;
+        let c_name =
+            CString::new(name).map_err(|_| "Property name contains null byte".to_string())?;
         let mut value: f64 = 0.0;
         let ret = unsafe {
             (self.api.mpv_get_property)(
@@ -440,7 +469,10 @@ impl MpvInstance {
             )
         };
         if ret < 0 {
-            Err(format!("Failed to get '{name}': {} (code {ret})", super::ffi::mpv_error_string(ret)))
+            Err(format!(
+                "Failed to get '{name}': {} (code {ret})",
+                super::ffi::mpv_error_string(ret)
+            ))
         } else {
             Ok(value)
         }
@@ -448,7 +480,8 @@ impl MpvInstance {
 
     /// Get a property as i64.
     pub fn get_property_i64(&self, name: &str) -> Result<i64, String> {
-        let c_name = CString::new(name).map_err(|_| "Property name contains null byte".to_string())?;
+        let c_name =
+            CString::new(name).map_err(|_| "Property name contains null byte".to_string())?;
         let mut value: i64 = 0;
         let ret = unsafe {
             (self.api.mpv_get_property)(
@@ -459,7 +492,10 @@ impl MpvInstance {
             )
         };
         if ret < 0 {
-            Err(format!("Failed to get '{name}': {} (code {ret})", super::ffi::mpv_error_string(ret)))
+            Err(format!(
+                "Failed to get '{name}': {} (code {ret})",
+                super::ffi::mpv_error_string(ret)
+            ))
         } else {
             Ok(value)
         }
@@ -467,7 +503,8 @@ impl MpvInstance {
 
     /// Get a property as bool (mpv flag).
     pub fn get_property_bool(&self, name: &str) -> Result<bool, String> {
-        let c_name = CString::new(name).map_err(|_| "Property name contains null byte".to_string())?;
+        let c_name =
+            CString::new(name).map_err(|_| "Property name contains null byte".to_string())?;
         let mut value: c_int = 0;
         let ret = unsafe {
             (self.api.mpv_get_property)(
@@ -478,7 +515,10 @@ impl MpvInstance {
             )
         };
         if ret < 0 {
-            Err(format!("Failed to get '{name}': {} (code {ret})", super::ffi::mpv_error_string(ret)))
+            Err(format!(
+                "Failed to get '{name}': {} (code {ret})",
+                super::ffi::mpv_error_string(ret)
+            ))
         } else {
             Ok(value != 0)
         }
@@ -530,11 +570,8 @@ impl MpvInstance {
             })
             .transpose()?;
 
-        let mut args: Vec<*const c_char> = vec![
-            b"loadfile\0".as_ptr().cast(),
-            url.as_ptr(),
-            loadmode.as_ptr(),
-        ];
+        let mut args: Vec<*const c_char> =
+            vec![c"loadfile".as_ptr(), url.as_ptr(), loadmode.as_ptr()];
         if let Some(ref cstr) = pos_cstr {
             args.push(cstr.as_ptr());
         }
@@ -547,7 +584,7 @@ impl MpvInstance {
         if ret == -4 {
             if let Some(ref cstr) = pos_cstr {
                 let modern_args = [
-                    b"loadfile\0".as_ptr().cast(),
+                    c"loadfile".as_ptr(),
                     url.as_ptr(),
                     loadmode.as_ptr(),
                     playlist_index.as_ptr(),
@@ -573,10 +610,10 @@ impl MpvInstance {
 
     /// Observe a property. The event loop will emit tauri events when its value changes.
     pub fn observe_property(&self, id: u64, name: &str, format: mpv_format) -> Result<(), String> {
-        let c_name = CString::new(name).map_err(|_| "Property name contains null byte".to_string())?;
-        let ret = unsafe {
-            (self.api.mpv_observe_property)(self.handle, id, c_name.as_ptr(), format)
-        };
+        let c_name =
+            CString::new(name).map_err(|_| "Property name contains null byte".to_string())?;
+        let ret =
+            unsafe { (self.api.mpv_observe_property)(self.handle, id, c_name.as_ptr(), format) };
         if ret < 0 {
             Err(format!(
                 "observe_property '{name}' failed: {} (code {ret})",
@@ -618,7 +655,16 @@ impl MpvInstance {
             .name("mpv-event-loop".into())
             .spawn(move || {
                 let handle = handle_ptr as *mut mpv_handle;
-                mpv_event_loop(app_handle, api, handle, stop_flag, is_playing, linux_lowering);
+                unsafe {
+                    mpv_event_loop(
+                        app_handle,
+                        api,
+                        handle,
+                        stop_flag,
+                        is_playing,
+                        linux_lowering,
+                    );
+                }
             })
             .expect("Failed to spawn mpv event loop thread");
 
@@ -630,7 +676,9 @@ impl MpvInstance {
         self.stop_flag.store(true, Ordering::SeqCst);
         if !self.handle.is_null() {
             // Wake up mpv_wait_event so it breaks out of its loop quickly.
-            unsafe { (self.api.mpv_wakeup)(self.handle); }
+            unsafe {
+                (self.api.mpv_wakeup)(self.handle);
+            }
         }
 
         if let Some(handle) = self.event_thread.lock().take() {
@@ -656,20 +704,22 @@ impl MpvInstance {
     /// `display_ptr` is the platform display pointer:
     /// - Wayland: `wl_display*` (obtained via wl_display_connect)
     /// - X11: `std::ptr::null_mut()` (EGL_DEFAULT_DISPLAY works for pbuffer)
+    ///
+    /// # Safety
+    /// `display_ptr` must be a valid platform display pointer for the duration
+    /// of context creation, or null when using the default EGL display.
     #[cfg(target_os = "linux")]
     #[allow(dead_code)]
-    pub fn setup_render_context(
+    pub unsafe fn setup_render_context(
         &mut self,
         display_ptr: *mut std::ffi::c_void,
     ) -> Result<(), String> {
         let mpv_handle = self.handle;
         let api = Arc::clone(&self.api);
 
-        let mut rc = super::render_context::OffscreenRenderContext::new(
-            mpv_handle,
-            &api,
-            display_ptr,
-        )?;
+        let mut rc = unsafe {
+            super::render_context::OffscreenRenderContext::new(mpv_handle, &api, display_ptr)?
+        };
 
         // Start the render loop thread
         rc.start()?;
@@ -701,7 +751,9 @@ impl MpvInstance {
             let _ = self.render_context.take();
         }
 
-        unsafe { (self.api.mpv_terminate_destroy)(self.handle); }
+        unsafe {
+            (self.api.mpv_terminate_destroy)(self.handle);
+        }
         self.handle = std::ptr::null_mut();
         log::info!("MpvInstance destroyed");
     }
@@ -738,7 +790,9 @@ impl Drop for MpvInstance {
         }
 
         if !self.handle.is_null() {
-            unsafe { (self.api.mpv_destroy)(self.handle); }
+            unsafe {
+                (self.api.mpv_destroy)(self.handle);
+            }
         }
     }
 }

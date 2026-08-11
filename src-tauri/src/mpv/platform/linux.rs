@@ -40,7 +40,10 @@ pub fn detect_compositor() -> bool {
         let has_compositor = owner != 0;
 
         if has_compositor {
-            eprintln!("[mpv-compositor] Compositor detectado (owner: 0x{:x})", owner);
+            eprintln!(
+                "[mpv-compositor] Compositor detectado (owner: 0x{:x})",
+                owner
+            );
         } else {
             eprintln!("[mpv-compositor] No se detecto compositor");
         }
@@ -82,14 +85,18 @@ pub fn snapshot_children(top_xid: u64) -> Result<Vec<u64>, String> {
 
         let result = if !children.is_null() {
             let slice = std::slice::from_raw_parts(children, nchildren as usize);
-            let vec: Vec<u64> = slice.iter().map(|&w| w as u64).collect();
+            let vec: Vec<u64> = slice.to_vec();
             x11::xlib::XFree(children as *mut c_void);
             vec
         } else {
             Vec::new()
         };
 
-        eprintln!("[mpv-snapshot] {} hijos capturados para 0x{:x}", result.len(), top_xid);
+        eprintln!(
+            "[mpv-snapshot] {} hijos capturados para 0x{:x}",
+            result.len(),
+            top_xid
+        );
 
         x11::xlib::XCloseDisplay(display);
         Ok(result)
@@ -140,14 +147,17 @@ pub fn lower_mpv_child(top_xid: u64, pre_children: &[u64]) -> Result<bool, Strin
             Vec::new()
         };
 
-        eprintln!("[mpv-lowering] current_children={}, pre_children={}",
-            current_children.len(), pre_children.len());
+        eprintln!(
+            "[mpv-lowering] current_children={}, pre_children={}",
+            current_children.len(),
+            pre_children.len()
+        );
 
         // Find children present now but NOT in the pre-snapshot
         let new_children: Vec<x11::xlib::Window> = current_children
             .iter()
             .copied()
-            .filter(|&w| !pre_children.contains(&(w as u64)))
+            .filter(|&w| !pre_children.contains(&w))
             .collect();
 
         if new_children.is_empty() {
@@ -164,7 +174,10 @@ pub fn lower_mpv_child(top_xid: u64, pre_children: &[u64]) -> Result<bool, Strin
         x11::xlib::XFlush(display);
         x11::xlib::XCloseDisplay(display);
 
-        eprintln!("[mpv-lowering] {} ventana(s) mpv bajada(s) correctamente", new_children.len());
+        eprintln!(
+            "[mpv-lowering] {} ventana(s) mpv bajada(s) correctamente",
+            new_children.len()
+        );
         Ok(true)
     }
 }
@@ -176,13 +189,13 @@ pub fn lower_mpv_child(top_xid: u64, pre_children: &[u64]) -> Result<bool, Strin
 /// must NOT take the Wayland render path.
 pub fn is_wayland() -> bool {
     if let Ok(backend) = std::env::var("GDK_BACKEND") {
-        if backend.to_ascii_lowercase() == "x11" {
+        if backend.eq_ignore_ascii_case("x11") {
             return false;
         }
     }
     std::env::var("XDG_SESSION_TYPE")
         .ok()
-        .map(|t| t.to_ascii_lowercase() == "wayland")
+        .map(|t| t.eq_ignore_ascii_case("wayland"))
         .unwrap_or(false)
 }
 

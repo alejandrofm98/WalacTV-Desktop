@@ -126,8 +126,8 @@ export default function App() {
       }
 
       setSelectedHero(hero)
-    } catch (e: any) {
-      setError(e.message ?? 'Error cargando datos')
+    } catch (e: unknown) {
+      setError(e instanceof Error ? e.message : 'Error cargando datos')
     } finally {
       useAppStore.setState({ loading: false })
     }
@@ -142,8 +142,9 @@ export default function App() {
       localStorage.setItem('walactv_username', u)
       useAppStore.setState({ signedIn: true, username: u, signingIn: false, token })
       await loadData()
-    } catch (e: any) {
-      useAppStore.setState({ authError: e.message, signingIn: false })
+    } catch (e: unknown) {
+      const message = e instanceof Error ? e.message : 'Error de autenticacion'
+      useAppStore.setState({ authError: message, signingIn: false })
       throw e
     }
   }

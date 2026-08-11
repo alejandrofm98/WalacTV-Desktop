@@ -8,11 +8,14 @@
 pub mod commands;
 pub mod mpv;
 
+use commands::credentials::{
+    secure_credentials_clear, secure_credentials_load, secure_credentials_save,
+};
 use commands::player::{
     ensure_libmpv_installed_command, mpv_check_health, mpv_command, mpv_destroy,
     mpv_get_audio_tracks, mpv_get_property, mpv_get_state, mpv_get_sub_tracks,
-    mpv_get_variant_tracks, mpv_init, mpv_loadfile, mpv_observe_property,
-    mpv_set_property, mpv_set_render_size, PlayerState,
+    mpv_get_variant_tracks, mpv_init, mpv_loadfile, mpv_observe_property, mpv_set_property,
+    mpv_set_render_size, PlayerState,
 };
 
 #[cfg(target_os = "linux")]
@@ -66,7 +69,7 @@ fn auto_fallback_to_x11() {
     let is_wayland = std::env::var("WAYLAND_DISPLAY").is_ok()
         || std::env::var("XDG_SESSION_TYPE")
             .ok()
-            .map(|t| t.to_ascii_lowercase() == "wayland")
+            .map(|t| t.eq_ignore_ascii_case("wayland"))
             .unwrap_or(false);
 
     if !is_wayland {
@@ -120,7 +123,8 @@ pub fn run() {
             #[cfg(target_os = "windows")]
             {
                 // Get the main window HWND for use as the popup owner.
-                let main_window = app.get_webview_window("main")
+                let main_window = app
+                    .get_webview_window("main")
                     .ok_or("Main window not found")?;
                 let parent_hwnd = crate::mpv::platform::get_mpv_wid(&main_window)
                     .map_err(|e| format!("Failed to get main window HWND: {e}"))?;
@@ -132,9 +136,12 @@ pub fn run() {
                 let app_clone = app.handle().clone();
                 main_window.on_window_event(move |event| {
                     use tauri::WindowEvent;
-                    let should_sync = matches!(event, WindowEvent::Moved(_)
-                        | WindowEvent::Resized(_)
-                        | WindowEvent::ScaleFactorChanged { .. });
+                    let should_sync = matches!(
+                        event,
+                        WindowEvent::Moved(_)
+                            | WindowEvent::Resized(_)
+                            | WindowEvent::ScaleFactorChanged { .. }
+                    );
                     if should_sync {
                         if let Some(host) = app_clone.try_state::<WindowsVideoHost>() {
                             if let Err(e) = host.sync() {
@@ -153,6 +160,9 @@ pub fn run() {
         .plugin(tauri_plugin_process::init())
         .invoke_handler(tauri::generate_handler![
             get_scale_info,
+            secure_credentials_save,
+            secure_credentials_load,
+            secure_credentials_clear,
             mpv_init,
             mpv_loadfile,
             mpv_set_property,
@@ -172,4 +182,24 @@ pub fn run() {
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application")
+}
+
+#[cfg(test)]
+mod tests {
+    use super::adaptive_scale;
+
+    #[test]
+    fn adaptive_scale_uses_expected_display_breakpoints() {
+        assert_eq!(adaptive_scale(1080), 1.0);
+        assert_eq!(adaptive_scale(1440), 1.25);
+        assert_eq!(adaptive_scale(2160), 1.75);
+    }
+
+    #[test]
+    fn adaptive_scale_handles_values_around_breakpoints() {
+        assert_eq!(adaptive_scale(1439), 1.0);
+        assert_eq!(adaptive_scale(1441), 1.25);
+        assert_eq!(adaptive_scale(2159), 1.25);
+        assert_eq!(adaptive_scale(2161), 1.75);
+    }
 }

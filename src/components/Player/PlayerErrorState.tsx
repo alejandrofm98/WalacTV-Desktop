@@ -58,8 +58,8 @@ export function PlayerErrorState({ error, onRetry, onClose }: PlayerErrorStatePr
       console.log('[PlayerErrorState] libmpv installed at:', path)
       // Retry automatically after successful install
       onRetry?.()
-    } catch (err: any) {
-      const errMsg = typeof err === 'string' ? err : String(err?.message ?? err)
+    } catch (err: unknown) {
+      const errMsg = err instanceof Error ? err.message : String(err)
       setInstallError(errMsg)
     } finally {
       setInstalling(false)

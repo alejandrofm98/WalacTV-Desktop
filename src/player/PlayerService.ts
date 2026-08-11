@@ -276,7 +276,7 @@ export class PlayerService extends EventTarget {
         usePlayerStore.getState().setOpening(false)
         this._setState('playing')
         return i
-      } catch (err: any) {
+      } catch (err: unknown) {
         console.error(`[PlayerService] Load error #${i}:`, err)
         if (this._currentStreamUrl === this._resolveStreamUrl(option)) {
           this._currentStreamUrl = null

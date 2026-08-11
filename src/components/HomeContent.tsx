@@ -151,7 +151,7 @@ export function HomeContent() {
 
       if (next) {
         const FALLBACK_EPISODE_DURATION_MS = 45 * 60_000
-        const nextDurationMs = ((next as any).runtimeMinutes ?? entry.runtimeMinutes ?? 0) * 60_000
+        const nextDurationMs = (next.runtimeMinutes ?? entry.runtimeMinutes ?? 0) * 60_000
         const finalDurationMs = nextDurationMs > 0 ? nextDurationMs : (entry.durationMs > 0 ? entry.durationMs : FALLBACK_EPISODE_DURATION_MS)
         await saveWatchProgress(entry.contentId, {
           content_type: 'series',

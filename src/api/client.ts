@@ -1,8 +1,116 @@
 import { fetch } from '@tauri-apps/plugin-http'
-import type { CatalogItem, WatchProgressItem, BrowseSection, StreamOption, CalendarResponse, PlaybackTrackPreference, SkipSegments } from './types'
+import type { CatalogItem, WatchProgressItem, BrowseSection, StreamOption, CalendarResponse, PlaybackTrackPreference, SkipSegment, SkipSegments } from './types'
 import { useAppStore } from '../store/useAppStore'
 import { getUsername, getPassword, saveCredentials } from '../credentials'
 import { BASE, API_URL } from '../config'
+
+interface RawStreamOption {
+  label?: string | null
+  url?: string | null
+  provider_id?: string | number | null
+  providerId?: string | number | null
+  quality?: string | null
+}
+
+interface RawCatalogItem {
+  [key: string]: unknown
+  id?: string | number | null
+  provider_id?: string | number | null
+  type?: string | null
+  title?: string | null
+  subtitle?: string | null
+  description?: string | null
+  series_name?: string | null
+  series_key?: string | null
+  series_provider_id?: string | number | null
+  stream_options?: RawStreamOption[] | null
+  poster_path?: string | null
+  backdrop_path?: string | null
+  still_path?: string | null
+  image_url?: string | null
+  group?: string | null
+  normalized_group?: string | null
+  badge_text?: string | null
+  channel_number?: number | null
+  language_label?: string | null
+  normalized_title?: string | null
+  season_number?: number | null
+  episode_number?: number | null
+  rating?: number | null
+  vote_average?: number | null
+  vote_count?: number | null
+  runtime_minutes?: number | null
+  genres?: string[] | null
+  countries?: string[] | null
+  overview?: string | null
+  overview_es?: string | null
+  overview_en?: string | null
+  tmdb_overview?: string | null
+  tmdb_overview_es?: string | null
+  tmdb_overview_en?: string | null
+  tagline?: string | null
+  release_date?: string | null
+  year?: number | null
+  tmdb_title?: string | null
+  total_seasons?: number | null
+  imdb_id?: string | null
+  skip_segments?: RawSkipSegments | null
+  air_date?: string | null
+  episode_type?: string | null
+  is_watched?: boolean | null
+  content_id?: string | number | null
+  content_type?: string | null
+  position_ms?: number | null
+  duration_ms?: number | null
+  last_watched_at?: string | null
+}
+
+interface RawSkipSegment {
+  start_ms?: number
+  startMs?: number
+  end_ms?: number
+  endMs?: number
+}
+
+interface RawSkipSegments {
+  intro?: RawSkipSegment | null
+  recap?: RawSkipSegment | null
+  outro?: RawSkipSegment | null
+}
+
+interface RawSection {
+  title?: string | null
+  items?: RawCatalogItem[] | null
+  group_name?: string | null
+  section_title?: string | null
+  year?: number | null
+  page?: number
+  has_next?: boolean
+}
+
+interface RawReplaySource {
+  label?: string | null
+  stream_url?: string | null
+  provider?: string | null
+  provider_video_id?: string | null
+  source_index?: number
+  button_index?: number
+}
+
+interface RawReplayGroup {
+  group?: string | null
+  sources?: RawReplaySource[] | null
+}
+
+interface RawReplay {
+  slug: string
+  title?: string | null
+  event_date?: string | null
+  description?: string | null
+  match_card?: string[] | null
+  featured_image_url?: string | null
+  video_sources?: RawReplayGroup[] | null
+}
 
 let _token = ''
 
@@ -100,8 +208,8 @@ export function normalizeRemoteImageUrl(url: string | null | undefined): string 
 
 function resolveUrl(url: string): string {
   return url
-    .replace(/\{\{USERNAME\}\}/g, getUsername())
-    .replace(/\{\{PASSWORD\}\}/g, getPassword())
+    .replace(/\{\{USERNAME\}\}/g, encodeURIComponent(getUsername()))
+    .replace(/\{\{PASSWORD\}\}/g, encodeURIComponent(getPassword()))
 }
 
 export function getStreamUrl(url: string): string {
@@ -112,18 +220,20 @@ export function getStreamUrl(url: string): string {
   return resolved
 }
 
-function mapStreamOptions(raw: any[]): StreamOption[] {
+function mapStreamOptions(raw: RawStreamOption[]): StreamOption[] {
   if (!raw?.length) return []
   return raw.map((o) => ({
     label: o.label ?? o.quality ?? 'Default',
     url: resolveUrl(o.url ?? ''),
     rawUrl: o.url ?? '',
-    providerId: o.provider_id ?? o.providerId ?? undefined,
+    providerId: o.provider_id != null || o.providerId != null
+      ? String(o.provider_id ?? o.providerId)
+      : undefined,
     quality: o.quality ?? null,
   }))
 }
 
-function mapKind(raw: any): CatalogItem['kind'] {
+function mapKind(raw: RawCatalogItem): CatalogItem['kind'] {
   const t = (raw.type ?? '').toLowerCase()
   if (t === 'movie') return 'MOVIE'
   if (t === 'series' || t === 'series_group') return 'SERIES'
@@ -137,8 +247,8 @@ function mapKind(raw: any): CatalogItem['kind'] {
   return 'MOVIE'
 }
 
-function mapItem(raw: any): CatalogItem {
-  const streamOpts = mapStreamOptions(raw.stream_options)
+export function mapItem(raw: RawCatalogItem): CatalogItem {
+  const streamOpts = mapStreamOptions(raw.stream_options ?? [])
   // ponytail: fallback live URL when backend omits stream_options
   const kind = mapKind(raw)
   const streamId = raw.provider_id != null ? String(raw.provider_id) : String(raw.id ?? '')
@@ -195,7 +305,7 @@ function mapItem(raw: any): CatalogItem {
   }
 }
 
-function mapSection(raw: any, contentType: string): BrowseSection {
+function mapSection(raw: RawSection, contentType: string): BrowseSection {
   return {
     title: raw.title ?? '',
     items: (raw.items ?? []).map(mapItem),
@@ -208,7 +318,7 @@ function mapSection(raw: any, contentType: string): BrowseSection {
   }
 }
 
-function mapWatchProgress(raw: any): WatchProgressItem {
+function mapWatchProgress(raw: RawCatalogItem): WatchProgressItem {
   const tmdbPosterUrlVal = buildTmdbImageUrl(raw.poster_path, 'w500')
   return {
     contentId: String(raw.content_id ?? ''),
@@ -239,9 +349,9 @@ function mapWatchProgress(raw: any): WatchProgressItem {
   }
 }
 
-function mapReplay(raw: any): CatalogItem {
-  const streamOptions: StreamOption[] = (raw.video_sources ?? []).flatMap((group: any, sourceIndex: number) =>
-    (group.sources ?? []).map((source: any, buttonIndex: number) => {
+function mapReplay(raw: RawReplay): CatalogItem {
+  const streamOptions: StreamOption[] = (raw.video_sources ?? []).flatMap((group, sourceIndex) =>
+    (group.sources ?? []).map((source, buttonIndex) => {
       const replaySourceIndex = source.source_index ?? sourceIndex
       const replayButtonIndex = source.button_index ?? buttonIndex
       const proxyUrl = `${BASE}/api/replays/${encodeURIComponent(raw.slug)}/stream/${replaySourceIndex}/${replayButtonIndex}?token=${encodeURIComponent(_token)}`
@@ -250,8 +360,8 @@ function mapReplay(raw: any): CatalogItem {
         label: group.group ? `${group.group} · ${source.label ?? 'Fuente'}` : source.label ?? 'Fuente',
         url: rawUrl,
         rawUrl,
-        provider: source.provider,
-        providerVideoId: source.provider_video_id,
+        provider: source.provider ?? undefined,
+        providerVideoId: source.provider_video_id ?? undefined,
       }
     }),
   )
@@ -310,7 +420,7 @@ export async function login(username: string, password: string) {
 // Home
 export async function getHomeCatalog(country?: string) {
   const q = country ? `?country=${encodeURIComponent(country)}` : ''
-  const raw = await get<{ movie_sections?: any[]; series_sections?: any[] }>(`/api/home${q}`)
+  const raw = await get<{ movie_sections?: RawSection[]; series_sections?: RawSection[] }>(`/api/home${q}`)
   const sections: BrowseSection[] = [
     ...(raw.movie_sections ?? []).map((s) => mapSection(s, 'movies')),
     ...(raw.series_sections ?? []).map((s) => mapSection(s, 'series')),
@@ -338,7 +448,7 @@ export async function getCatalogPage(params: {
   if (params.section_title) q.set('section_title', params.section_title)
   q.set('page', String(params.page ?? 1))
   q.set('page_size', String(params.page_size ?? 24))
-  const raw = await get<{ items: any[]; total: number; page: number; has_next: boolean }>(`/api/content?${q}`)
+  const raw = await get<{ items: RawCatalogItem[]; total: number; page: number; has_next: boolean }>(`/api/content?${q}`)
   return {
     items: (raw.items ?? []).map(mapItem),
     total: raw.total,
@@ -350,7 +460,7 @@ export async function getCatalogPage(params: {
 export async function getUfcReplays(page = 1, search?: string) {
   const q = new URLSearchParams({ page: String(page), page_size: '48', event_type: 'UFC' })
   if (search) q.set('search', search)
-  const raw = await get<{ items: any[]; has_next: boolean }>(`/api/replays?${q}`)
+  const raw = await get<{ items: RawReplay[]; has_next: boolean }>(`/api/replays?${q}`)
   return {
     items: (raw.items ?? []).map(mapReplay),
     has_next: raw.has_next,
@@ -359,7 +469,7 @@ export async function getUfcReplays(page = 1, search?: string) {
 
 // Series
 export async function getSeriesEpisodes(identifier: string, page = 1) {
-  const raw = await get<{ episodes: any[]; total: number }>(
+  const raw = await get<{ episodes: RawCatalogItem[]; total: number }>(
     `/api/series/by-id/${encodeURIComponent(identifier)}/episodes?page=${page}&page_size=100`,
   )
   return {
@@ -390,7 +500,7 @@ export async function search(q: string, page = 1, filters?: { country?: string; 
   if (filters?.group) qs.set('group', filters.group)
   if (filters?.types) qs.set('types', filters.types)
   if (filters?.genre) qs.set('genre', filters.genre)
-  const raw = await get<{ items: any[]; total: number }>(`/api/search?${qs}`)
+  const raw = await get<{ items: RawCatalogItem[]; total: number }>(`/api/search?${qs}`)
   return {
     results: (raw.items ?? []).map(mapItem),
     total: raw.total,
@@ -399,7 +509,7 @@ export async function search(q: string, page = 1, filters?: { country?: string; 
 
 // Favorites
 export async function getFavorites() {
-  const raw = await get<any[]>('/api/channel-favorites')
+  const raw = await get<RawCatalogItem[]>('/api/channel-favorites')
   return (raw ?? []).map(mapItem)
 }
 
@@ -424,7 +534,7 @@ export async function getContentById(contentType: string, contentId: string): Pr
   try {
     const url = `/api/content/${contentType}/${contentId}`
     console.log(`[getContentById] fetching: ${url}`)
-    const raw = await get<any>(url)
+    const raw = await get<RawCatalogItem>(url)
     if (!raw) {
       console.warn(`[getContentById] empty response for: ${url}`)
       return null
@@ -440,7 +550,7 @@ export async function getContentById(contentType: string, contentId: string): Pr
 
 // Watch Progress
 export async function getWatchProgress(limit = 20) {
-  const raw = await get<{ items: any[] }>(`/api/watch-progress?limit=${limit}`)
+  const raw = await get<{ items: RawCatalogItem[] }>(`/api/watch-progress?limit=${limit}`)
   return {
     items: (raw.items ?? []).map(mapWatchProgress),
   }
@@ -448,11 +558,11 @@ export async function getWatchProgress(limit = 20) {
 
 // Watched items (marcadas como vistas, no solo en progreso)
 export async function getWatchedItems(limit = 500) {
-  const all: any[] = []
+  const all: RawCatalogItem[] = []
   let offset = 0
   const MAX_WATCHED_ITEMS = 10_000
   while (offset < MAX_WATCHED_ITEMS) {
-    const raw = await get<{ items: any[]; total?: number }>(`/api/watch-progress/watched?limit=${limit}&offset=${offset}`)
+    const raw = await get<{ items: RawCatalogItem[]; total?: number }>(`/api/watch-progress/watched?limit=${limit}&offset=${offset}`)
     const items = raw.items ?? []
     all.push(...items)
     const total = raw.total ?? offset + items.length
@@ -672,13 +782,13 @@ export function setPreferredLanguage(lang: string) {
 
 export type IntroDbSegments = SkipSegments
 
-function mapSkipSegments(raw: any): SkipSegments | null {
+function mapSkipSegments(raw: RawSkipSegments | null | undefined): SkipSegments | null {
   if (raw == null) return null
-  const mapSegment = (segment: any) => {
+  const mapSegment = (segment: RawSkipSegment | null | undefined): SkipSegment | null => {
     if (!segment) return null
     return {
-      startMs: segment.start_ms ?? segment.startMs,
-      endMs: segment.end_ms ?? segment.endMs,
+      startMs: segment.start_ms ?? segment.startMs ?? 0,
+      endMs: segment.end_ms ?? segment.endMs ?? 0,
     }
   }
   return {

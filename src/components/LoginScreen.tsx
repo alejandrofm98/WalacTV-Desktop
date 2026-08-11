@@ -18,8 +18,8 @@ export function LoginScreen({ onLogin }: Props) {
     setError(null)
     try {
       await onLogin(user, pass)
-    } catch (e: any) {
-      setError(e.message)
+    } catch (e: unknown) {
+      setError(e instanceof Error ? e.message : 'Error de autenticacion')
     } finally {
       setBusy(false)
     }

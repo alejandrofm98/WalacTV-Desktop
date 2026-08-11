@@ -110,7 +110,10 @@ pub struct MpvRestartPayload;
 /// On Linux with custom controls, `linux_lowering` carries the X11 state
 /// needed to lower the mpv child window below the webview on `file-loaded`
 /// so custom HTML controls render on top of the video.
-pub fn mpv_event_loop(
+///
+/// # Safety
+/// `handle` must be a live libmpv handle owned by the event-loop lifetime.
+pub unsafe fn mpv_event_loop(
     app_handle: AppHandle,
     api: Arc<MpvApi>,
     handle: *mut mpv_handle,

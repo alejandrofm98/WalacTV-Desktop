@@ -5,17 +5,17 @@
 //! `Result<T, String>` so Tauri serializes errors as `{ error: ... }` to the
 //! frontend.
 
-use crate::mpv::ffi::{mpv_format, ensure_libmpv_installed, MpvApi, MpvError};
-use crate::mpv::handle::{MpvInstance, LinuxLoweringState};
+use crate::mpv::ffi::{ensure_libmpv_installed, mpv_format, MpvApi, MpvError};
+use crate::mpv::handle::{LinuxLoweringState, MpvInstance};
 use crate::mpv::platform;
 #[cfg(target_os = "windows")]
 use crate::mpv::platform::windows::WindowsVideoHost;
 use parking_lot::Mutex;
 use serde::Serialize;
-use std::sync::Arc;
 use std::sync::atomic::AtomicBool;
-use tauri::{AppHandle, Emitter, Manager, State};
+use std::sync::Arc;
 use tauri::ipc::Response;
+use tauri::{AppHandle, Emitter, Manager, State};
 
 // ---------------------------------------------------------------------------
 // PlayerState — managed Tauri state
@@ -52,7 +52,9 @@ where
     F: FnOnce(&MpvInstance) -> Result<T, String>,
 {
     let guard = state.inner.lock();
-    let instance = guard.as_ref().ok_or_else(|| "Player not initialized".to_string())?;
+    let instance = guard
+        .as_ref()
+        .ok_or_else(|| "Player not initialized".to_string())?;
     f(instance)
 }
 
@@ -129,7 +131,10 @@ fn resolve_uosc_paths(app: &AppHandle) -> (Option<String>, Option<String>) {
                 eprintln!("[mpv-uosc] Found fonts dir at: {}", fonts_dir.display());
                 Some(fonts_dir.to_string_lossy().to_string())
             } else {
-                eprintln!("[mpv-uosc] WARNING: fonts dir NOT found at: {}", fonts_dir.display());
+                eprintln!(
+                    "[mpv-uosc] WARNING: fonts dir NOT found at: {}",
+                    fonts_dir.display()
+                );
                 None
             };
 
@@ -272,13 +277,18 @@ pub async fn mpv_init(
         let osc_env = std::env::var("WALACTV_PLAYER_OSC");
         let force_osc = osc_env.as_deref().map(|v| v == "1").unwrap_or(false);
         let has_compositor = platform::linux::detect_compositor();
-        eprintln!("[mpv-init] WALACTV_PLAYER_OSC={:?}, compositor={}, wid=0x{:x}",
-            osc_env, has_compositor, wid);
+        eprintln!(
+            "[mpv-init] WALACTV_PLAYER_OSC={:?}, compositor={}, wid=0x{:x}",
+            osc_env, has_compositor, wid
+        );
         if force_osc {
             log::info!("mpv_init: WALACTV_PLAYER_OSC=1 — forzando OSC nativo");
         }
         let result = false;
-        eprintln!("[mpv-init] use_custom={} (overlay-HTML disabled, using native OSC)", result);
+        eprintln!(
+            "[mpv-init] use_custom={} (overlay-HTML disabled, using native OSC)",
+            result
+        );
         result
     };
     #[cfg(not(target_os = "linux"))]
@@ -299,8 +309,15 @@ pub async fn mpv_init(
     let linux_init_state: Option<(u64, Vec<u64>)> = if use_custom {
         match platform::linux::snapshot_children(wid as u64) {
             Ok(children) => {
-                eprintln!("[mpv-init] {} pre-hijos snapshoted para 0x{:x}", children.len(), wid);
-                log::info!("mpv_init: {} hijos X11 capturados antes de crear mpv", children.len());
+                eprintln!(
+                    "[mpv-init] {} pre-hijos snapshoted para 0x{:x}",
+                    children.len(),
+                    wid
+                );
+                log::info!(
+                    "mpv_init: {} hijos X11 capturados antes de crear mpv",
+                    children.len()
+                );
                 Some((wid as u64, children))
             }
             Err(e) => {
@@ -315,7 +332,14 @@ pub async fn mpv_init(
     let linux_init_state: Option<(u64, Vec<u64>)> = None;
 
     // Create the player instance — sets INITIAL_OPTIONS, wid, hwdec, uosc
-    let mut instance = MpvInstance::new(api, wid, app.clone(), use_custom, uosc_main_path, uosc_fonts_dir)?;
+    let mut instance = MpvInstance::new(
+        api,
+        wid,
+        app.clone(),
+        use_custom,
+        uosc_main_path,
+        uosc_fonts_dir,
+    )?;
 
     // ── Linux: store X11 lowering state for custom controls ────────────
     #[cfg(target_os = "linux")]
@@ -325,7 +349,10 @@ pub async fn mpv_init(
             pre_children,
             child_lowered: AtomicBool::new(false),
         }));
-        log::info!("mpv_init: Estado de bajada X11 configurado (top_xid=0x{:x})", top_xid);
+        log::info!(
+            "mpv_init: Estado de bajada X11 configurado (top_xid=0x{:x})",
+            top_xid
+        );
     }
 
     // Start event loop
@@ -374,9 +401,7 @@ pub async fn mpv_loadfile(
 ) -> Result<(), String> {
     // start_position from the frontend is in milliseconds; mpv expects seconds
     let start_seconds = start_position.map(|ms| ms / 1000.0);
-    with_player(&state, |instance| {
-        instance.loadfile(&url, start_seconds)
-    })
+    with_player(&state, |instance| instance.loadfile(&url, start_seconds))
 }
 
 /// Set an mpv property.
@@ -387,21 +412,19 @@ pub async fn mpv_set_property(
     name: String,
     value: serde_json::Value,
 ) -> Result<(), String> {
-    with_player(&state, |instance| {
-        match value {
-            serde_json::Value::String(s) => instance.set_property_str(&name, &s),
-            serde_json::Value::Number(n) => {
-                if let Some(f) = n.as_f64() {
-                    instance.set_property_f64(&name, f)
-                } else if let Some(i) = n.as_i64() {
-                    instance.set_property_i64(&name, i)
-                } else {
-                    instance.set_property_str(&name, &n.to_string())
-                }
+    with_player(&state, |instance| match value {
+        serde_json::Value::String(s) => instance.set_property_str(&name, &s),
+        serde_json::Value::Number(n) => {
+            if let Some(f) = n.as_f64() {
+                instance.set_property_f64(&name, f)
+            } else if let Some(i) = n.as_i64() {
+                instance.set_property_i64(&name, i)
+            } else {
+                instance.set_property_str(&name, &n.to_string())
             }
-            serde_json::Value::Bool(b) => instance.set_property_bool(&name, b),
-            _ => instance.set_property_str(&name, &value.to_string()),
         }
+        serde_json::Value::Bool(b) => instance.set_property_bool(&name, b),
+        _ => instance.set_property_str(&name, &value.to_string()),
     })
 }
 
@@ -431,10 +454,7 @@ pub async fn mpv_get_property(
 
 /// Run an arbitrary mpv command with string arguments.
 #[tauri::command]
-pub async fn mpv_command(
-    state: State<'_, PlayerState>,
-    args: Vec<String>,
-) -> Result<(), String> {
+pub async fn mpv_command(state: State<'_, PlayerState>, args: Vec<String>) -> Result<(), String> {
     let refs: Vec<&str> = args.iter().map(|s| s.as_str()).collect();
     with_player(&state, |instance| instance.command(&refs))
 }
@@ -455,7 +475,9 @@ pub async fn mpv_observe_property(
         "node" => mpv_format::MPV_FORMAT_NODE,
         _ => return Err(format!("Unknown mpv format: {format_str}")),
     };
-    with_player(&state, |instance| instance.observe_property(id, &name, format))
+    with_player(&state, |instance| {
+        instance.observe_property(id, &name, format)
+    })
 }
 
 /// Destroy the mpv player and release all resources.
@@ -518,9 +540,7 @@ pub async fn mpv_get_state(state: State<'_, PlayerState>) -> Result<PlayerStateI
 /// Returns an empty frame (all-zeros header) if no frame is available yet.
 #[cfg(target_os = "linux")]
 #[tauri::command]
-pub async fn mpv_get_render_frame(
-    state: State<'_, PlayerState>,
-) -> Result<Response, String> {
+pub async fn mpv_get_render_frame(state: State<'_, PlayerState>) -> Result<Response, String> {
     let guard = state.inner.lock();
     match guard.as_ref() {
         Some(instance) => {
@@ -604,7 +624,11 @@ pub async fn mpv_get_variant_tracks(
                 let height = t.get("height")?.as_i64()? as i32;
                 let width = t.get("width")?.as_i64()? as i32;
                 let bandwidth = t.get("demux-bitrate").and_then(|v| v.as_i64()).unwrap_or(0);
-                let _codec = t.get("codec").and_then(|v| v.as_str()).unwrap_or("").to_string();
+                let _codec = t
+                    .get("codec")
+                    .and_then(|v| v.as_str())
+                    .unwrap_or("")
+                    .to_string();
                 let label = if height >= 2160 {
                     format!("4K ({height}p)")
                 } else if height >= 1440 {
@@ -664,9 +688,7 @@ pub async fn ensure_libmpv_installed_command() -> Result<String, String> {
 
 /// Check whether libmpv was loaded successfully and report version info.
 #[tauri::command]
-pub async fn mpv_check_health(
-    _state: State<'_, PlayerState>,
-) -> Result<MpvVersionInfo, String> {
+pub async fn mpv_check_health(_state: State<'_, PlayerState>) -> Result<MpvVersionInfo, String> {
     let loaded = _state.api.lock().is_some();
     let version = if loaded {
         // Access version via the loaded API
@@ -683,11 +705,19 @@ pub async fn mpv_check_health(
             Ok(api) => {
                 let c_name = match std::ffi::CString::new("mpv-version") {
                     Ok(n) => n,
-                    Err(_) => return Ok(MpvVersionInfo { loaded: false, version: None }),
+                    Err(_) => {
+                        return Ok(MpvVersionInfo {
+                            loaded: false,
+                            version: None,
+                        })
+                    }
                 };
                 let ctx = unsafe { (api.mpv_create)() };
                 if ctx.is_null() {
-                    return Ok(MpvVersionInfo { loaded: false, version: None });
+                    return Ok(MpvVersionInfo {
+                        loaded: false,
+                        version: None,
+                    });
                 }
                 let _ = unsafe { (api.mpv_initialize)(ctx) };
                 let ptr = unsafe { (api.mpv_get_property_string)(ctx, c_name.as_ptr()) };

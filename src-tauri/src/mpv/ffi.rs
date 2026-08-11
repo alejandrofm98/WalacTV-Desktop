@@ -36,8 +36,7 @@ pub struct mpv_render_param {
 /// OpenGL initialization parameters for mpv_render_context_create.
 #[repr(C)]
 pub struct mpv_opengl_init_params {
-    pub get_proc_address:
-        Option<unsafe extern "C" fn(*mut c_void, *const c_char) -> *mut c_void>,
+    pub get_proc_address: Option<unsafe extern "C" fn(*mut c_void, *const c_char) -> *mut c_void>,
     pub get_proc_address_ctx: *mut c_void,
 }
 
@@ -282,14 +281,12 @@ pub struct MpvApi {
     pub mpv_initialize: unsafe extern "C" fn(*mut mpv_handle) -> c_int,
     pub mpv_destroy: unsafe extern "C" fn(*mut mpv_handle),
     pub mpv_terminate_destroy: unsafe extern "C" fn(*mut mpv_handle),
-    pub mpv_create_client:
-        unsafe extern "C" fn(*mut mpv_handle, *const c_char) -> *mut mpv_handle,
+    pub mpv_create_client: unsafe extern "C" fn(*mut mpv_handle, *const c_char) -> *mut mpv_handle,
 
     // -- Options (before init) --
     pub mpv_set_option_string:
         unsafe extern "C" fn(*mut mpv_handle, *const c_char, *const c_char) -> c_int,
-    pub mpv_request_log_messages:
-        unsafe extern "C" fn(*mut mpv_handle, *const c_char),
+    pub mpv_request_log_messages: unsafe extern "C" fn(*mut mpv_handle, *const c_char),
 
     // -- Properties --
     pub mpv_set_property_string:
@@ -303,38 +300,31 @@ pub struct MpvApi {
     pub mpv_free: unsafe extern "C" fn(*mut c_void),
 
     // -- Commands --
-    pub mpv_command:
-        unsafe extern "C" fn(*mut mpv_handle, *const *const c_char) -> c_int,
+    pub mpv_command: unsafe extern "C" fn(*mut mpv_handle, *const *const c_char) -> c_int,
 
     // -- Events --
     pub mpv_observe_property:
         unsafe extern "C" fn(*mut mpv_handle, u64, *const c_char, mpv_format) -> c_int,
-    pub mpv_unobserve_property:
-        unsafe extern "C" fn(*mut mpv_handle, u64) -> c_int,
-    pub mpv_wait_event:
-        unsafe extern "C" fn(*mut mpv_handle, f64) -> *mut mpv_event,
+    pub mpv_unobserve_property: unsafe extern "C" fn(*mut mpv_handle, u64) -> c_int,
+    pub mpv_wait_event: unsafe extern "C" fn(*mut mpv_handle, f64) -> *mut mpv_event,
     pub mpv_wakeup: unsafe extern "C" fn(*mut mpv_handle),
-    pub mpv_request_event:
-        unsafe extern "C" fn(*mut mpv_handle, mpv_event_id, c_int) -> c_int,
+    pub mpv_request_event: unsafe extern "C" fn(*mut mpv_handle, mpv_event_id, c_int) -> c_int,
 
     // -- Render context (Wayland / macOS) --
-    pub mpv_render_context_create:
-        unsafe extern "C" fn(
-            *mut *mut mpv_render_context,
-            *mut mpv_handle,
-            *mut mpv_render_param,
-        ) -> c_int,
+    pub mpv_render_context_create: unsafe extern "C" fn(
+        *mut *mut mpv_render_context,
+        *mut mpv_handle,
+        *mut mpv_render_param,
+    ) -> c_int,
     pub mpv_render_context_free: unsafe extern "C" fn(*mut mpv_render_context),
     pub mpv_render_context_render:
         unsafe extern "C" fn(*mut mpv_render_context, *mut mpv_render_param) -> c_int,
-    pub mpv_render_context_report_swap:
-        unsafe extern "C" fn(*mut mpv_render_context),
-    pub mpv_render_context_set_update_callback:
-        unsafe extern "C" fn(
-            *mut mpv_render_context,
-            Option<unsafe extern "C" fn(*mut c_void)>,
-            *mut c_void,
-        ),
+    pub mpv_render_context_report_swap: unsafe extern "C" fn(*mut mpv_render_context),
+    pub mpv_render_context_set_update_callback: unsafe extern "C" fn(
+        *mut mpv_render_context,
+        Option<unsafe extern "C" fn(*mut c_void)>,
+        *mut c_void,
+    ),
 }
 
 // Safety: MpvApi owns the Library which is Send+Sync, and function pointers
@@ -371,8 +361,9 @@ impl MpvApi {
                             );
                             Library::new("libmpv.so.2")
                                 .or_else(|_| Library::new("libmpv.so"))
-                                .map_err(|e2| MpvError::LibraryNotFound(format!(
-                                    "No se pudo cargar libmpv.so: {e}. {e2}. \
+                                .map_err(|e2| {
+                                    MpvError::LibraryNotFound(format!(
+                                        "No se pudo cargar libmpv.so: {e}. {e2}. \
                                      El bundle local en {} fallo y la libreria \
                                      del sistema tampoco esta disponible.\n\n\
                                      Instalá libmpv-dev en tu sistema:\n  \
@@ -380,16 +371,18 @@ impl MpvApi {
                                      Fedora:       sudo dnf install mpv-libs-devel\n  \
                                      Arch:         sudo pacman -S mpv\n  \
                                      openSUSE:     sudo zypper install mpv-devel",
-                                    local_path.display()
-                                )))?
+                                        local_path.display()
+                                    ))
+                                })?
                         }
                     }
                 } else {
                     // 2. Local bundle doesn't exist — try system paths
                     Library::new("libmpv.so.2")
                         .or_else(|_| Library::new("libmpv.so"))
-                        .map_err(|e| MpvError::LibraryNotFound(format!(
-                            "No se pudo cargar libmpv.so: {e}. \
+                        .map_err(|e| {
+                            MpvError::LibraryNotFound(format!(
+                                "No se pudo cargar libmpv.so: {e}. \
                              La app puede intentar instalarlo automaticamente \
                              (reintentá desde la interfaz).\
                              \n\nInstalá libmpv-dev en tu sistema:\n  \
@@ -398,7 +391,8 @@ impl MpvApi {
                              Arch:         sudo pacman -S mpv\n  \
                              openSUSE:     sudo zypper install mpv-devel\n\n\
                              Después de instalar, reiniciá la app."
-                        )))?
+                            ))
+                        })?
                 }
             }
             #[cfg(target_os = "windows")]
@@ -459,12 +453,14 @@ impl MpvApi {
                 Library::new("libmpv.dylib")
                     .or_else(|_| Library::new("/opt/homebrew/lib/libmpv.dylib"))
                     .or_else(|_| Library::new("/usr/local/lib/libmpv.dylib"))
-                    .map_err(|e| MpvError::LibraryNotFound(format!(
-                        "No se pudo cargar libmpv.dylib: {e}. \
+                    .map_err(|e| {
+                        MpvError::LibraryNotFound(format!(
+                            "No se pudo cargar libmpv.dylib: {e}. \
                          Instalá mpv via Homebrew:\n  \
                          brew install mpv\n\n\
                          Después de instalar, reiniciá la app."
-                    )))?
+                        ))
+                    })?
             }
             #[cfg(not(any(target_os = "linux", target_os = "windows", target_os = "macos")))]
             {
@@ -478,98 +474,140 @@ impl MpvApi {
         // libloading's get() returns a Symbol<T> where T must match the actual
         // function signature. We use a series of explicit loads.
         unsafe {
-            let mpv_create: extern "C" fn() -> *mut mpv_handle =
-                *lib.get(b"mpv_create\0")
-                    .map_err(|e| MpvError::SymbolNotFound(format!("mpv_create: {e}")))?;
+            let mpv_create: extern "C" fn() -> *mut mpv_handle = *lib
+                .get(b"mpv_create\0")
+                .map_err(|e| MpvError::SymbolNotFound(format!("mpv_create: {e}")))?;
 
-            let mpv_initialize: extern "C" fn(*mut mpv_handle) -> c_int =
-                *lib.get(b"mpv_initialize\0")
-                    .map_err(|e| MpvError::SymbolNotFound(format!("mpv_initialize: {e}")))?;
+            let mpv_initialize: extern "C" fn(*mut mpv_handle) -> c_int = *lib
+                .get(b"mpv_initialize\0")
+                .map_err(|e| MpvError::SymbolNotFound(format!("mpv_initialize: {e}")))?;
 
-            let mpv_destroy: extern "C" fn(*mut mpv_handle) =
-                *lib.get(b"mpv_destroy\0")
-                    .map_err(|e| MpvError::SymbolNotFound(format!("mpv_destroy: {e}")))?;
+            let mpv_destroy: extern "C" fn(*mut mpv_handle) = *lib
+                .get(b"mpv_destroy\0")
+                .map_err(|e| MpvError::SymbolNotFound(format!("mpv_destroy: {e}")))?;
 
-            let mpv_terminate_destroy: extern "C" fn(*mut mpv_handle) =
-                *lib.get(b"mpv_terminate_destroy\0")
-                    .map_err(|e| MpvError::SymbolNotFound(format!("mpv_terminate_destroy: {e}")))?;
+            let mpv_terminate_destroy: extern "C" fn(*mut mpv_handle) = *lib
+                .get(b"mpv_terminate_destroy\0")
+                .map_err(|e| MpvError::SymbolNotFound(format!("mpv_terminate_destroy: {e}")))?;
 
-            let mpv_create_client: extern "C" fn(*mut mpv_handle, *const c_char) -> *mut mpv_handle =
-                *lib.get(b"mpv_create_client\0")
-                    .map_err(|e| MpvError::SymbolNotFound(format!("mpv_create_client: {e}")))?;
+            let mpv_create_client: extern "C" fn(
+                *mut mpv_handle,
+                *const c_char,
+            ) -> *mut mpv_handle = *lib
+                .get(b"mpv_create_client\0")
+                .map_err(|e| MpvError::SymbolNotFound(format!("mpv_create_client: {e}")))?;
 
-            let mpv_set_option_string: extern "C" fn(*mut mpv_handle, *const c_char, *const c_char) -> c_int =
-                *lib.get(b"mpv_set_option_string\0")
-                    .map_err(|e| MpvError::SymbolNotFound(format!("mpv_set_option_string: {e}")))?;
+            let mpv_set_option_string: extern "C" fn(
+                *mut mpv_handle,
+                *const c_char,
+                *const c_char,
+            ) -> c_int = *lib
+                .get(b"mpv_set_option_string\0")
+                .map_err(|e| MpvError::SymbolNotFound(format!("mpv_set_option_string: {e}")))?;
 
-            let mpv_request_log_messages: extern "C" fn(*mut mpv_handle, *const c_char) =
-                *lib.get(b"mpv_request_log_messages\0")
-                    .map_err(|e| MpvError::SymbolNotFound(format!("mpv_request_log_messages: {e}")))?;
+            let mpv_request_log_messages: extern "C" fn(*mut mpv_handle, *const c_char) = *lib
+                .get(b"mpv_request_log_messages\0")
+                .map_err(|e| MpvError::SymbolNotFound(format!("mpv_request_log_messages: {e}")))?;
 
-            let mpv_set_property_string: extern "C" fn(*mut mpv_handle, *const c_char, *const c_char) -> c_int =
-                *lib.get(b"mpv_set_property_string\0")
-                    .map_err(|e| MpvError::SymbolNotFound(format!("mpv_set_property_string: {e}")))?;
+            let mpv_set_property_string: extern "C" fn(
+                *mut mpv_handle,
+                *const c_char,
+                *const c_char,
+            ) -> c_int = *lib
+                .get(b"mpv_set_property_string\0")
+                .map_err(|e| MpvError::SymbolNotFound(format!("mpv_set_property_string: {e}")))?;
 
-            let mpv_set_property: extern "C" fn(*mut mpv_handle, *const c_char, mpv_format, *mut c_void) -> c_int =
-                *lib.get(b"mpv_set_property\0")
-                    .map_err(|e| MpvError::SymbolNotFound(format!("mpv_set_property: {e}")))?;
+            let mpv_set_property: extern "C" fn(
+                *mut mpv_handle,
+                *const c_char,
+                mpv_format,
+                *mut c_void,
+            ) -> c_int = *lib
+                .get(b"mpv_set_property\0")
+                .map_err(|e| MpvError::SymbolNotFound(format!("mpv_set_property: {e}")))?;
 
-            let mpv_get_property_string: extern "C" fn(*mut mpv_handle, *const c_char) -> *mut c_char =
-                *lib.get(b"mpv_get_property_string\0")
-                    .map_err(|e| MpvError::SymbolNotFound(format!("mpv_get_property_string: {e}")))?;
+            let mpv_get_property_string: extern "C" fn(
+                *mut mpv_handle,
+                *const c_char,
+            ) -> *mut c_char = *lib
+                .get(b"mpv_get_property_string\0")
+                .map_err(|e| MpvError::SymbolNotFound(format!("mpv_get_property_string: {e}")))?;
 
-            let mpv_get_property: extern "C" fn(*mut mpv_handle, *const c_char, mpv_format, *mut c_void) -> c_int =
-                *lib.get(b"mpv_get_property\0")
-                    .map_err(|e| MpvError::SymbolNotFound(format!("mpv_get_property: {e}")))?;
+            let mpv_get_property: extern "C" fn(
+                *mut mpv_handle,
+                *const c_char,
+                mpv_format,
+                *mut c_void,
+            ) -> c_int = *lib
+                .get(b"mpv_get_property\0")
+                .map_err(|e| MpvError::SymbolNotFound(format!("mpv_get_property: {e}")))?;
 
-            let mpv_free: extern "C" fn(*mut c_void) =
-                *lib.get(b"mpv_free\0")
-                    .map_err(|e| MpvError::SymbolNotFound(format!("mpv_free: {e}")))?;
+            let mpv_free: extern "C" fn(*mut c_void) = *lib
+                .get(b"mpv_free\0")
+                .map_err(|e| MpvError::SymbolNotFound(format!("mpv_free: {e}")))?;
 
-            let mpv_command: extern "C" fn(*mut mpv_handle, *const *const c_char) -> c_int =
-                *lib.get(b"mpv_command\0")
-                    .map_err(|e| MpvError::SymbolNotFound(format!("mpv_command: {e}")))?;
+            let mpv_command: extern "C" fn(*mut mpv_handle, *const *const c_char) -> c_int = *lib
+                .get(b"mpv_command\0")
+                .map_err(|e| MpvError::SymbolNotFound(format!("mpv_command: {e}")))?;
 
-            let mpv_observe_property: extern "C" fn(*mut mpv_handle, u64, *const c_char, mpv_format) -> c_int =
-                *lib.get(b"mpv_observe_property\0")
-                    .map_err(|e| MpvError::SymbolNotFound(format!("mpv_observe_property: {e}")))?;
+            let mpv_observe_property: extern "C" fn(
+                *mut mpv_handle,
+                u64,
+                *const c_char,
+                mpv_format,
+            ) -> c_int = *lib
+                .get(b"mpv_observe_property\0")
+                .map_err(|e| MpvError::SymbolNotFound(format!("mpv_observe_property: {e}")))?;
 
-            let mpv_unobserve_property: extern "C" fn(*mut mpv_handle, u64) -> c_int =
-                *lib.get(b"mpv_unobserve_property\0")
-                    .map_err(|e| MpvError::SymbolNotFound(format!("mpv_unobserve_property: {e}")))?;
+            let mpv_unobserve_property: extern "C" fn(*mut mpv_handle, u64) -> c_int = *lib
+                .get(b"mpv_unobserve_property\0")
+                .map_err(|e| MpvError::SymbolNotFound(format!("mpv_unobserve_property: {e}")))?;
 
-            let mpv_wait_event: extern "C" fn(*mut mpv_handle, f64) -> *mut mpv_event =
-                *lib.get(b"mpv_wait_event\0")
-                    .map_err(|e| MpvError::SymbolNotFound(format!("mpv_wait_event: {e}")))?;
+            let mpv_wait_event: extern "C" fn(*mut mpv_handle, f64) -> *mut mpv_event = *lib
+                .get(b"mpv_wait_event\0")
+                .map_err(|e| MpvError::SymbolNotFound(format!("mpv_wait_event: {e}")))?;
 
-            let mpv_wakeup: extern "C" fn(*mut mpv_handle) =
-                *lib.get(b"mpv_wakeup\0")
-                    .map_err(|e| MpvError::SymbolNotFound(format!("mpv_wakeup: {e}")))?;
+            let mpv_wakeup: extern "C" fn(*mut mpv_handle) = *lib
+                .get(b"mpv_wakeup\0")
+                .map_err(|e| MpvError::SymbolNotFound(format!("mpv_wakeup: {e}")))?;
 
             let mpv_request_event: extern "C" fn(*mut mpv_handle, mpv_event_id, c_int) -> c_int =
                 *lib.get(b"mpv_request_event\0")
                     .map_err(|e| MpvError::SymbolNotFound(format!("mpv_request_event: {e}")))?;
 
-            let mpv_render_context_create: extern "C" fn(*mut *mut mpv_render_context, *mut mpv_handle, *mut mpv_render_param) -> c_int =
-                *lib.get(b"mpv_render_context_create\0")
-                    .map_err(|e| MpvError::SymbolNotFound(format!("mpv_render_context_create: {e}")))?;
+            let mpv_render_context_create: extern "C" fn(
+                *mut *mut mpv_render_context,
+                *mut mpv_handle,
+                *mut mpv_render_param,
+            ) -> c_int = *lib
+                .get(b"mpv_render_context_create\0")
+                .map_err(|e| MpvError::SymbolNotFound(format!("mpv_render_context_create: {e}")))?;
 
-            let mpv_render_context_free: extern "C" fn(*mut mpv_render_context) =
-                *lib.get(b"mpv_render_context_free\0")
-                    .map_err(|e| MpvError::SymbolNotFound(format!("mpv_render_context_free: {e}")))?;
+            let mpv_render_context_free: extern "C" fn(*mut mpv_render_context) = *lib
+                .get(b"mpv_render_context_free\0")
+                .map_err(|e| MpvError::SymbolNotFound(format!("mpv_render_context_free: {e}")))?;
 
-            let mpv_render_context_render: extern "C" fn(*mut mpv_render_context, *mut mpv_render_param) -> c_int =
-                *lib.get(b"mpv_render_context_render\0")
-                    .map_err(|e| MpvError::SymbolNotFound(format!("mpv_render_context_render: {e}")))?;
+            let mpv_render_context_render: extern "C" fn(
+                *mut mpv_render_context,
+                *mut mpv_render_param,
+            ) -> c_int = *lib
+                .get(b"mpv_render_context_render\0")
+                .map_err(|e| MpvError::SymbolNotFound(format!("mpv_render_context_render: {e}")))?;
 
             let mpv_render_context_report_swap: extern "C" fn(*mut mpv_render_context) =
-                *lib.get(b"mpv_render_context_report_swap\0")
-                    .map_err(|e| MpvError::SymbolNotFound(format!("mpv_render_context_report_swap: {e}")))?;
+                *lib.get(b"mpv_render_context_report_swap\0").map_err(|e| {
+                    MpvError::SymbolNotFound(format!("mpv_render_context_report_swap: {e}"))
+                })?;
 
-            let mpv_render_context_set_update_callback:
-                extern "C" fn(*mut mpv_render_context, Option<unsafe extern "C" fn(*mut c_void)>, *mut c_void) =
-                *lib.get(b"mpv_render_context_set_update_callback\0")
-                    .map_err(|e| MpvError::SymbolNotFound(format!("mpv_render_context_set_update_callback: {e}")))?;
+            let mpv_render_context_set_update_callback: extern "C" fn(
+                *mut mpv_render_context,
+                Option<unsafe extern "C" fn(*mut c_void)>,
+                *mut c_void,
+            ) = *lib
+                .get(b"mpv_render_context_set_update_callback\0")
+                .map_err(|e| {
+                    MpvError::SymbolNotFound(format!("mpv_render_context_set_update_callback: {e}"))
+                })?;
 
             Ok(Arc::new(MpvApi {
                 _lib: lib,
@@ -613,8 +651,7 @@ fn local_libmpv_dir() -> PathBuf {
     let base = std::env::var("XDG_DATA_HOME")
         .map(PathBuf::from)
         .unwrap_or_else(|_| {
-            let home = std::env::var("HOME")
-                .unwrap_or_else(|_| "/tmp".to_string());
+            let home = std::env::var("HOME").unwrap_or_else(|_| "/tmp".to_string());
             PathBuf::from(home).join(".local").join("share")
         });
     base.join("walactv-desktop").join("libmpv")
@@ -646,13 +683,11 @@ pub fn ensure_libmpv_installed() -> Result<String, String> {
 
     // Ensure the target directory exists
     let dir = local_libmpv_dir();
-    std::fs::create_dir_all(&dir)
-        .map_err(|e| format!("No se pudo crear {dir:?}: {e}"))?;
+    std::fs::create_dir_all(&dir).map_err(|e| format!("No se pudo crear {dir:?}: {e}"))?;
 
     // Write the embedded script to a temp file
     let script_dir = std::env::temp_dir().join("walactv-libmpv-install");
-    std::fs::create_dir_all(&script_dir)
-        .map_err(|e| format!("No se pudo crear temp dir: {e}"))?;
+    std::fs::create_dir_all(&script_dir).map_err(|e| format!("No se pudo crear temp dir: {e}"))?;
 
     let script_path = script_dir.join("install-libmpv-linux.sh");
     {
@@ -661,7 +696,8 @@ pub fn ensure_libmpv_installed() -> Result<String, String> {
         file.write_all(INSTALL_SCRIPT.as_bytes())
             .map_err(|e| format!("No se pudo escribir script temporal: {e}"))?;
         // Make executable
-        let metadata = file.metadata()
+        let metadata = file
+            .metadata()
             .map_err(|e| format!("No se pudo leer metadata: {e}"))?;
         let mut perms = metadata.permissions();
         perms.set_mode(0o755);
