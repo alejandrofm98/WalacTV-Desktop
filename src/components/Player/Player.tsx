@@ -11,7 +11,6 @@ import { useRenderFrame } from '../../player/useRenderFrame'
 import { getVolume } from '../../settings'
 import { markWatched } from '../../api/client'
 import { PlayerOverlay } from './PlayerOverlay'
-import { PlayerIntroSkip } from './PlayerIntroSkip'
 import { PlayerErrorState } from './PlayerErrorState'
 import { PlayerLoadingState } from './PlayerLoadingState'
 import styles from './Player.module.css'
@@ -304,9 +303,6 @@ export function Player() {
           epg={null}
           onBack={closePlayer}
         />
-      )}
-      {!storeError && (
-        <PlayerIntroSkip segment={activeSegment} onSkip={doSkip} />
       )}
 
       {storeError ? (

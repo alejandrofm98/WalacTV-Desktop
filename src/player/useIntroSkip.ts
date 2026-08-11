@@ -113,5 +113,9 @@ export function useIntroSkip({
     dismiss(activeSegment.type)
   }, [activeSegment, onSkip, dismiss])
 
+  useEffect(() => {
+    if (activeSegment) skip()
+  }, [activeSegment, skip])
+
   return { activeSegment, dismiss, skip }
 }
