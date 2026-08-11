@@ -55,7 +55,13 @@ export function useIntroSkip({
       return
     }
 
+    if (item.skipSegments !== undefined) {
+      setSegments(item.skipSegments)
+      return
+    }
+
     let cancelled = false
+    setSegments(null)
     fetchIntroDbSegments(item.imdbId!, item.seasonNumber!, item.episodeNumber!)
       .then((s) => {
         if (!cancelled && s) setSegments(s)
@@ -65,7 +71,7 @@ export function useIntroSkip({
     return () => {
       cancelled = true
     }
-  }, [hasSegments, item?.imdbId, item?.seasonNumber, item?.episodeNumber])
+  }, [hasSegments, item?.imdbId, item?.seasonNumber, item?.episodeNumber, item?.skipSegments])
 
   // Determine which segment is currently active based on position
   const activeSegment = ((): ActiveSegment | null => {
@@ -76,7 +82,12 @@ export function useIntroSkip({
       ['intro', segments.intro] as const,
       ['recap', segments.recap] as const,
     ]) {
-      if (seg && pos < seg.endMs / 1000 && !dismissed.has(type)) {
+      if (
+        seg &&
+        pos >= seg.startMs / 1000 &&
+        pos < seg.endMs / 1000 &&
+        !dismissed.has(type)
+      ) {
         return { type, endTime: seg.endMs / 1000 }
       }
     }
@@ -86,7 +97,7 @@ export function useIntroSkip({
       pos >= segments.outro.startMs / 1000 &&
       !dismissed.has('outro')
     ) {
-      return { type: 'outro', endTime: segments.outro.startMs / 1000 }
+      return { type: 'outro', endTime: segments.outro.endMs / 1000 }
     }
 
     return null

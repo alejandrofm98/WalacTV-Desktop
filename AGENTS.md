@@ -44,6 +44,10 @@ el backend nativo, con el frontend como capa de control remota (invoke/listen).
 | WalacTV (Android) | Cliente TV          | Kotlin, Android TV             | `github.com/alejandrofm98/WalacTV`                  | Mismo backend, mismos endpoints, clientes equivalentes         |
 | walactvWeb        | Cliente web         | Angular 20                     | `github.com/alejandrofm98/walactvWeb`               | Mismo backend, mismo protocolo                                |
 
+`walactvWeb` queda fuera del alcance de esta integración: solo cubre canales
+en directo y eventos. Los cambios de salto de intro, recap y outro se aplican
+al cliente Android `WalacTV` y a este cliente `WalacTV-Desktop`.
+
 ## 1. Contexto rapido
 
 - **Stack**: Tauri 2 (Rust), React 19, TypeScript 5.8, Vite 6, Zustand 5

@@ -1,5 +1,5 @@
 import { fetch } from '@tauri-apps/plugin-http'
-import type { CatalogItem, WatchProgressItem, BrowseSection, StreamOption, CalendarResponse, PlaybackTrackPreference } from './types'
+import type { CatalogItem, WatchProgressItem, BrowseSection, StreamOption, CalendarResponse, PlaybackTrackPreference, SkipSegments } from './types'
 import { useAppStore } from '../store/useAppStore'
 import { getUsername, getPassword, saveCredentials } from '../credentials'
 import { BASE, API_URL } from '../config'
@@ -188,6 +188,7 @@ function mapItem(raw: any): CatalogItem {
     totalSeasons: raw.total_seasons ?? null,
     stillPath: stillPath || null,
     imdbId: raw.imdb_id ?? null,
+    skipSegments: raw.skip_segments === undefined ? undefined : mapSkipSegments(raw.skip_segments),
     airDate: raw.air_date ?? null,
     episodeType: raw.episode_type ?? null,
     isWatched: raw.is_watched != null ? Boolean(raw.is_watched) : undefined,
@@ -669,10 +670,22 @@ export function setPreferredLanguage(lang: string) {
 
 // ── IntroDB skip segments ─────────────────────────
 
-export interface IntroDbSegments {
-  intro: { startMs: number; endMs: number } | null
-  recap: { startMs: number; endMs: number } | null
-  outro: { startMs: number; endMs: number } | null
+export type IntroDbSegments = SkipSegments
+
+function mapSkipSegments(raw: any): SkipSegments | null {
+  if (raw == null) return null
+  const mapSegment = (segment: any) => {
+    if (!segment) return null
+    return {
+      startMs: segment.start_ms ?? segment.startMs,
+      endMs: segment.end_ms ?? segment.endMs,
+    }
+  }
+  return {
+    intro: mapSegment(raw.intro),
+    recap: mapSegment(raw.recap),
+    outro: mapSegment(raw.outro),
+  }
 }
 
 export async function fetchIntroDbSegments(
@@ -685,7 +698,7 @@ export async function fetchIntroDbSegments(
       `https://api.introdb.app/segments?imdb_id=${imdbId}&season=${season}&episode=${episode}`,
     )
     if (!resp.ok) return null
-    return await resp.json()
+    return mapSkipSegments(await resp.json())
   } catch {
     return null
   }

@@ -11,6 +11,17 @@ export interface StreamOption {
   headers?: Record<string, string>
 }
 
+export interface SkipSegment {
+  startMs: number
+  endMs: number
+}
+
+export interface SkipSegments {
+  intro: SkipSegment | null
+  recap: SkipSegment | null
+  outro: SkipSegment | null
+}
+
 export interface CatalogItem {
   stableId: string
   catalogId?: string | null
@@ -51,6 +62,7 @@ export interface CatalogItem {
   titleEn?: string | null
   episodeType?: string | null
   imdbId?: string | null
+  skipSegments?: SkipSegments | null
 }
 
 export interface PlaybackTrackPreference {
