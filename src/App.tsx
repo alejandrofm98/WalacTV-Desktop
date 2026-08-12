@@ -1,7 +1,7 @@
 import { useEffect, useRef } from 'react'
 import { invoke } from '@tauri-apps/api/core'
 import { useAppStore } from './store/useAppStore'
-import { login as apiLogin, setToken, getToken, getHomeCatalog, getWatchProgress, getWatchedItems, applyWatchedState, getPreferredLanguage, cwGroupKey } from './api/client'
+import { login as apiLogin, setToken, getToken, getHomeCatalog, getHomeContinueWatching, getWatchedItems, applyWatchedState, getPreferredLanguage, cwGroupKey } from './api/client'
 import { loadCredentials } from './credentials'
 import { checkForUpdates } from './updater'
 import { LoginScreen } from './components/LoginScreen'
@@ -77,7 +77,7 @@ export default function App() {
       const lang = getPreferredLanguage()
       const [home, cw, watched] = await Promise.all([
         getHomeCatalog(lang).catch(() => null),
-        getWatchProgress(20).catch(() => ({ items: [] })),
+        getHomeContinueWatching(20).catch(() => ({ items: [] })),
         getWatchedItems(500).catch(() => ({ items: [] })),
       ])
 
@@ -166,7 +166,7 @@ export default function App() {
     const prev = prevPlayerItemRef.current
     prevPlayerItemRef.current = playerItem
     if (prev && !playerItem) {
-      getWatchProgress(20)
+      getHomeContinueWatching(20)
         .then((cw) => {
           if (cw?.items) setContinueWatching(buildCwMap(cw.items))
         })

@@ -556,6 +556,13 @@ export async function getWatchProgress(limit = 20) {
   }
 }
 
+export async function getHomeContinueWatching(limit = 20) {
+  const raw = await get<{ items: any[] }>(`/api/watch-progress/continue?limit=${limit}`)
+  return {
+    items: (raw.items ?? []).map(mapWatchProgress),
+  }
+}
+
 // Watched items (marcadas como vistas, no solo en progreso)
 export async function getWatchedItems(limit = 500) {
   const all: RawCatalogItem[] = []
