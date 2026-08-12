@@ -44,9 +44,12 @@ export default function App() {
     const savedUser = localStorage.getItem('walactv_username')
     if (saved && savedUser) {
       setToken(saved)
-      loadCredentials().catch(() => {})
-      useAppStore.setState({ signedIn: true, token: saved, username: savedUser })
-      loadData()
+      loadCredentials()
+        .then(() => {
+          useAppStore.setState({ signedIn: true, token: saved, username: savedUser })
+          return loadData()
+        })
+        .catch(() => useAppStore.getState().signOut())
     }
   }, [])
 
