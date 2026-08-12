@@ -1,6 +1,6 @@
-import { useState, type ReactNode } from 'react'
+import { useEffect, useState, type ReactNode } from 'react'
 import type { CatalogItem, StreamOption, WatchProgressItem } from '../api/types'
-import { cwGroupKey } from '../api/client'
+import { cwGroupKey, getTorrentioMovieStreams } from '../api/client'
 import { useAppStore } from '../store/useAppStore'
 import styles from './MovieDetail.module.css'
 
@@ -23,6 +23,29 @@ function computeCwEntry(item: CatalogItem, entries: Map<string, WatchProgressIte
 export function MovieDetail({ item }: Props) {
   const { closeDetail, openPlayer, continueWatchingEntries } = useAppStore()
   const [selectedStream, setSelectedStream] = useState(0)
+  const [torrentStreams, setTorrentStreams] = useState<StreamOption[]>([])
+  const [torrentLoading, setTorrentLoading] = useState(false)
+  const [torrentError, setTorrentError] = useState(false)
+
+  useEffect(() => {
+    let active = true
+    setTorrentStreams([])
+    setTorrentError(false)
+    setTorrentLoading(true)
+    const identifier = item.imdbId ?? item.catalogId ?? item.stableId
+    getTorrentioMovieStreams(identifier)
+      .then((streams) => { if (active) setTorrentStreams(streams) })
+      .catch((error) => {
+        console.warn('[Torrentio] movie lookup failed:', error)
+        if (active) { setTorrentStreams([]); setTorrentError(true) }
+      })
+      .finally(() => { if (active) setTorrentLoading(false) })
+    return () => { active = false }
+  }, [item.imdbId, item.catalogId, item.stableId])
+
+  const allStreams = [...item.streamOptions, ...torrentStreams]
+  const selectedOption = allStreams[selectedStream]
+  const selectedPlayable = Boolean(selectedOption?.url || selectedOption?.infoHash)
 
   const cwEntry = computeCwEntry(item, continueWatchingEntries)
   const isResume = cwEntry && !cwEntry.isWatched && cwEntry.positionMs > 0
@@ -107,11 +130,11 @@ export function MovieDetail({ item }: Props) {
           )}
         </div>
 
-        {item.streamOptions.length > 0 && (
+        {(allStreams.length > 0 || torrentLoading || torrentError) && (
           <div className={styles.streamSection}>
             <h3 className={styles.streamTitle}>Opciones de stream</h3>
             <div className={styles.streamOptions}>
-              {item.streamOptions.map((opt: StreamOption, i) => {
+              {allStreams.map((opt: StreamOption, i) => {
                 const label = opt.label?.trim() ?? ''
                 const quality = opt.quality?.trim() ?? ''
                 const sameQuality = !!label && !!quality && label.toLowerCase() === quality.toLowerCase()
@@ -129,20 +152,22 @@ export function MovieDetail({ item }: Props) {
                 )
               })}
             </div>
+            {torrentLoading && <p>Buscando en Torrentio...</p>}
+            {torrentError && !torrentLoading && <p>No se pudo consultar Torrentio.</p>}
           </div>
         )}
 
         <button
-          onClick={() => openPlayer(item, selectedStream)}
+          onClick={() => selectedPlayable && openPlayer({ ...item, streamOptions: allStreams }, selectedStream)}
           className={styles.playBtn}
+          disabled={!selectedPlayable}
         >
           <svg width="24" height="24" viewBox="0 0 24 24" fill="currentColor" xmlns="http://www.w3.org/2000/svg">
             <path d="M8 5v14l11-7z"/>
           </svg>
-          {isResume ? 'Reanudar' : 'Reproducir'}
+          {selectedPlayable ? (isResume ? 'Reanudar' : 'Reproducir') : 'Sin stream disponible'}
         </button>
       </div>
     </div>
   )
 }
-

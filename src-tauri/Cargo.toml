@@ -19,6 +19,9 @@ keyring = "3"
 raw-window-handle = "0.6"
 parking_lot = "0.12"
 log = "0.4"
+librqbit = { version = "9.0.0-rc.0", default-features = false, features = ["default-tls", "http-api", "tracing-subscriber-utils"] }
+librqbit-dualstack-sockets = "0.7"
+tokio = { version = "1", features = ["sync"] }
 
 [target.'cfg(target_os = "linux")'.dependencies]
 libc = "0.2"

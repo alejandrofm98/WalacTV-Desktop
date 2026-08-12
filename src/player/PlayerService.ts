@@ -57,6 +57,7 @@ export class PlayerService extends EventTarget {
   private _currentItemId: string | null = null
   private _currentItem: PlayerItem | null = null
   private _currentStreamUrl: string | null = null
+  private _activeTorrentHash: string | null = null
   private _alternativeAudioLoadedForUrl: string | null = null
   private _streamSwitchInProgress = false
   private _pendingExternalAudioTrack: AudioTrack | null = null
@@ -176,6 +177,7 @@ export class PlayerService extends EventTarget {
     this._currentTime = 0
     this._duration = 0
     this._currentStreamUrl = null
+    await this._stopActiveTorrent()
     this._alternativeAudioLoadedForUrl = null
     this._streamSwitchInProgress = false
     this._pendingExternalAudioTrack = null
@@ -254,7 +256,7 @@ export class PlayerService extends EventTarget {
       usePlayerStore.getState().setStreamLabel(option.label)
 
       try {
-        const url = this._resolveStreamUrl(option)
+        const url = await this._resolvePlaybackUrl(option)
         console.log(`[PlayerService] Loading stream: label="${option.label}" url="${url}"`)
 
         const title = item.kind === 'SERIES' && item.seriesName
@@ -281,6 +283,10 @@ export class PlayerService extends EventTarget {
         if (this._currentStreamUrl === this._resolveStreamUrl(option)) {
           this._currentStreamUrl = null
           this._alternativeAudioLoadedForUrl = null
+        }
+
+        if (this._activeTorrentHash) {
+          await this._stopActiveTorrent()
         }
 
         const classified = classifyMpvError(err)
@@ -327,6 +333,7 @@ export class PlayerService extends EventTarget {
   async unload(): Promise<void> {
     this._loadGeneration++
     this._currentStreamUrl = null
+    await this._stopActiveTorrent()
     this._alternativeAudioLoadedForUrl = null
     this._streamSwitchInProgress = false
     this._pendingExternalAudioTrack = null
@@ -554,6 +561,36 @@ export class PlayerService extends EventTarget {
     return resolvedUrl
   }
 
+  private async _resolvePlaybackUrl(option: StreamOption): Promise<string> {
+    if (option.source === 'torrentio' || option.requiresResolution) {
+      if (!option.infoHash) {
+        throw new Error('El stream Torrentio no contiene infoHash')
+      }
+
+      if (this._activeTorrentHash && this._activeTorrentHash !== option.infoHash) {
+        await this._stopActiveTorrent()
+      }
+
+      const result = await invoke<{ url: string; infoHash: string }>('torrent_start', {
+        request: {
+          infoHash: option.infoHash,
+          fileIdx: option.fileIdx ?? null,
+        },
+      })
+      this._activeTorrentHash = result.infoHash
+      return result.url
+    }
+    await this._stopActiveTorrent()
+    return this._resolveStreamUrl(option)
+  }
+
+  private async _stopActiveTorrent(): Promise<void> {
+    const hash = this._activeTorrentHash
+    this._activeTorrentHash = null
+    if (!hash) return
+    await invoke('torrent_stop', { infoHash: hash }).catch(() => {})
+  }
+
   private _switchToExternalAudioTrack(track: AudioTrack): boolean {
     const item = this._currentItem
     const targetUrl = track.externalFilename
@@ -629,6 +666,7 @@ export class PlayerService extends EventTarget {
     this._alternativeAudioLoadedForUrl = currentUrl
     const seenUrls = new Set([currentUrl])
     for (const option of item.streamOptions) {
+      if (option.source === 'torrentio' || option.requiresResolution) continue
       const url = this._resolveStreamUrl(option)
       if (seenUrls.has(url)) continue
       seenUrls.add(url)
@@ -901,6 +939,7 @@ export class PlayerService extends EventTarget {
     this._currentTime = 0
     this._duration = 0
     this._currentStreamUrl = null
+    void this._stopActiveTorrent()
     this._alternativeAudioLoadedForUrl = null
     this._streamSwitchInProgress = false
     this._pendingExternalAudioTrack = null

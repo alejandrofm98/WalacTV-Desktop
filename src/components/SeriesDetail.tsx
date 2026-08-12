@@ -2,7 +2,7 @@ import { useState, useEffect, useRef, useCallback, useMemo } from 'react'
 import { createPortal } from 'react-dom'
 import { Play, ChevronDown, ArrowLeft } from 'lucide-react'
 import type { CatalogItem, WatchProgressItem } from '../api/types'
-import { getAllSeriesEpisodes, getWatchProgress, markSeriesEpisodesWatched, cwGroupKey } from '../api/client'
+import { getAllSeriesEpisodes, getWatchProgress, markSeriesEpisodesWatched, cwGroupKey, getTorrentioEpisodeStreams } from '../api/client'
 import { useAppStore } from '../store/useAppStore'
 import styles from './SeriesDetail.module.css'
 
@@ -162,9 +162,26 @@ export function SeriesDetail({ item }: Props) {
     return sortedAll[0] ?? null
   }, [episodes, cwEntry])
 
+  const handlePlayEpisode = useCallback(async (episode: CatalogItem) => {
+    if (episode.seasonNumber != null && episode.episodeNumber != null) {
+      try {
+        const streams = await getTorrentioEpisodeStreams(
+          item.imdbId ?? item.catalogId ?? item.stableId,
+          episode.seasonNumber,
+          episode.episodeNumber,
+        )
+        openPlayer({ ...episode, streamOptions: [...episode.streamOptions, ...streams] })
+        return
+      } catch {
+        // IPTV playback remains available when Torrentio is unavailable.
+      }
+    }
+    openPlayer(episode)
+  }, [item, openPlayer])
+
   const handlePlayHero = useCallback(() => {
-    if (firstUnwatched) openPlayer(firstUnwatched)
-  }, [firstUnwatched, openPlayer])
+    if (firstUnwatched) void handlePlayEpisode(firstUnwatched)
+  }, [firstUnwatched, handlePlayEpisode])
 
   const markEpisodesWatched = useCallback(async (targets: CatalogItem[]) => {
     if (targets.length === 0) return
@@ -335,9 +352,9 @@ export function SeriesDetail({ item }: Props) {
                     className={`${styles.episodeRow} ${isContinue ? styles.episodeRowActive : ''}`}
                     role="button"
                     tabIndex={0}
-                    onClick={() => openPlayer(ep)}
+                     onClick={() => { void handlePlayEpisode(ep) }}
                     onContextMenu={(e) => { e.preventDefault(); setContextEpisode(ep) }}
-                    onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); openPlayer(ep) } }}
+                      onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); void handlePlayEpisode(ep) } }}
                     aria-label={`Reproducir T${ep.seasonNumber ?? '?'} E${ep.episodeNumber ?? '?'}: ${ep.tmdbTitle ?? ep.title}`}
                   >
                     <div className={styles.episodeNumberLeft}>{ep.episodeNumber ?? i + 1}</div>

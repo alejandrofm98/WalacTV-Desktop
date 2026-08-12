@@ -9,6 +9,15 @@ export interface StreamOption {
   providerId?: string
   quality?: string | null
   headers?: Record<string, string>
+  source?: string
+  language?: string | null
+  playable?: boolean
+  requiresResolution?: boolean
+  infoHash?: string | null
+  fileIdx?: number | null
+  seeders?: number | null
+  sizeBytes?: number | null
+  torrentTitle?: string | null
 }
 
 export interface SkipSegment {
@@ -62,6 +71,8 @@ export interface CatalogItem {
   titleEn?: string | null
   episodeType?: string | null
   imdbId?: string | null
+  hasIptvSource?: boolean
+  hasTorrentSource?: boolean
   skipSegments?: SkipSegments | null
 }
 
@@ -100,6 +111,8 @@ export interface WatchProgressItem {
   tagline?: string | null
   releaseDate?: string | null
   imdbId?: string | null
+  hasIptvSource?: boolean
+  hasTorrentSource?: boolean
 }
 
 export interface BrowseSection {

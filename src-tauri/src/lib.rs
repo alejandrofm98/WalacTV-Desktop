@@ -17,6 +17,7 @@ use commands::player::{
     mpv_get_variant_tracks, mpv_init, mpv_loadfile, mpv_observe_property, mpv_set_property,
     mpv_set_render_size, PlayerState,
 };
+use commands::torrent::{torrent_start, torrent_stop, TorrentState};
 
 #[cfg(target_os = "linux")]
 use commands::player::mpv_get_render_frame;
@@ -99,6 +100,7 @@ pub fn run() {
 
     tauri::Builder::default()
         .manage(PlayerState::new())
+        .manage(TorrentState::new())
         .setup(|app| {
             if let Some(window) = app.get_webview_window("main") {
                 let icon_bytes = include_bytes!("../icons/icon.png");
@@ -179,6 +181,8 @@ pub fn run() {
             mpv_set_render_size,
             #[cfg(target_os = "linux")]
             mpv_get_render_frame,
+            torrent_start,
+            torrent_stop,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application")

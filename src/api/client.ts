@@ -10,6 +10,16 @@ interface RawStreamOption {
   provider_id?: string | number | null
   providerId?: string | number | null
   quality?: string | null
+  source?: string | null
+  provider?: string | null
+  language?: string | null
+  playable?: boolean
+  requires_resolution?: boolean
+  info_hash?: string | null
+  file_idx?: number | null
+  seeders?: number | null
+  size_bytes?: number | null
+  title?: string | null
 }
 
 interface RawCatalogItem {
@@ -63,6 +73,8 @@ interface RawCatalogItem {
   position_ms?: number | null
   duration_ms?: number | null
   last_watched_at?: string | null
+  has_iptv_source?: boolean | null
+  has_torrent_source?: boolean | null
 }
 
 interface RawSkipSegment {
@@ -230,6 +242,16 @@ function mapStreamOptions(raw: RawStreamOption[]): StreamOption[] {
       ? String(o.provider_id ?? o.providerId)
       : undefined,
     quality: o.quality ?? null,
+    source: o.source ?? undefined,
+    provider: o.provider ?? undefined,
+    language: o.language ?? null,
+    playable: o.playable ?? true,
+    requiresResolution: o.requires_resolution ?? false,
+    infoHash: o.info_hash ?? null,
+    fileIdx: o.file_idx ?? null,
+    seeders: o.seeders ?? null,
+    sizeBytes: o.size_bytes ?? null,
+    torrentTitle: o.title ?? null,
   }))
 }
 
@@ -298,6 +320,8 @@ export function mapItem(raw: RawCatalogItem): CatalogItem {
     totalSeasons: raw.total_seasons ?? null,
     stillPath: stillPath || null,
     imdbId: raw.imdb_id ?? null,
+    hasIptvSource: raw.has_iptv_source ?? false,
+    hasTorrentSource: raw.has_torrent_source ?? false,
     skipSegments: raw.skip_segments === undefined ? undefined : mapSkipSegments(raw.skip_segments),
     airDate: raw.air_date ?? null,
     episodeType: raw.episode_type ?? null,
@@ -546,6 +570,28 @@ export async function getContentById(contentType: string, contentId: string): Pr
     console.warn(`[getContentById] failed for ${contentType}/${contentId}:`, err)
     return null
   }
+}
+
+export async function getTorrentioMovieStreams(movieId: string): Promise<StreamOption[]> {
+  console.log(`[Torrentio] movie lookup: ${movieId}`)
+  const raw = await get<{ items?: RawStreamOption[] }>(`/api/torrentio/movies/${encodeURIComponent(movieId)}`)
+  const streams = mapStreamOptions(raw.items ?? [])
+  console.log(`[Torrentio] movie streams: ${streams.length}`)
+  return streams
+}
+
+export async function getTorrentioEpisodeStreams(
+  seriesId: string,
+  season: number,
+  episode: number,
+): Promise<StreamOption[]> {
+  console.log(`[Torrentio] episode lookup: ${seriesId} S${season}E${episode}`)
+  const raw = await get<{ items?: RawStreamOption[] }>(
+    `/api/torrentio/series/${encodeURIComponent(seriesId)}/episodes/${season}/${episode}`,
+  )
+  const streams = mapStreamOptions(raw.items ?? [])
+  console.log(`[Torrentio] episode streams: ${streams.length}`)
+  return streams
 }
 
 // Watch Progress
