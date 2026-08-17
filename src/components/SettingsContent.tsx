@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react'
 import { APP_VERSION, checkForUpdates, downloadAndInstall, type UpdateInfo } from '../updater'
 import { setPreferredLanguage } from '../api/client'
+import { getTorrentMaxMb, setTorrentMaxMb } from '../settings'
 import { API_URL } from '../config'
 import styles from './SettingsContent.module.css'
 
@@ -10,10 +11,13 @@ interface Props {
 
 const LANGUAGES = ['ES', 'EN'] as const
 
+const TORRENT_LIMIT_GB = [1, 2, 4, 8] as const
+
 export function SettingsContent({ onSignOut }: Props) {
   const [updateInfo, setUpdateInfo] = useState<UpdateInfo | null>(null)
   const [checking, setChecking] = useState(true)
   const [language, setLang] = useState(() => localStorage.getItem('walactv_language') || 'ES')
+  const [torrentLimitGb, setTorrentLimitGb] = useState(() => getTorrentMaxMb() / 1024)
 
   useEffect(() => {
     checkForUpdates()
@@ -25,6 +29,11 @@ export function SettingsContent({ onSignOut }: Props) {
   function handleLanguage(lang: string) {
     setLang(lang)
     setPreferredLanguage(lang)
+  }
+
+  function handleTorrentLimit(gb: number) {
+    setTorrentLimitGb(gb)
+    void setTorrentMaxMb(gb * 1024)
   }
 
   return (
@@ -48,6 +57,24 @@ export function SettingsContent({ onSignOut }: Props) {
                 onClick={() => handleLanguage(l)}
               >{l}</button>
             ))}
+          </div>
+        </div>
+
+        {/* Torrent download budget */}
+        <div className={styles.settingRow}>
+          <span className={styles.rowLabel}>Limite descarga torrent</span>
+          <div className={styles.langGroup}>
+            {TORRENT_LIMIT_GB.map((gb) => (
+              <button
+                key={gb}
+                className={`${styles.langBtn} ${torrentLimitGb === gb ? styles.langBtnActive : ''}`}
+                onClick={() => handleTorrentLimit(gb)}
+              >{gb}GB</button>
+            ))}
+            <button
+              className={`${styles.langBtn} ${torrentLimitGb === 0 ? styles.langBtnActive : ''}`}
+              onClick={() => handleTorrentLimit(0)}
+            >Ilimitado</button>
           </div>
         </div>
 

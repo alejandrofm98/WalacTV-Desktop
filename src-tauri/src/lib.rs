@@ -20,13 +20,168 @@ use commands::player::{
 use commands::torrent::{torrent_start, torrent_stop, TorrentState};
 
 #[cfg(target_os = "linux")]
-use commands::player::mpv_get_render_frame;
+use commands::player::{mpv_get_frame_counter, mpv_get_render_frame};
 
-#[cfg(target_os = "windows")]
-use crate::mpv::platform::windows::WindowsVideoHost;
 use serde::Serialize;
 use tauri::image::Image;
-use tauri::Manager;
+use tauri::{Manager, WebviewUrl};
+
+/// URL for the main window webview (dev server in debug, bundled index in
+/// production).
+fn build_main_url(app: &tauri::App) -> WebviewUrl {
+    #[cfg(debug_assertions)]
+    {
+        WebviewUrl::External(
+            app.config()
+                .build
+                .dev_url
+                .clone()
+                .expect("devUrl is required"),
+        )
+    }
+    #[cfg(not(debug_assertions))]
+    {
+        WebviewUrl::App("index.html".into())
+    }
+}
+
+/// URL for the transparent controls overlay window. The overlay loads the same
+/// app but signals `?surface=overlay` so the frontend renders only the player
+/// controls (the native video lives in the main window via `wid` embedding).
+/// Only used on the non-Linux two-window architecture.
+#[cfg(not(target_os = "linux"))]
+fn build_overlay_url(app: &tauri::App) -> WebviewUrl {
+    #[cfg(debug_assertions)]
+    {
+        let mut s = app
+            .config()
+            .build
+            .dev_url
+            .clone()
+            .expect("devUrl is required")
+            .to_string();
+        if !s.contains('?') {
+            s.push('?');
+        } else if !s.ends_with('&') && !s.ends_with('?') {
+            s.push('&');
+        }
+        s.push_str("surface=overlay");
+        WebviewUrl::External(s.parse().expect("valid overlay url"))
+    }
+    #[cfg(not(debug_assertions))]
+    {
+        WebviewUrl::App("index.html?surface=overlay".into())
+    }
+}
+
+/// Position and size the transparent overlay exactly over the video area of
+/// the main window. Uses inner position/size so the overlay aligns with the
+/// webview client area (where the `<video>` player element and HTML controls
+/// live), not the window decorations. Only used on the non-Linux two-window
+/// architecture.
+#[cfg(not(target_os = "linux"))]
+fn sync_overlay_to_main(app: &tauri::AppHandle) {
+    let Some(main) = app.get_window("main") else { return };
+    let Some(overlay) = app.get_window("overlay") else { return };
+    // Prefer inner position/size (client area) for pixel-perfect alignment
+    // of the transparent overlay over the webview.
+    if let (Ok(pos), Ok(size)) = (main.inner_position(), main.inner_size()) {
+        let _ = overlay.set_position(tauri::PhysicalPosition::new(pos.x, pos.y));
+        let _ = overlay.set_size(tauri::PhysicalSize::new(size.width, size.height));
+    } else if let (Ok(pos), Ok(size)) = (main.outer_position(), main.outer_size()) {
+        // Fallback to outer position if inner isn't available
+        let _ = overlay.set_position(tauri::PhysicalPosition::new(pos.x, pos.y));
+        let _ = overlay.set_size(tauri::PhysicalSize::new(size.width, size.height));
+    }
+}
+
+/// Two-window architecture (OpenPlayer/Stremio-style):
+/// - `main`: opaque window hosting the app UI and the native libmpv video
+///   surface (Windows GPU surface; the webview canvas on Linux).
+/// - `overlay`: a transparent always-on-top window, aligned over `main`, that
+///   hosts the HTML player controls (built from `?surface=overlay`).
+///
+/// On Linux this is a single window: mpv renders offscreen (EGL + CPU
+/// readback) and the frontend draws frames on a `<canvas>` in the webview.
+#[cfg(not(target_os = "linux"))]
+fn create_main_window(app: &tauri::App) -> Result<(), Box<dyn std::error::Error>> {
+    let main = tauri::window::WindowBuilder::new(app, "main")
+        .title("WalacTV")
+        .inner_size(1280.0, 720.0)
+        .resizable(true)
+        .center()
+        .visible(true)
+        .build()?;
+
+    main.add_child(
+        tauri::webview::WebviewBuilder::new("main", build_main_url(app)).auto_resize(),
+        tauri::LogicalPosition::new(0, 0),
+        main.inner_size()?,
+    )?;
+
+    if let Ok(overlay) = tauri::webview::WebviewWindowBuilder::new(
+        app,
+        "overlay",
+        build_overlay_url(app),
+    )
+    .title("WalacTV")
+    .inner_size(1280.0, 720.0)
+    .decorations(false)
+    .transparent(true)
+    .shadow(false)
+    .skip_taskbar(true)
+    .resizable(false)
+    .always_on_top(true)
+    .background_color(tauri::utils::config::Color(0, 0, 0, 0))
+    .visible(false)
+    .build()
+    {
+        let _ = overlay.set_background_color(Some(tauri::utils::config::Color(0, 0, 0, 0)));
+        sync_overlay_to_main(&app.handle());
+    }
+
+    // Keep the overlay aligned with the main window as it moves/resizes.
+    let app_handle = app.handle().clone();
+    main.on_window_event(move |event| {
+        use tauri::WindowEvent;
+        if matches!(
+            event,
+            WindowEvent::Moved(_)
+                | WindowEvent::Resized(_)
+                | WindowEvent::ScaleFactorChanged { .. }
+        ) {
+            sync_overlay_to_main(&app_handle);
+        }
+    });
+
+    Ok(())
+}
+
+/// Single-window Linux layout.
+///
+/// Video no longer uses a native GLArea underlay: mpv renders offscreen via
+/// EGL (CPU readback) and the frontend draws the frames on a `<canvas>` inside
+/// the webview (`useRenderFrame` + `mpv_get_render_frame`). This avoids the
+/// WebKitGTK painting conflict caused by a realized GtkGLArea in the same
+/// window, so the plain webview stays fully functional.
+#[cfg(target_os = "linux")]
+fn create_main_window(app: &tauri::App) -> Result<(), Box<dyn std::error::Error>> {
+    let main = tauri::window::WindowBuilder::new(app, "main")
+        .title("WalacTV")
+        .inner_size(1280.0, 720.0)
+        .resizable(true)
+        .center()
+        .visible(true)
+        .build()?;
+
+    main.add_child(
+        tauri::webview::WebviewBuilder::new("main", build_main_url(app)).auto_resize(),
+        tauri::LogicalPosition::new(0, 0),
+        main.inner_size()?,
+    )?;
+
+    Ok(())
+}
 
 #[derive(Serialize)]
 struct ScaleInfo {
@@ -60,12 +215,8 @@ fn get_scale_info(app: tauri::AppHandle) -> Result<ScaleInfo, String> {
     })
 }
 
-/// Try to detect Wayland and fall back to X11 if possible.
-///
-/// libmpv does not support embedding via the `wid` property on Wayland
-/// (it requires `mpv_render_context` with EGL). As a temporary workaround,
-/// we attempt to force GDK_BACKEND=x11 so Tauri's WebKitGTK runs under
-/// XWayland, making the X11 window handle available to mpv.
+/// Force GDK to run under X11. Only used in legacy/debug mode
+/// (WALACTV_FORCE_X11=1); the Render API path works natively on Wayland.
 fn auto_fallback_to_x11() {
     let is_wayland = std::env::var("WAYLAND_DISPLAY").is_ok()
         || std::env::var("XDG_SESSION_TYPE")
@@ -96,13 +247,35 @@ fn auto_fallback_to_x11() {
 
 /// Run the Tauri application.
 pub fn run() {
-    auto_fallback_to_x11();
+    // Linux renders video through the libmpv Render API into an offscreen EGL
+    // context (CPU readback drawn on a webview canvas), so `wid` embedding and
+    // the old GDK_BACKEND=x11 workaround are obsolete. Keep the native Wayland
+    // backend when available; force X11 only on explicit request
+    // (WALACTV_FORCE_X11=1) for legacy/debug setups. On a pure X11 session the
+    // app uses GDK's default backend and runs the same Render API path.
+    if std::env::var("WALACTV_FORCE_X11").is_ok() {
+        log::info!("forzando GDK_BACKEND=x11 (modo legado)");
+        auto_fallback_to_x11();
+    } else if std::env::var("WAYLAND_DISPLAY").is_ok() {
+        std::env::set_var("GDK_BACKEND", "wayland");
+        log::info!(
+            "Linux: backend nativo Wayland (Render API + EGL). \
+             Use WALACTV_FORCE_X11=1 para forzar X11."
+        );
+    } else {
+        log::info!(
+            "Linux: sesion X11 detectada (sin WAYLAND_DISPLAY). \
+             El Render API (offscreen EGL + readback CPU) funciona igual."
+        );
+    }
 
     tauri::Builder::default()
         .manage(PlayerState::new())
         .manage(TorrentState::new())
         .setup(|app| {
-            if let Some(window) = app.get_webview_window("main") {
+            create_main_window(app)?;
+
+            if let Some(window) = app.get_window("main") {
                 let icon_bytes = include_bytes!("../icons/icon.png");
                 match Image::from_bytes(icon_bytes) {
                     Ok(icon) => {
@@ -121,20 +294,10 @@ pub fn run() {
                 }
             }
 
-            // ── Windows: create video popup host and sync on window events ──
+            // Keep the child GPU surface sized to the main window client area.
             #[cfg(target_os = "windows")]
             {
-                // Get the main window HWND for use as the popup owner.
-                let main_window = app
-                    .get_webview_window("main")
-                    .ok_or("Main window not found")?;
-                let parent_hwnd = crate::mpv::platform::get_mpv_wid(&main_window)
-                    .map_err(|e| format!("Failed to get main window HWND: {e}"))?;
-                let host = WindowsVideoHost::new(app.handle().clone(), parent_hwnd)
-                    .map_err(|e| format!("Failed to create video host window: {e}"))?;
-                app.manage(host);
-
-                // Sync popup position on Moved, Resized, or ScaleFactorChanged.
+                let main_window = app.get_window("main").ok_or("Main window not found")?;
                 let app_clone = app.handle().clone();
                 main_window.on_window_event(move |event| {
                     use tauri::WindowEvent;
@@ -145,10 +308,10 @@ pub fn run() {
                             | WindowEvent::ScaleFactorChanged { .. }
                     );
                     if should_sync {
-                        if let Some(host) = app_clone.try_state::<WindowsVideoHost>() {
-                            if let Err(e) = host.sync() {
-                                log::warn!("WindowsVideoHost sync on window event failed: {e}");
-                            }
+                        if let Some(surface) = app_clone
+                            .try_state::<std::sync::Arc<crate::mpv::gpu_surface::GpuVideoSurface>>()
+                        {
+                            let _ = surface.sync();
                         }
                     }
                 });
@@ -181,6 +344,8 @@ pub fn run() {
             mpv_set_render_size,
             #[cfg(target_os = "linux")]
             mpv_get_render_frame,
+            #[cfg(target_os = "linux")]
+            mpv_get_frame_counter,
             torrent_start,
             torrent_stop,
         ])

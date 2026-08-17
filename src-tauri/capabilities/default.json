@@ -6,7 +6,10 @@
     "core:default",
     {
       "identifier": "http:default",
-      "allow": [{ "url": "https://iptv.walerike.com" }]
+      "allow": [
+        { "url": "https://iptv.walerike.com" },
+        { "url": "https://dev-iptv.walerike.com" }
+      ]
     },
     "http:allow-fetch",
     "http:allow-fetch-cancel",

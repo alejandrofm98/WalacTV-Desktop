@@ -3,11 +3,11 @@ import { listen } from '@tauri-apps/api/event'
 import { useAppStore } from '../../store/useAppStore'
 import { playerService } from '../../player/PlayerService'
 import { usePlayer } from '../../player/usePlayer'
+import { useRenderFrame } from '../../player/useRenderFrame'
 import { usePlayerProgress } from '../../player/usePlayerProgress'
 import { useIntroSkip } from '../../player/useIntroSkip'
 import { usePlayerControls } from '../../player/usePlayerControls'
 import { usePlayerStore } from '../../player/usePlayerStore'
-import { useRenderFrame } from '../../player/useRenderFrame'
 import { getVolume } from '../../settings'
 import { markWatched } from '../../api/client'
 import { PlayerOverlay } from './PlayerOverlay'
@@ -19,7 +19,7 @@ import styles from './Player.module.css'
 /**
  * Player container component.
  *
- * Renders mpv frames onto a <canvas> via the offscreen EGL render context.
+ * libmpv renders directly onto the native GPU surface behind this webview.
  * A hidden <video> element is kept only for Picture-in-Picture API support.
  * The container div is used for fullscreen (not the canvas/video).
  * UI controls sit as siblings above the canvas.
@@ -39,8 +39,10 @@ export function Player() {
   const isOpening = usePlayerStore((s) => s.isOpening)
   const isPlaying = usePlayerStore((s) => s.isPlaying)
 
-  // Init mode from mpv_init — controls whether the canvas render loop runs
-  const [initMode, setInitMode] = useState<string | null>(null)
+  // Draw mpv's offscreen frames onto the canvas while playing (Linux).
+  const [renderFps, setRenderFps] = useState<number | null>(null)
+  useRenderFrame(canvasRef, playerItem?.stableId ?? null, isPlaying, setRenderFps)
+
   // True on Linux where mpv renders its own native OSC as a child window.
   // When true, the HTML PlayerOverlay is hidden to avoid a flash of HTML
   // controls before mpv's child window appears on top of them.
@@ -51,10 +53,6 @@ export function Player() {
 
   const getCurrentTime = useCallback(() => service.getCurrentTime(), [service])
   const getDuration = useCallback(() => service.getDuration(), [service])
-
-  // Offscreen render loop: only active when using render-context mode.
-  // All platforms now return "wid", so the canvas loop is permanently disabled.
-  useRenderFrame(canvasRef, playerItem?.stableId ?? null, initMode === 'render')
 
   // Progress persistence
   usePlayerProgress({
@@ -135,10 +133,6 @@ export function Player() {
     // Tell the service about the hidden video for PiP API
     service.setPipVideoEl(el)
   }, [service])
-  const setCanvasRef = useCallback((el: HTMLCanvasElement | null) => {
-    canvasRef.current = el
-  }, [])
-
   // Attach player + load content when playerItem changes.
   // Unificado en un solo efecto para que attach() resuelva antes de load().
   useEffect(() => {
@@ -151,19 +145,12 @@ export function Player() {
       return
     }
 
-    const canvas = canvasRef.current
-    if (!canvas) {
-      console.warn('[Player] canvas not ready yet')
-      return
-    }
-
     let cancelled = false
 
     const run = async () => {
       try {
         // 1. Attach — llama a mpv_init() en Rust (no necesita elemento DOM)
         await service.attach()
-        setInitMode(service.getInitMode())
         setNativeControls(service.getNativeControls())
 
         if (cancelled) return
@@ -201,10 +188,19 @@ export function Player() {
         const currentStartPos = useAppStore.getState().playerStartPosition
         const startPos = currentStartPos > 0 ? currentStartPos : undefined
 
-        await service.load(playerItem, streamOptions, startPos)
+        // Respect the user-selected stream (chosen source in detail screens):
+        // start from that index, falling back to the remaining options in
+        // order if it fails.
+        const preferredIndex = useAppStore.getState().playerStreamIndex
+        const orderedStreams =
+          preferredIndex > 0 && preferredIndex < streamOptions.length
+            ? [...streamOptions.slice(preferredIndex), ...streamOptions.slice(0, preferredIndex)]
+            : streamOptions
 
-        // Reset start position for next open
-        useAppStore.setState({ playerStartPosition: 0 })
+        await service.load(playerItem, orderedStreams, startPos)
+
+        // Reset start position / stream index for next open
+        useAppStore.setState({ playerStartPosition: 0, playerStreamIndex: 0 })
       } catch (err) {
         if (!cancelled) {
           console.error('[Player] attach/load failed:', err)
@@ -266,12 +262,6 @@ export function Player() {
     if (!playerItem?.streamOptions?.length) return
     usePlayerStore.getState().clearError()
 
-    const canvas = canvasRef.current
-    if (!canvas) {
-      console.warn('[Player] retry failed: canvas not available')
-      return
-    }
-
     try {
       await service.attach()
       await service.load(playerItem, playerItem.streamOptions)
@@ -285,10 +275,11 @@ export function Player() {
   return (
     <div ref={setContainerRef} className={styles.container}>
       <div className={styles.videoWrapper}>
-        <canvas
-          ref={setCanvasRef}
-          className={styles.canvas}
-        />
+        {/* Canvas where mpv's offscreen frames are drawn (Linux readback) */}
+        <canvas ref={canvasRef} className={styles.canvas} />
+        {renderFps !== null && isPlaying && (
+          <div className={styles.fpsCounter}>{renderFps} fps</div>
+        )}
         {/* Hidden video element for PiP API support only */}
         <video
           ref={setPipVideoRef}

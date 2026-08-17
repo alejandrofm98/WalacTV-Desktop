@@ -5,6 +5,7 @@ import { classifyMpvError } from './PlayerError'
 import { usePlayerStore } from './usePlayerStore'
 import { API_URL } from '../config'
 import { getUsername, getPassword } from '../credentials'
+import { getTorrentMaxMb } from '../settings'
 import { getPlaybackTrackPreference, getPreferredLanguage, updatePlaybackTrackPreference } from '../api/client'
 
 type PlayerServiceEvent = 'state' | 'error' | 'trackschanged' | 'fullscreenchange' | 'pipchange' | 'ended'
@@ -236,6 +237,12 @@ export class PlayerService extends EventTarget {
     usePlayerStore.getState().setError(null)
     this._setState('loading')
 
+    // mpv's native window swallows HTML overlays on Linux/Windows, so a
+    // long resolve + load shows a plain black screen. Show a loading
+    // message through mpv's own OSD (drawn inside the native window) and
+    // clear it once the file actually loads or whenever playback ends.
+    void this._showLoadingOsd()
+
     if (streamOptions.length === 0) {
       const error: PlayerError = {
         kind: 'not_found',
@@ -333,6 +340,7 @@ export class PlayerService extends EventTarget {
   async unload(): Promise<void> {
     this._loadGeneration++
     this._currentStreamUrl = null
+    this._clearLoadingOsd()
     await this._stopActiveTorrent()
     this._alternativeAudioLoadedForUrl = null
     this._streamSwitchInProgress = false
@@ -575,6 +583,7 @@ export class PlayerService extends EventTarget {
         request: {
           infoHash: option.infoHash,
           fileIdx: option.fileIdx ?? null,
+          maxDownloadMb: getTorrentMaxMb(),
         },
       })
       this._activeTorrentHash = result.infoHash
@@ -589,6 +598,44 @@ export class PlayerService extends EventTarget {
     this._activeTorrentHash = null
     if (!hash) return
     await invoke('torrent_stop', { infoHash: hash }).catch(() => {})
+  }
+
+  /**
+   * Show an animated loading spinner through mpv's OSD. The native mpv
+   * window is stacked above the webview on Linux/Windows, so HTML loading
+   * overlays are invisible while a stream resolves/buffers; the OSD renders
+   * inside mpv's own window and is always visible.
+   *
+   * Cycles a spinner glyph via `show-text` until `_clearLoadingOsd` runs.
+   */
+  private _loadingOsdFrame = 0
+  private _loadingOsdTimer: ReturnType<typeof setInterval> | null = null
+  private _loadingOsdFrames = ['⠋', '⠙', '⠹', '⠸', '⠼', '⠴', '⠦', '⠧', '⠇', '⠏']
+
+  private _showLoadingOsd(message = 'Cargando'): void {
+    this._clearLoadingOsdTimer()
+    this._loadingOsdFrame = 0
+    const draw = () => {
+      const glyph = this._loadingOsdFrames[this._loadingOsdFrame % this._loadingOsdFrames.length]
+      this._loadingOsdFrame++
+      const text = `{\\fs72}${glyph}\\N{\\fs40}${message}`
+      invoke('mpv_command', { args: ['show-text', text, '160'] }).catch(() => {})
+    }
+    draw()
+    this._loadingOsdTimer = setInterval(draw, 160)
+  }
+
+  private _clearLoadingOsdTimer(): void {
+    if (this._loadingOsdTimer) {
+      clearInterval(this._loadingOsdTimer)
+      this._loadingOsdTimer = null
+    }
+  }
+
+  /** Clear any loading OSD message (called once the file is loaded). */
+  private _clearLoadingOsd(): void {
+    this._clearLoadingOsdTimer()
+    invoke('mpv_command', { args: ['show-text', '', '1'] }).catch(() => {})
   }
 
   private _switchToExternalAudioTrack(track: AudioTrack): boolean {
@@ -713,6 +760,7 @@ export class PlayerService extends EventTarget {
       case 'end-file': {
         const reason = payload.reason ?? 'unknown'
         console.debug(`[PlayerService] end-file: reason="${reason}"`)
+        void this._clearLoadingOsd()
         if (reason === 'error') {
           this._streamSwitchInProgress = false
           this._pendingExternalAudioTrack = null
@@ -739,6 +787,7 @@ export class PlayerService extends EventTarget {
 
       case 'file-loaded':
         console.debug('[PlayerService] file-loaded: el archivo se cargo correctamente')
+        void this._clearLoadingOsd()
         if (this._streamSwitchInProgress) {
           try {
             await this._restorePendingAudioTrack()
@@ -933,6 +982,7 @@ export class PlayerService extends EventTarget {
   destroy(): void {
     this._unbindWindowEvents()
     this._unlistenTauri()
+    this._clearLoadingOsdTimer()
     this._audioTracks = []
     this._subTracks = []
     this._variantTracks = []

@@ -43,6 +43,7 @@ type GLint = i32;
 type GLsizei = i32;
 type GLenum = u32;
 type GLfloat = f32;
+type GLbitfield = u32;
 
 const GL_FRAMEBUFFER: GLenum = 0x8D40;
 const GL_COLOR_ATTACHMENT0: GLenum = 0x8CE0;
@@ -56,6 +57,11 @@ const GL_LINEAR: GLenum = 0x2601;
 const GL_TEXTURE_MIN_FILTER: GLenum = 0x2801;
 const GL_TEXTURE_MAG_FILTER: GLenum = 0x2800;
 const GL_COLOR_BUFFER_BIT: GLenum = 0x4000;
+
+// PBO (pixel buffer object) — async readback
+const GL_PIXEL_PACK_BUFFER: GLenum = 0x88EB;
+const GL_STREAM_READ: GLenum = 0x88E0;
+const GL_MAP_READ_BIT: GLbitfield = 0x0001;
 
 // ---------------------------------------------------------------------------
 // MPV OpenGL FBO parameter struct
@@ -756,6 +762,50 @@ struct GlFunctions {
     gl_clear: unsafe extern "C" fn(GLenum),
 }
 
+/// PBO (pixel buffer object) functions for async readback. Loaded leniently:
+/// if any symbol is missing (e.g. GLES 2.0 context), the render loop falls
+/// back to synchronous glReadPixels.
+struct PboGl {
+    gl_gen_buffers: unsafe extern "C" fn(GLsizei, *mut GLuint),
+    gl_bind_buffer: unsafe extern "C" fn(GLenum, GLuint),
+    gl_buffer_data: unsafe extern "C" fn(GLenum, isize, *const c_void, GLenum),
+    gl_map_buffer_range: unsafe extern "C" fn(GLenum, isize, isize, GLbitfield) -> *mut c_void,
+    gl_unmap_buffer: unsafe extern "C" fn(GLenum) -> u8,
+}
+
+fn load_pbo_gl() -> Option<PboGl> {
+    let egl = load_egl().ok()?;
+    macro_rules! proc {
+        ($str:expr) => {{
+            let c_name = CString::new($str).unwrap();
+            let p = (egl.egl_get_proc_address)(c_name.as_ptr());
+            if p.is_null() {
+                return None;
+            }
+            p
+        }};
+    }
+    unsafe {
+        let gl_gen_buffers: unsafe extern "C" fn(GLsizei, *mut GLuint) =
+            std::mem::transmute(proc!("glGenBuffers"));
+        let gl_bind_buffer: unsafe extern "C" fn(GLenum, GLuint) =
+            std::mem::transmute(proc!("glBindBuffer"));
+        let gl_buffer_data: unsafe extern "C" fn(GLenum, isize, *const c_void, GLenum) =
+            std::mem::transmute(proc!("glBufferData"));
+        let gl_map_buffer_range: unsafe extern "C" fn(GLenum, isize, isize, GLbitfield) -> *mut c_void =
+            std::mem::transmute(proc!("glMapBufferRange"));
+        let gl_unmap_buffer: unsafe extern "C" fn(GLenum) -> u8 =
+            std::mem::transmute(proc!("glUnmapBuffer"));
+        Some(PboGl {
+            gl_gen_buffers,
+            gl_bind_buffer,
+            gl_buffer_data,
+            gl_map_buffer_range,
+            gl_unmap_buffer,
+        })
+    }
+}
+
 fn load_gl() -> Result<GlFunctions, String> {
     let egl = load_egl()?;
 
@@ -1208,10 +1258,40 @@ impl OffscreenRenderContext {
 
                 let mut render_count: u64 = 0;
                 let mut park_timeout_ms: u64 = 33;
+                let mut last_render = std::time::Instant::now();
+                let mut last_diag = std::time::Instant::now();
+
+                // Double-buffered PBOs for async readback: read the current
+                // frame into PBO[N] (DMA), and while mpv renders the next
+                // frame, map PBO[N^1] (already complete) for the CPU copy.
+                // Fall back to synchronous readback when PBO is unavailable.
+                let pbo = load_pbo_gl();
+                let mut pbo_ids = [0u32; 2];
+                let mut pbo_ready = false;
+                let mut ready_w: u32 = 0;
+                let mut ready_h: u32 = 0;
+                if let Some(ref pg) = pbo {
+                    unsafe {
+                        (pg.gl_gen_buffers)(2, pbo_ids.as_mut_ptr());
+                    }
+                    eprintln!("[mpv-render] PBO async readback activo");
+                } else {
+                    eprintln!("[mpv-render] PBO no disponible; readback sincrono");
+                }
+                let mut pbo_next = 0usize;
 
                 while !stop_flag.load(Ordering::Relaxed) {
-                    // Clear the update-pending flag set by the callback
-                    update_ctx.pending.swap(false, Ordering::AcqRel);
+                    // Wait for mpv to signal a new frame, but only park when
+                    // nothing is already pending. Parking a fixed timeout after
+                    // every render (as before) capped throughput well below
+                    // realtime; skipping the park when a frame is queued lets
+                    // the loop keep up with the video frame rate.
+                    if !update_ctx.pending.load(Ordering::Relaxed) {
+                        std::thread::park_timeout(Duration::from_millis(park_timeout_ms));
+                    }
+
+                    // Was a new frame signaled since the last render?
+                    let pending = update_ctx.pending.swap(false, Ordering::AcqRel);
 
                     let dw = read_mpv_dimension(&api, mpv_handle, "dwidth") as u32;
                     let dh = read_mpv_dimension(&api, mpv_handle, "dheight") as u32;
@@ -1227,12 +1307,28 @@ impl OffscreenRenderContext {
                         (current_w, current_h)
                     };
 
+                    // Keep the FBO sized to the video even while paused/seeking.
                     if (dw > 0 && dh > 0) && (render_w != current_w || render_h != current_h) {
                         log::info!("FBO resize: {}x{} -> {}x{} (original {}x{} target {}x{})", current_w, current_h, render_w, render_h, dw, dh, max_w, max_h);
                         resize_fbo(&gl, tex_id, fbo_id, render_w, render_h);
                         current_w = render_w;
                         current_h = render_h;
                     }
+
+                    // Render only when mpv signals a new frame, or as a slow
+                    // keep-alive tick. Skipping redundant renders while paused
+                    // caps CPU use and lets the frontend redraw at the actual
+                    // video frame rate (frame_count advances per new frame).
+                    let force_render =
+                        last_render.elapsed() >= std::time::Duration::from_millis(500);
+                    if !pending && !force_render {
+                        continue;
+                    }
+                    if force_render {
+                        last_render = std::time::Instant::now();
+                    }
+
+                    let render_start = std::time::Instant::now();
 
                     unsafe {
                         (gl.gl_bind_framebuffer)(GL_FRAMEBUFFER, fbo_id);
@@ -1265,27 +1361,96 @@ impl OffscreenRenderContext {
                         // bound — re-bind our FBO before readback.
                         unsafe { (gl.gl_bind_framebuffer)(GL_FRAMEBUFFER, fbo_id); }
 
-                        let buf_size = (render_w * render_h * 4) as usize;
-                        let mut pixels = vec![0u8; buf_size];
-                        unsafe {
-                            (gl.gl_read_pixels)(
-                                0, 0,
-                                render_w as GLsizei, render_h as GLsizei,
-                                GL_RGBA, GL_UNSIGNED_BYTE,
-                                pixels.as_mut_ptr() as *mut c_void,
-                            );
+                        // 1. Finalize the PREVIOUS async readback (it had a
+                        // full render's time to complete — no stall), or fall
+                        // back to synchronous readback when PBO is unavailable.
+                        if let Some(ref pg) = pbo {
+                            if pbo_ready {
+                                unsafe {
+                                    (pg.gl_bind_buffer)(GL_PIXEL_PACK_BUFFER, pbo_ids[pbo_next ^ 1]);
+                                }
+                                let mapped = unsafe {
+                                    (pg.gl_map_buffer_range)(
+                                        GL_PIXEL_PACK_BUFFER,
+                                        0,
+                                        (ready_w * ready_h * 4) as isize,
+                                        GL_MAP_READ_BIT,
+                                    )
+                                };
+                                if !mapped.is_null() {
+                                    let buf_size = (ready_w * ready_h * 4) as usize;
+                                    let mut pixels = vec![0u8; buf_size];
+                                    unsafe {
+                                        std::ptr::copy_nonoverlapping(
+                                            mapped as *const u8,
+                                            pixels.as_mut_ptr(),
+                                            buf_size,
+                                        );
+                                        (pg.gl_unmap_buffer)(GL_PIXEL_PACK_BUFFER);
+                                    }
+                                    if let Ok(mut fb) = frame_buffer.lock() {
+                                        fb.data = pixels;
+                                        fb.width = ready_w;
+                                        fb.height = ready_h;
+                                        fb.frame_count = fb.frame_count.wrapping_add(1);
+                                    }
+                                } else {
+                                    // Buffer still busy — no active map, drop
+                                    // this frame (do not glUnmapBuffer: mapping
+                                    // a NULL map is undefined behavior).
+                                }
+                                unsafe {
+                                    (pg.gl_bind_buffer)(GL_PIXEL_PACK_BUFFER, 0);
+                                }
+                            }
+
+                            // 2. Issue async readback of the CURRENT frame into
+                            // the next PBO. glBufferData with NULL orphans the
+                            // buffer so glReadPixels won't stall.
+                            let buf_size = (render_w * render_h * 4) as isize;
+                            unsafe {
+                                (pg.gl_bind_buffer)(GL_PIXEL_PACK_BUFFER, pbo_ids[pbo_next]);
+                                (pg.gl_buffer_data)(
+                                    GL_PIXEL_PACK_BUFFER,
+                                    buf_size,
+                                    std::ptr::null(),
+                                    GL_STREAM_READ,
+                                );
+                                (gl.gl_read_pixels)(
+                                    0, 0,
+                                    render_w as GLsizei, render_h as GLsizei,
+                                    GL_RGBA, GL_UNSIGNED_BYTE,
+                                    std::ptr::null_mut(),
+                                );
+                                (pg.gl_bind_buffer)(GL_PIXEL_PACK_BUFFER, 0);
+                            }
+                            ready_w = render_w;
+                            ready_h = render_h;
+                            pbo_ready = true;
+                            pbo_next ^= 1;
+                        } else {
+                            // Synchronous readback (fallback).
+                            let buf_size = (render_w * render_h * 4) as usize;
+                            let mut pixels = vec![0u8; buf_size];
+                            unsafe {
+                                (gl.gl_read_pixels)(
+                                    0, 0,
+                                    render_w as GLsizei, render_h as GLsizei,
+                                    GL_RGBA, GL_UNSIGNED_BYTE,
+                                    pixels.as_mut_ptr() as *mut c_void,
+                                );
+                            }
+                            if let Ok(mut fb) = frame_buffer.lock() {
+                                fb.data = pixels;
+                                fb.width = render_w;
+                                fb.height = render_h;
+                                fb.frame_count = fb.frame_count.wrapping_add(1);
+                            }
                         }
 
                         let read_err = unsafe { (gl.gl_get_error)() };
                         if read_err != 0 {
                             eprintln!("glGetError despues de glReadPixels: 0x{read_err:x}");
-                        }
-
-                        if let Ok(mut fb) = frame_buffer.lock() {
-                            fb.data = pixels;
-                            fb.width = render_w;
-                            fb.height = render_h;
-                            fb.frame_count = fb.frame_count.wrapping_add(1);
                         }
 
                         unsafe { (gl.gl_bind_framebuffer)(GL_FRAMEBUFFER, 0); }
@@ -1297,7 +1462,11 @@ impl OffscreenRenderContext {
                     }
 
                     render_count = render_count.wrapping_add(1);
-                    if render_count.is_multiple_of(30) {
+                    // Per-frame diagnostics only when explicitly requested
+                    // (WALACTV_RENDER_DIAG=1); otherwise keep logs clean.
+                    if render_count.is_multiple_of(30)
+                        && std::env::var("WALACTV_RENDER_DIAG").is_ok()
+                    {
                         let (frame_count, px0, px_mid) = frame_buffer
                             .lock()
                             .map(|fb| {
@@ -1318,11 +1487,14 @@ impl OffscreenRenderContext {
                             })
                             .unwrap_or((0, [0, 0, 0, 0], [0, 0, 0, 0]));
                         eprintln!(
-                            "[mpv-render] iter={} ret={} dw={}x{} frames={} px0=[{},{},{},{}] pxMid=[{},{},{},{}]",
-                            render_count, ret, dw, dh, frame_count,
+                            "[mpv-render] iter={} ret={} fbo={}x{} src={}x{} frames={} ms={:.1} fps={:.1} px0=[{},{},{},{}] pxMid=[{},{},{},{}]",
+                            render_count, ret, render_w, render_h, dw, dh, frame_count,
+                            render_start.elapsed().as_secs_f64() * 1000.0,
+                            30.0 / last_diag.elapsed().as_secs_f64().max(0.001),
                             px0[0], px0[1], px0[2], px0[3],
                             px_mid[0], px_mid[1], px_mid[2], px_mid[3],
                         );
+                        last_diag = std::time::Instant::now();
                     }
 
                     // Adaptive frame pacing: read fps once after playback stabilizes
@@ -1389,6 +1561,15 @@ impl OffscreenRenderContext {
         if let Ok(mut target) = self.target_size.lock() {
             *target = (width, height);
         }
+    }
+
+    /// Get the frame counter of the latest rendered frame.
+    /// Cheap — the frontend polls this to decide whether to fetch a full frame.
+    pub fn get_frame_counter(&self) -> u32 {
+        self.frame_buffer
+            .lock()
+            .map(|fb| fb.frame_count as u32)
+            .unwrap_or(0)
     }
 }
 

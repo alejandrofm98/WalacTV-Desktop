@@ -7,7 +7,7 @@ edition = "2021"
 tauri-build = { version = "2", features = [] }
 
 [dependencies]
-tauri = { version = "2", features = ["image-png"] }
+tauri = { version = "2", features = ["image-png", "unstable"] }
 tauri-plugin-http = "2"
 tauri-plugin-store = "2"
 tauri-plugin-updater = "2"
@@ -19,18 +19,20 @@ keyring = "3"
 raw-window-handle = "0.6"
 parking_lot = "0.12"
 log = "0.4"
+anyhow = "1"
 librqbit = { version = "9.0.0-rc.0", default-features = false, features = ["default-tls", "http-api", "tracing-subscriber-utils"] }
+librqbit-core = "9.0.0-rc.0"
 librqbit-dualstack-sockets = "0.7"
 tokio = { version = "1", features = ["sync"] }
 
 [target.'cfg(target_os = "linux")'.dependencies]
 libc = "0.2"
-x11 = { version = "2.21", features = ["xlib"] }
 
 [target.'cfg(target_os = "windows")'.dependencies]
 windows-sys = { version = "0.59", features = [
     "Win32_Foundation",
     "Win32_Graphics_Gdi",
+    "Win32_Graphics_OpenGL",
     "Win32_System_LibraryLoader",
     "Win32_System_Threading",
     "Win32_UI_Input_KeyboardAndMouse",

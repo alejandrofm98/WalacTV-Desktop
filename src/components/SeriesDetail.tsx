@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef, useCallback, useMemo } from 'react'
 import { createPortal } from 'react-dom'
-import { Play, ChevronDown, ArrowLeft } from 'lucide-react'
-import type { CatalogItem, WatchProgressItem } from '../api/types'
+import { Play, ArrowLeft } from 'lucide-react'
+import type { CatalogItem, StreamOption, WatchProgressItem } from '../api/types'
 import { getAllSeriesEpisodes, getWatchProgress, markSeriesEpisodesWatched, cwGroupKey, getTorrentioEpisodeStreams } from '../api/client'
 import { useAppStore } from '../store/useAppStore'
 import styles from './SeriesDetail.module.css'
@@ -21,6 +21,29 @@ function formatAirDate(raw: string): string {
   if (isNaN(d.getTime())) return raw
   return d.toLocaleDateString('es-ES', { year: 'numeric', month: 'short', day: 'numeric' })
 }
+
+function formatSize(bytes: number): string {
+  const gb = bytes / 1024 ** 3
+  if (gb >= 1) return `${gb.toFixed(1)} GB`
+  const mb = bytes / 1024 ** 2
+  return `${Math.round(mb)} MB`
+}
+
+function qualityOf(opt: StreamOption): string {
+  const q = opt.quality?.toLowerCase() ?? ''
+  if (q) return q
+  const hay = `${opt.label} ${opt.torrentTitle ?? ''}`.toLowerCase()
+  if (hay.includes('2160') || hay.includes('4k')) return '2160p'
+  if (hay.includes('1080')) return '1080p'
+  if (hay.includes('720')) return '720p'
+  return 'SD'
+}
+
+function qualityRank(q: string): number {
+  return q === '2160p' ? 4 : q === '1080p' ? 3 : q === '720p' ? 2 : 1
+}
+
+const isTorrentStream = (o: StreamOption) => !!o.infoHash
 
 function computeCwEntry(item: CatalogItem, entries: Map<string, WatchProgressItem>): WatchProgressItem | undefined {
   return entries.get(cwGroupKey('series', item.seriesName, item.stableId))
@@ -49,14 +72,17 @@ export function SeriesDetail({ item }: Props) {
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [selectedSeason, setSelectedSeason] = useState<number | null>(null)
-  const [dropdownOpen, setDropdownOpen] = useState(false)
   const [contextEpisode, setContextEpisode] = useState<CatalogItem | null>(null)
+  const [sourceEpisode, setSourceEpisode] = useState<CatalogItem | null>(null)
+  const [sourceStreams, setSourceStreams] = useState<StreamOption[]>([])
+  const [sourceLoading, setSourceLoading] = useState(false)
+  const [sourceError, setSourceError] = useState(false)
+  const [selectedSource, setSelectedSource] = useState(0)
 
   const seriesId = item.stableId || item.seriesName || item.normalizedTitle || item.title
   const preselectedRef = useRef(false)
   const wasPlayingRef = useRef(false)
   const episodeRefs = useRef<Map<string, HTMLElement>>(new Map())
-  const dropdownRef = useRef<HTMLDivElement>(null)
 
   const fetchEpisodes = useCallback(() => {
     if (!seriesId) return
@@ -162,6 +188,8 @@ export function SeriesDetail({ item }: Props) {
     return sortedAll[0] ?? null
   }, [episodes, cwEntry])
 
+  // Reproduccion directa: mezcla Torrentio con los streams del episodio y abre
+  // el player. La fila del episodio reproduce el mejor stream disponible.
   const handlePlayEpisode = useCallback(async (episode: CatalogItem) => {
     if (episode.seasonNumber != null && episode.episodeNumber != null) {
       try {
@@ -178,6 +206,73 @@ export function SeriesDetail({ item }: Props) {
     }
     openPlayer(episode)
   }, [item, openPlayer])
+
+  // Abre el modal de fuentes para el episodio: consulta Torrentio y combina
+  // con los streams IPTV del episodio. La mejor fuente queda preseleccionada.
+  const handleChooseSource = useCallback(async (episode: CatalogItem) => {
+    setSourceEpisode(episode)
+    setSelectedSource(0)
+    setSourceStreams([])
+    setSourceError(false)
+    setSourceLoading(true)
+    const iptv = episode.streamOptions.filter((o) => !isTorrentStream(o))
+    const base = [...iptv, ...episode.streamOptions.filter(isTorrentStream)]
+    if (episode.seasonNumber != null && episode.episodeNumber != null) {
+      try {
+        const torrents = await getTorrentioEpisodeStreams(
+          item.imdbId ?? item.catalogId ?? item.stableId,
+          episode.seasonNumber,
+          episode.episodeNumber,
+        )
+        setSourceStreams([...base, ...torrents])
+      } catch {
+        setSourceStreams(base)
+        setSourceError(true)
+      }
+    } else {
+      setSourceStreams(base)
+      setSourceError(true)
+    }
+    setSourceLoading(false)
+  }, [item])
+
+  const bestTorrentIndex = useMemo(() => {
+    if (sourceStreams.length === 0) return -1
+    const torrents = sourceStreams.filter(isTorrentStream)
+    if (torrents.length === 0) return -1
+    const best = [...torrents].sort(
+      (a, b) =>
+        qualityRank(qualityOf(b)) - qualityRank(qualityOf(a)) ||
+        (b.seeders ?? 0) - (a.seeders ?? 0),
+    )[0]
+    return sourceStreams.indexOf(best)
+  }, [sourceStreams])
+
+  // Preselecciona la mejor fuente (calidad + seeds) cuando se abre el modal.
+  useEffect(() => {
+    if (!sourceLoading && sourceStreams.length > 0 && bestTorrentIndex >= 0 && selectedSource === 0) {
+      setSelectedSource(bestTorrentIndex)
+    }
+  }, [sourceLoading, sourceStreams, bestTorrentIndex, selectedSource])
+
+  // Cierra el modal con Escape
+  useEffect(() => {
+    if (!sourceEpisode) return
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') setSourceEpisode(null)
+    }
+    document.addEventListener('keydown', onKey)
+    return () => document.removeEventListener('keydown', onKey)
+  }, [sourceEpisode])
+
+  // La fila del episodio reproduce directo; el botón de fuentes abre el modal.
+  // sourceStreams ya incluye IPTV + torrents del episodio + Torrentio, así que
+  // el índice elegido en el modal coincide con el array que recibe el player.
+  const handlePlayFromSource = useCallback((index: number) => {
+    if (!sourceEpisode) return
+    openPlayer({ ...sourceEpisode, streamOptions: sourceStreams }, index)
+    setSourceEpisode(null)
+  }, [sourceEpisode, sourceStreams, openPlayer])
 
   const handlePlayHero = useCallback(() => {
     if (firstUnwatched) void handlePlayEpisode(firstUnwatched)
@@ -205,30 +300,13 @@ export function SeriesDetail({ item }: Props) {
     }
   }, [seriesId, setContinueWatching])
 
-  // Close dropdown on outside click
-  useEffect(() => {
-    if (!dropdownOpen) return
-    const handler = (e: MouseEvent) => {
-      if (dropdownRef.current && !dropdownRef.current.contains(e.target as Node)) {
-        setDropdownOpen(false)
-      }
-    }
-    document.addEventListener('mousedown', handler)
-    return () => document.removeEventListener('mousedown', handler)
-  }, [dropdownOpen])
-
+  // Close context menu on outside click
   useEffect(() => {
     if (!contextEpisode) return
     const close = () => setContextEpisode(null)
     document.addEventListener('mousedown', close)
     return () => document.removeEventListener('mousedown', close)
   }, [contextEpisode])
-
-  const selectedSeasonLabel = selectedSeason != null
-    ? `Temporada ${selectedSeason}`
-    : seasons.length > 0
-      ? 'Todas'
-      : ''
 
   const heroLabel = firstUnwatched
     ? `Reproducir T${firstUnwatched.seasonNumber ?? '?'} E${firstUnwatched.episodeNumber ?? '?'}`
@@ -283,46 +361,33 @@ export function SeriesDetail({ item }: Props) {
         </div>
       </div>
 
-      {/* Season Selector + Episodes */}
+      {/* Season Tabs + Episodes */}
       <div className={styles.episodesSection}>
         {seasons.length > 0 && (
-          <div className={styles.seasonSelector} ref={dropdownRef}>
+          <div className={styles.seasonTabs} role="tablist" aria-label="Temporadas">
             <button
-              className={styles.seasonDropdown}
-              onClick={() => setDropdownOpen(!dropdownOpen)}
-              aria-expanded={dropdownOpen}
-              aria-haspopup="listbox"
+              className={`${styles.seasonTab} ${selectedSeason === null ? styles.seasonTabActive : ''}`}
+              onClick={() => setSelectedSeason(null)}
+              role="tab"
+              aria-selected={selectedSeason === null}
             >
-              <span className={styles.seasonDropdownText}>{selectedSeasonLabel}</span>
-              <ChevronDown className={styles.seasonChevron} aria-hidden="true" size={20} />
+              Todas
             </button>
-            {dropdownOpen && (
-              <ul className={styles.seasonMenu} role="listbox">
-                <li
-                  className={`${styles.seasonOption} ${selectedSeason === null ? styles.seasonOptionActive : ''}`}
-                  role="option"
-                  aria-selected={selectedSeason === null}
-                  onClick={() => { setSelectedSeason(null); setDropdownOpen(false) }}
+            {seasons.map((s) => {
+              const prog = watchedBySeason.get(s)
+              const suffix = prog ? ` ${prog.seen}/${prog.total}` : ''
+              return (
+                <button
+                  key={s}
+                  className={`${styles.seasonTab} ${selectedSeason === s ? styles.seasonTabActive : ''}`}
+                  onClick={() => setSelectedSeason(s)}
+                  role="tab"
+                  aria-selected={selectedSeason === s}
                 >
-                  Todas
-                </li>
-                {seasons.map((s) => {
-                  const prog = watchedBySeason.get(s)
-                  const suffix = prog ? ` (${prog.seen}/${prog.total})` : ''
-                  return (
-                    <li
-                      key={s}
-                      className={`${styles.seasonOption} ${selectedSeason === s ? styles.seasonOptionActive : ''}`}
-                      role="option"
-                      aria-selected={selectedSeason === s}
-                      onClick={() => { setSelectedSeason(s); setDropdownOpen(false) }}
-                    >
-                      Temporada {s}{suffix}
-                    </li>
-                  )
-                })}
-              </ul>
-            )}
+                  T{s}{suffix}
+                </button>
+              )
+            })}
           </div>
         )}
 
@@ -384,6 +449,16 @@ export function SeriesDetail({ item }: Props) {
                         {(ep.airDate ?? ep.releaseDate) && (
                           <span className={styles.episodeAirDate}>{formatAirDate(ep.airDate ?? ep.releaseDate!)}</span>
                         )}
+                        {ep.hasTorrentSource && (
+                          <span className={styles.sourceChipTorrent}>
+                            <span className={styles.sourceChipDot} />Torrent
+                          </span>
+                        )}
+                        {ep.hasIptvSource && (
+                          <span className={styles.sourceChipIptv}>
+                            <span className={styles.sourceChipDot} />IPTV
+                          </span>
+                        )}
                       </div>
                       {ep.description && (
                         <p className={styles.episodeDescription}>{ep.description}</p>
@@ -391,6 +466,18 @@ export function SeriesDetail({ item }: Props) {
                     </div>
 
                     <div className={styles.episodeRight}>
+                      <button
+                        type="button"
+                        className={styles.sourceBtn}
+                        onClick={(e) => { e.stopPropagation(); void handleChooseSource(ep) }}
+                        aria-label={`Elegir fuente de T${ep.seasonNumber ?? '?'} E${ep.episodeNumber ?? '?'}`}
+                        title="Elegir fuente"
+                      >
+                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
+                          <path d="M5 12h14M13 6l6 6-6 6" />
+                        </svg>
+                        Fuentes
+                      </button>
                       {isContinue && epProgress > 0 && (
                         <div className={styles.progressTrack} aria-hidden="true">
                           <div className={styles.progressFillRight} style={{ width: `${epProgress}%` }} />
@@ -443,6 +530,175 @@ export function SeriesDetail({ item }: Props) {
         </div>,
         document.body,
       )}
+      {sourceEpisode && createPortal(
+        <div className={styles.sourceModalBackdrop} onMouseDown={() => setSourceEpisode(null)}>
+          <div
+            className={styles.sourceModal}
+            role="dialog"
+            aria-modal="true"
+            aria-label={`Fuentes de T${sourceEpisode.seasonNumber ?? '?'} E${sourceEpisode.episodeNumber ?? '?'}`}
+            onMouseDown={(e) => e.stopPropagation()}
+          >
+            <div className={styles.sourceModalHead}>
+              <div className={styles.sourceModalEyebrow}>
+                Temporada {sourceEpisode.seasonNumber ?? '?'} · Episodio {sourceEpisode.episodeNumber ?? '?'}
+              </div>
+              <div className={styles.sourceModalTitle}>{sourceEpisode.tmdbTitle ?? sourceEpisode.title}</div>
+              <div className={styles.sourceModalSub}>
+                {sourceLoading
+                  ? 'Buscando fuentes en Torrentio...'
+                  : sourceError && sourceStreams.length === 0
+                    ? 'Solo hay fuentes IPTV disponibles'
+                    : `${sourceStreams.length} fuentes disponibles`}
+              </div>
+            </div>
+
+            <div className={styles.sourceModalBody}>
+              {sourceLoading && (
+                <div className={styles.sourceModalStatus}>Buscando en Torrentio...</div>
+              )}
+
+              {!sourceLoading && sourceError && (
+                <div className={styles.sourceModalStatus}>No se pudo consultar Torrentio. Mostrando fuentes IPTV.</div>
+              )}
+
+              {!sourceLoading && sourceStreams.length === 0 && (
+                <div className={styles.sourceModalStatus}>Sin fuentes para este episodio.</div>
+              )}
+
+              {!sourceLoading && (() => {
+                const iptvCount = sourceStreams.filter((o) => !isTorrentStream(o)).length
+                return (
+                  <>
+                    {iptvCount > 0 && (
+                      <>
+                        <div className={`${styles.sourceGroupLabel} ${styles.sourceGroupLabelIptv}`}>
+                          <span className={styles.sourceGroupBar} />
+                          Directo IPTV
+                        </div>
+                        {sourceStreams.map((opt, i) => (
+                          !isTorrentStream(opt) && (
+                            <SourceRow
+                              key={`iptv-${i}`}
+                              opt={opt}
+                              variant="iptv"
+                              selected={selectedSource === i}
+                              onSelect={() => setSelectedSource(i)}
+                              onPlay={() => handlePlayFromSource(i)}
+                            />
+                          )
+                        ))}
+                      </>
+                    )}
+                    {sourceStreams.length - iptvCount > 0 && (
+                      <>
+                        <div className={`${styles.sourceGroupLabel} ${styles.sourceGroupLabelTorrent}`}>
+                          <span className={styles.sourceGroupBar} />
+                          Torrent
+                        </div>
+                        {sourceStreams.map((opt, i) => (
+                          isTorrentStream(opt) && (
+                            <SourceRow
+                              key={`tor-${i}`}
+                              opt={opt}
+                              variant="torrent"
+                              selected={selectedSource === i}
+                              onSelect={() => setSelectedSource(i)}
+                              onPlay={() => handlePlayFromSource(i)}
+                            />
+                          )
+                        ))}
+                      </>
+                    )}
+                  </>
+                )
+              })()}
+            </div>
+
+            <div className={styles.sourceModalFoot}>
+              <span className={styles.sourceModalNote}>
+                {selectedSource >= 0 && sourceStreams[selectedSource]
+                  ? `Reproducirá: ${sourceStreams[selectedSource].torrentTitle ?? sourceStreams[selectedSource].label}`
+                  : 'Elige una fuente para reproducir'}
+              </span>
+              <button
+                type="button"
+                className={styles.sourcePlayBtn}
+                disabled={sourceLoading || sourceStreams.length === 0}
+                onClick={() => handlePlayFromSource(selectedSource)}
+              >
+                <Play size={16} fill="currentColor" aria-hidden="true" />
+                Reproducir
+              </button>
+            </div>
+          </div>
+        </div>,
+        document.body,
+      )}
+    </div>
+  )
+}
+
+function SourceRow({
+  opt,
+  variant,
+  selected,
+  onSelect,
+  onPlay,
+}: {
+  opt: StreamOption
+  variant: 'iptv' | 'torrent'
+  selected: boolean
+  onSelect: () => void
+  onPlay: () => void
+}) {
+  const isTorrent = variant === 'torrent'
+  return (
+    <div
+      className={`${styles.sourceRow} ${selected ? styles.sourceRowSelected : ''}`}
+      onClick={onSelect}
+      role="button"
+      tabIndex={0}
+      aria-pressed={selected}
+      onKeyDown={(e) => {
+        if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); onPlay() }
+      }}
+    >
+      <span className={`${styles.sourceRowIcon} ${isTorrent ? styles.sourceRowIconTorrent : styles.sourceRowIconIptv}`}>
+        {isTorrent ? (
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2Z" /></svg>
+        ) : (
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><rect x="2" y="5" width="20" height="14" rx="2" /><path d="M16 3v4M8 3v4" /></svg>
+        )}
+      </span>
+
+      <span className={styles.sourceRowTitle}>{opt.torrentTitle ?? opt.label ?? 'Directo'}</span>
+
+      <span className={styles.sourceRowMeta}>
+        {!isTorrent && opt.language && (
+          <span className={styles.sourceLangTag}>{opt.language}</span>
+        )}
+        {qualityOf(opt) !== 'SD' && (
+          <span className={styles.sourceQualityBadge}>{qualityOf(opt)}</span>
+        )}
+        {opt.seeders != null && (
+          <span className={styles.sourceSeeds}>{opt.seeders}</span>
+        )}
+        {opt.sizeBytes != null && (
+          <span className={styles.sourceSize}>{formatSize(opt.sizeBytes)}</span>
+        )}
+        {!isTorrent && (
+          <span className={styles.sourceLiveTag}>EN DIRECTO</span>
+        )}
+      </span>
+
+      <span className={styles.sourceRowPlay} onClick={(e) => { e.stopPropagation(); onPlay() }}>
+        {selected ? (
+          <svg width="13" height="13" viewBox="0 0 24 24" fill="currentColor"><path d="M8 5v14l11-7z" /></svg>
+        ) : (
+          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2"><path d="M5 12h14M13 6l6 6-6 6" /></svg>
+        )}
+      </span>
     </div>
   )
 }

@@ -1,0 +1,258 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Mockup — Serie con selector de fuentes inline</title>
+<link rel="stylesheet" href="mock.css">
+<style>
+  .episode-main { cursor: pointer; }
+  .episode-main:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
+</style>
+</head>
+<body>
+<div class="app">
+  <div class="backdrop">
+    <img class="backdrop-img" src="https://images.unsplash.com/photo-1478720568477-152d9b164e26?q=80&w=1600&auto=format&fit=crop" alt="">
+    <div class="backdrop-overlay"></div>
+    <div class="backdrop-overlay-bottom"></div>
+  </div>
+
+  <button class="back-btn">← Volver</button>
+
+  <div class="content">
+    <h1 class="title">House of the Dragon</h1>
+
+    <div class="meta-row">
+      <span class="rating-badge">★ 8.4</span>
+      <span class="meta-item"><span class="meta-sep">·</span>2022</span>
+      <span class="meta-item"><span class="meta-sep">·</span>Drama, Fantasía, Acción</span>
+      <span class="meta-item"><span class="meta-sep">·</span>2 temporadas</span>
+    </div>
+
+    <p class="synopsis">
+      La guerra civil de los Targaryen por el Trono de Hierro. Doscientos años antes de los eventos
+      de Juego de Tronos, los dragones dominan Poniente y la sucesión de la corona siembra el caos.
+    </p>
+
+    <div class="seasons">
+      <button class="season-tab active">T1 · 4/10</button>
+      <button class="season-tab">T2 · 2/8</button>
+      <button class="season-tab">T3 · 0/8</button>
+    </div>
+
+    <!-- E1: expandido con selector de fuentes -->
+    <div class="episode open">
+      <div class="episode-main">
+        <div class="ep-number">1</div>
+        <div class="ep-thumb"></div>
+        <div class="ep-info">
+          <div class="ep-title">Los herederos del dragón</div>
+          <div class="ep-meta">
+            <span>52 min</span>
+            <span>·</span>
+            <span>21 ago 2022</span>
+            <span class="chip chip-torrent"><span class="dot"></span>Torrent</span>
+            <span class="chip chip-iptv"><span class="dot"></span>IPTV</span>
+          </div>
+        </div>
+        <div class="ep-right">
+          <div class="source-picked">
+            <span class="quality">1080p</span>
+            <span class="chip chip-torrent"><span class="dot"></span>Torrent</span>
+          </div>
+          <div class="ep-chevron">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M6 9l6 6 6-6"/></svg>
+          </div>
+        </div>
+      </div>
+
+      <div class="picker">
+        <div class="picker-head">
+          <span>Elige la fuente · S1E1</span>
+          <span class="picker-status">12 fuentes · mejores primero</span>
+        </div>
+
+        <div class="src-row selected">
+          <span class="src-ico src-ico-torrent">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2Z"/></svg>
+          </span>
+          <span class="src-title">House.of.the.Dragon.S01E01.1080p.WEB-DL.H264.DDP5.1-MTB</span>
+          <span class="src-meta">
+            <span class="q-badge">1080p</span>
+            <span class="seeds">⚡ 1.248</span>
+            <span class="size">2,1 GB</span>
+          </span>
+          <span class="check">✓</span>
+          <span class="src-play">
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="currentColor"><path d="M8 5v14l11-7z"/></svg>
+          </span>
+        </div>
+
+        <div class="src-row">
+          <span class="src-ico src-ico-torrent">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2Z"/></svg>
+          </span>
+          <span class="src-title">House.of.the.Dragon.S01E01.2160p.WEB-DL.HDR.DV.x265-RARBG</span>
+          <span class="src-meta">
+            <span class="q-badge">2160p</span>
+            <span class="seeds">⚡ 786</span>
+            <span class="size">9,8 GB</span>
+          </span>
+          <span class="src-play">
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="currentColor"><path d="M8 5v14l11-7z"/></svg>
+          </span>
+        </div>
+
+        <div class="src-row">
+          <span class="src-ico src-ico-torrent">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2Z"/></svg>
+          </span>
+          <span class="src-title">HOTD.S01E01.1080p.WEB-DL.x264.DDP5.1-EVO</span>
+          <span class="src-meta">
+            <span class="q-badge">1080p</span>
+            <span class="seeds">⚡ 654</span>
+            <span class="size">1,7 GB</span>
+          </span>
+          <span class="src-play">
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="currentColor"><path d="M8 5v14l11-7z"/></svg>
+          </span>
+        </div>
+
+        <div class="src-row">
+          <span class="src-ico src-ico-iptv">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="5" width="20" height="14" rx="2"/><path d="M16 3v4M8 3v4"/></svg>
+          </span>
+          <span class="src-title">Canal Serie — HBO 1 (ESP)</span>
+          <span class="src-meta">
+            <span class="lang">ESP</span>
+            <span class="live-tag">EN DIRECTO</span>
+          </span>
+          <span class="src-play">
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="currentColor"><path d="M8 5v14l11-7z"/></svg>
+          </span>
+        </div>
+
+        <div class="src-row">
+          <span class="src-ico src-ico-iptv">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="5" width="20" height="14" rx="2"/><path d="M16 3v4M8 3v4"/></svg>
+          </span>
+          <span class="src-title">Canal Serie — HBO 2 (VOSE)</span>
+          <span class="src-meta">
+            <span class="lang">VOSE</span>
+            <span class="live-tag">EN DIRECTO</span>
+          </span>
+          <span class="src-play">
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="currentColor"><path d="M8 5v14l11-7z"/></svg>
+          </span>
+        </div>
+      </div>
+    </div>
+
+    <!-- E2: cerrado con selección 4K -->
+    <div class="episode">
+      <div class="episode-main">
+        <div class="ep-number">2</div>
+        <div class="ep-thumb"></div>
+        <div class="ep-info">
+          <div class="ep-title">El príncipe canalla</div>
+          <div class="ep-meta">
+            <span>53 min</span>
+            <span>·</span>
+            <span>21 ago 2022</span>
+            <span class="chip chip-torrent"><span class="dot"></span>Torrent</span>
+            <span class="chip chip-iptv"><span class="dot"></span>IPTV</span>
+          </div>
+        </div>
+        <div class="ep-right">
+          <div class="source-picked">
+            <span class="quality">2160p</span>
+            <span class="chip chip-torrent"><span class="dot"></span>Torrent</span>
+          </div>
+          <div class="ep-chevron">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M6 9l6 6 6-6"/></svg>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- E3: cerrado, sin selección previa -->
+    <div class="episode">
+      <div class="episode-main">
+        <div class="ep-number">3</div>
+        <div class="ep-thumb"></div>
+        <div class="ep-info">
+          <div class="ep-title">El segundo de su nombre</div>
+          <div class="ep-meta">
+            <span>51 min</span>
+            <span>·</span>
+            <span>28 ago 2022</span>
+            <span class="chip chip-iptv"><span class="dot"></span>IPTV</span>
+          </div>
+        </div>
+        <div class="ep-right">
+          <div class="source-picked">
+            <span class="chip chip-none">Sin fuente elegida</span>
+          </div>
+          <div class="ep-chevron">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M6 9l6 6 6-6"/></svg>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- E4: cerrado, marcado como visto -->
+    <div class="episode">
+      <div class="episode-main">
+        <div class="ep-number">4</div>
+        <div class="ep-thumb"></div>
+        <div class="ep-info">
+          <div class="ep-title">Rey del Mar Estrecho</div>
+          <div class="ep-meta">
+            <span>54 min</span>
+            <span>·</span>
+            <span>4 sep 2022</span>
+            <span class="chip chip-torrent"><span class="dot"></span>Torrent</span>
+          </div>
+        </div>
+        <div class="ep-right">
+          <div class="source-picked">
+            <span class="quality">720p</span>
+            <span class="chip chip-torrent"><span class="dot"></span>Torrent</span>
+          </div>
+          <div class="ep-chevron">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M6 9l6 6 6-6"/></svg>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="footnote">
+      <strong>Nota:</strong> al tocar un episodio se despliega el selector de fuentes (Torrentio + IPTV) en lugar de
+      reproducir directamente. La fuente elegida queda recordada en el episodio y se reutiliza en futuras visitas.
+    </div>
+  </div>
+</div>
+
+<script>
+  // Toggle del selector inline al hacer clic en un episodio
+  document.querySelectorAll('.episode-main').forEach((main) => {
+    main.addEventListener('click', () => {
+      const ep = main.closest('.episode')
+      const wasOpen = ep.classList.contains('open')
+      document.querySelectorAll('.episode.open').forEach((e) => e.classList.remove('open'))
+      if (!wasOpen) ep.classList.add('open')
+    })
+  })
+
+  // Selección de fuente
+  document.querySelectorAll('.src-row').forEach((row) => {
+    row.addEventListener('click', () => {
+      const picker = row.closest('.picker')
+      picker.querySelectorAll('.src-row.selected').forEach((r) => r.classList.remove('selected'))
+      row.classList.add('selected')
+    })
+  })
+</script>
+</body>
+</html>

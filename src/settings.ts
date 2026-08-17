@@ -6,6 +6,7 @@ const store = new LazyStore('settings.dat', { defaults: {}, autoSave: 1000 })
 let _volume = 1
 let _preferredQuality: 'auto' | number = 'auto'
 let _language = 'ES'
+let _torrentMaxMb = 2048
 
 
 // ── Volume ───────────────────────────────────────────────────────────
@@ -18,6 +19,9 @@ export async function loadSettings(): Promise<void> {
 
   const lang = await store.get<string>('language')
   if (lang) _language = lang
+
+  const torrentMaxMb = await store.get<number>('torrentMaxMb')
+  if (typeof torrentMaxMb === 'number' && torrentMaxMb >= 0) _torrentMaxMb = torrentMaxMb
 }
 
 export function getVolume(): number {
@@ -47,4 +51,14 @@ export function getLanguage(): string {
 export async function setLanguage(l: string): Promise<void> {
   _language = l
   await store.set('language', l)
+}
+
+// ── Torrent download budget (MB, 0 = unlimited) ──────────────────────
+export function getTorrentMaxMb(): number {
+  return _torrentMaxMb
+}
+
+export async function setTorrentMaxMb(mb: number): Promise<void> {
+  _torrentMaxMb = Math.max(0, Math.floor(mb))
+  await store.set('torrentMaxMb', _torrentMaxMb)
 }

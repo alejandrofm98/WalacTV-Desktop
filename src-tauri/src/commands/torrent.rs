@@ -5,6 +5,7 @@ use std::sync::Arc;
 
 use librqbit::api::TorrentIdOrHash;
 use librqbit::http_api::{HttpApi, HttpApiOptions};
+use librqbit::storage::StorageFactoryExt;
 use librqbit::tracing_subscriber_config_utils::{init_logging, InitLoggingOptions, LineBroadcast};
 use librqbit::{
     AddTorrent, AddTorrentOptions, AddTorrentResponse, Api, ConnectionOptions, DhtSessionConfig,
@@ -13,6 +14,8 @@ use librqbit::{
 use librqbit_dualstack_sockets::TcpListener;
 use serde::{Deserialize, Serialize};
 use tauri::{AppHandle, Manager, State};
+
+use crate::commands::torrent_storage::BudgetStorageFactory;
 
 const VIDEO_EXTENSIONS: &[&str] = &[
     "avi", "m4v", "mkv", "mov", "mp4", "mpeg", "mpg", "ts", "webm", "wmv",
@@ -47,6 +50,26 @@ impl TorrentState {
         let torrent_dir = data_dir.join("torrents");
         std::fs::create_dir_all(&torrent_dir)
             .map_err(|error| format!("No se pudo crear el directorio torrent: {error}"))?;
+
+        // Clean up leftover media data from older disk-based runs. The
+        // in-memory storage never writes anything, so the whole directory is
+        // stale (e.g. interrupted/crashed sessions or pre-in-memory versions).
+        if let Ok(entries) = std::fs::read_dir(&torrent_dir) {
+            let mut removed = 0u32;
+            for entry in entries.flatten() {
+                let path = entry.path();
+                if path.is_dir() {
+                    if std::fs::remove_dir_all(&path).is_ok() {
+                        removed += 1;
+                    }
+                } else if std::fs::remove_file(&path).is_ok() {
+                    removed += 1;
+                }
+            }
+            if removed > 0 {
+                eprintln!("[torrent] limpieza: {removed} entradas huerfanas eliminadas");
+            }
+        }
 
         let session = Session::new_with_opts(
             torrent_dir,
@@ -125,6 +148,7 @@ impl Default for TorrentState {
 pub struct TorrentStartRequest {
     pub info_hash: String,
     pub file_idx: Option<usize>,
+    pub max_download_mb: Option<u64>,
 }
 
 #[derive(Serialize)]
@@ -187,9 +211,11 @@ pub async fn torrent_start(
     }
 
     let engine = state.get_or_create(&app).await?;
+    let max_mb = request.max_download_mb.unwrap_or(2048);
     let add_options = AddTorrentOptions {
         only_files: request.file_idx.map(|file_idx| vec![file_idx]),
         overwrite: true,
+        storage_factory: Some(BudgetStorageFactory::new(max_mb).boxed()),
         ..Default::default()
     };
     let magnet = format!("magnet:?xt=urn:btih:{info_hash}");
@@ -214,6 +240,10 @@ pub async fn torrent_start(
         }
         None => choose_file_idx(&handle)?,
     };
+    handle
+        .wait_until_initialized()
+        .await
+        .map_err(|error| format!("No se pudo inicializar el torrent: {error:#}"))?;
     let actual_hash = handle.info_hash().as_string();
     Ok(TorrentStreamInfo {
         url: format!(

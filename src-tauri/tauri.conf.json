@@ -10,17 +10,7 @@
     "beforeBuildCommand": "pnpm build"
   },
   "app": {
-    "windows": [
-      {
-        "title": "WalacTV",
-        "width": 1280,
-        "height": 720,
-        "resizable": true,
-        "fullscreen": false,
-        "decorations": true,
-        "transparent": false
-      }
-    ],
+    "windows": [],
     "security": {
       "csp": "default-src 'self'; connect-src 'self' https://iptv.walerike.com https:; img-src 'self' https://image.tmdb.org https: data:; media-src 'self' https: http: blob:; style-src 'self' 'unsafe-inline'; script-src 'self'"
     }

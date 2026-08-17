@@ -165,6 +165,7 @@ export default function App() {
   useEffect(() => {
     const prev = prevPlayerItemRef.current
     prevPlayerItemRef.current = playerItem
+    document.documentElement.classList.toggle('player-active', Boolean(playerItem))
     if (prev && !playerItem) {
       getWatchProgress(20)
         .then((cw) => {
@@ -172,11 +173,13 @@ export default function App() {
         })
         .catch(() => {})
     }
+    return () => document.documentElement.classList.remove('player-active')
   }, [playerItem])
 
   if (!signedIn) return <LoginScreen onLogin={handleLogin} />
   if (loading) return <LoadingScreen />
   if (error) return <ErrorScreen message={error} onRetry={loadData} />
+  if (playerItem) return <Player />
 
   return (
     <div className={styles.shell}>
@@ -203,7 +206,6 @@ export default function App() {
           {mode === 'Search' && <SearchContent />}
           {mode === 'Settings' && <SettingsContent onSignOut={signOut} />}
         </main>
-        {playerItem && <Player />}
       </div>
     </div>
   )

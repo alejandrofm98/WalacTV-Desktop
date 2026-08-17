@@ -10,6 +10,8 @@
 pub mod ffi;
 pub use ffi::MpvError;
 pub mod events;
+pub mod gpu_renderer;
+pub mod gpu_surface;
 pub mod handle;
 pub mod platform;
 

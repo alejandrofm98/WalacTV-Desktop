@@ -3,3 +3,4 @@
 pub mod credentials;
 pub mod player;
 pub mod torrent;
+pub mod torrent_storage;

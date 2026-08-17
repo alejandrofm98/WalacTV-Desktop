@@ -4,6 +4,9 @@ src-tauri/target/
 *.log
 .DS_Store
 
+# Diagnostics (logs, screenshots, synthetic test media)
+.diag/
+
 # Environment files
 .env
 .env.*

@@ -65,10 +65,12 @@ export function useRenderFrame(
   canvasRef: RefObject<HTMLCanvasElement | null>,
   playerItemId: string | null,
   isActive: boolean = true,
+  onFps?: (fps: number) => void,
 ): void {
   const lastCounter = useRef(0)
   const rafId = useRef<number>(0)
   const lastSize = useRef({ w: 0, h: 0 })
+  const fpsState = useRef({ count: 0, start: 0 })
 
   useEffect(() => {
     if (!playerItemId || !isActive) return
@@ -107,16 +109,19 @@ export function useRenderFrame(
       if (!running) return
 
       try {
-        // invoke returns ArrayBuffer when the Rust command returns Response
-        const buf = (await invoke('mpv_get_render_frame')) as ArrayBuffer
-        const { width, height, counter, pixels } = parseFrame(buf)
-
-        if (counter === 0 || counter === lastCounter.current || !pixels) {
+        // Cheap counter poll first: only fetch the full frame when a new one
+        // has been rendered. Avoids transferring frame bytes on every rAF
+        // while the Rust render loop only advances on new mpv frames.
+        const counter = (await invoke('mpv_get_frame_counter')) as number
+        if (counter === 0 || counter === lastCounter.current) {
           rafId.current = requestAnimationFrame(poll)
           return
         }
-
         lastCounter.current = counter
+
+        // invoke returns ArrayBuffer when the Rust command returns Response
+        const buf = (await invoke('mpv_get_render_frame')) as ArrayBuffer
+        const { width, height, pixels } = parseFrame(buf)
 
         const canvas = canvasRef.current
         if (!canvas) {
@@ -137,8 +142,21 @@ export function useRenderFrame(
           lastSize.current = { w: width, h: height }
         }
 
-        const imageData = new ImageData(pixels, width, height)
-        ctx.putImageData(imageData, 0, 0)
+        if (pixels) {
+          const imageData = new ImageData(pixels, width, height)
+          ctx.putImageData(imageData, 0, 0)
+
+          // Report frames-per-second once per second to the caller.
+          const now = performance.now()
+          if (fpsState.current.start === 0) fpsState.current.start = now
+          fpsState.current.count += 1
+          if (onFps && now - fpsState.current.start >= 1000) {
+            const elapsed = (now - fpsState.current.start) / 1000
+            onFps(Math.round(fpsState.current.count / elapsed))
+            fpsState.current.count = 0
+            fpsState.current.start = now
+          }
+        }
       } catch (err) {
         // Silently continue — errors are expected when player is shutting down
         if (running) {
@@ -158,6 +176,7 @@ export function useRenderFrame(
       running = false
       cancelAnimationFrame(rafId.current)
       lastCounter.current = 0
+      fpsState.current = { count: 0, start: 0 }
       if (observer && wrapperEl) {
         observer.unobserve(wrapperEl)
         observer.disconnect()

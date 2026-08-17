@@ -13,26 +13,6 @@ use std::sync::Arc;
 use std::thread::JoinHandle;
 
 // ---------------------------------------------------------------------------
-// LinuxLoweringState — state for lowering mpv child window (Linux only)
-// ---------------------------------------------------------------------------
-
-/// State needed to lower the mpv child X11 window below the webview on Linux
-/// so custom HTML controls render on top of the video.
-///
-/// Only constructed when `use_custom` is true (compositor detected and
-/// `WALACTV_PLAYER_OSC` is not forced). On non-Linux platforms this is
-/// always `None`.
-#[allow(dead_code)]
-pub struct LinuxLoweringState {
-    /// X11 window ID of the top-level Tauri window (the wid given to mpv).
-    pub top_xid: u64,
-    /// Snapshot of children of `top_xid` taken BEFORE mpv created its child.
-    pub pre_children: Vec<u64>,
-    /// Set to true once the mpv child has been successfully lowered.
-    pub child_lowered: AtomicBool,
-}
-
-// ---------------------------------------------------------------------------
 // Locale fix – libmpv requires LC_NUMERIC="C"
 // ---------------------------------------------------------------------------
 
@@ -135,14 +115,11 @@ pub struct MpvInstance {
     stop_flag: Arc<AtomicBool>,
     is_playing: Arc<AtomicBool>,
     app_handle: tauri::AppHandle,
+    gpu_renderer: Option<super::gpu_renderer::GpuRenderer>,
     /// Render context for offscreen EGL/OpenGL rendering (Linux only).
     /// On Windows/macOS, wid embedding is used instead.
     #[cfg(target_os = "linux")]
     render_context: Option<Box<super::render_context::OffscreenRenderContext>>,
-    /// X11 lowering state for Linux custom controls support.
-    /// Populated only when using custom HTML controls with a compositor.
-    /// On non-Linux or fallback mode, this is always None.
-    pub linux_lowering: Option<Arc<LinuxLoweringState>>,
 }
 
 // SAFETY: mpv_handle is thread-safe (libmpv is designed for this).
@@ -174,6 +151,7 @@ impl MpvInstance {
         linux_use_custom: bool,
         uosc_main_path: Option<String>,
         uosc_fonts_dir: Option<String>,
+        render_api: bool,
     ) -> Result<Self, String> {
         ensure_numeric_locale();
 
@@ -184,7 +162,7 @@ impl MpvInstance {
             return Err("mpv_create returned null".to_string());
         }
 
-        let uosc_available = uosc_main_path.is_some();
+        let uosc_available = !render_api && uosc_main_path.is_some();
 
         // Set options before initialize
         for (name, value) in initial_options(linux_use_custom, uosc_available) {
@@ -200,11 +178,29 @@ impl MpvInstance {
             }
         }
 
+        if render_api {
+            for (name, value) in [
+                ("vo", "libmpv"),
+                ("osc", "no"),
+                ("input-default-bindings", "no"),
+                ("input-vo-keyboard", "no"),
+            ] {
+                let name = CString::new(name).expect("static option name");
+                let value = CString::new(value).expect("static option value");
+                let result =
+                    unsafe { (api.mpv_set_option_string)(handle, name.as_ptr(), value.as_ptr()) };
+                if result < 0 {
+                    unsafe { (api.mpv_destroy)(handle) };
+                    return Err(format!("Setting {name:?} for Render API failed: {result}"));
+                }
+            }
+        }
+
         // Windows needs its popup host before initialization. On Linux and
         // macOS, setting wid after initialization preserves the established
         // X11/Wayland embedding path.
         #[cfg(target_os = "windows")]
-        if wid > 0 {
+        if !render_api && wid > 0 {
             if let Ok(c_wid) = CString::new(wid.to_string()) {
                 if let Ok(c_name) = CString::new("wid") {
                     let ret = unsafe {
@@ -295,8 +291,10 @@ impl MpvInstance {
             if let Ok(c_name) = CString::new("script-opts") {
                 if let Ok(c_value) = CString::new(
                     "uosc-scale=1,uosc-proximity_in=40,uosc-proximity_out=120,\
-                     uosc-timeline_style=bar,uosc-timeline_size=52,\
-                     uosc-controls_size=38,uosc-top_bar=always",
+                      uosc-timeline_style=bar,uosc-timeline_size=52,\
+                      uosc-timeline_persistency=video,uosc-controls_size=38,\
+                      uosc-controls_persistency=video,uosc-volume_persistency=video,\
+                      uosc-top_bar=always,uosc-top_bar_persistency=video",
                 ) {
                     let ret = unsafe {
                         (api.mpv_set_option_string)(handle, c_name.as_ptr(), c_value.as_ptr())
@@ -306,7 +304,7 @@ impl MpvInstance {
             }
         }
 
-        // Initialize
+                // Initialize
         let ret = unsafe { (api.mpv_initialize)(handle) };
         if ret < 0 {
             unsafe { (api.mpv_destroy)(handle) };
@@ -318,18 +316,21 @@ impl MpvInstance {
         }
 
         #[cfg(target_os = "linux")]
-        for (name, value) in [("vo", "gpu"), ("gpu-context", "x11egl")] {
-            let c_name = CString::new(name).expect("static option name");
-            let c_value = CString::new(value).expect("static option value");
-            let ret =
-                unsafe { (api.mpv_set_property_string)(handle, c_name.as_ptr(), c_value.as_ptr()) };
-            if ret < 0 {
-                log::warn!("Setting {name}={value} returned {ret} after initialization");
+        if !render_api {
+            for (name, value) in [("vo", "gpu"), ("gpu-context", "x11egl")] {
+                let c_name = CString::new(name).expect("static option name");
+                let c_value = CString::new(value).expect("static option value");
+                let ret = unsafe {
+                    (api.mpv_set_property_string)(handle, c_name.as_ptr(), c_value.as_ptr())
+                };
+                if ret < 0 {
+                    log::warn!("Setting {name}={value} returned {ret} after initialization");
+                }
             }
         }
 
         #[cfg(not(target_os = "windows"))]
-        if wid > 0 {
+        if !render_api && wid > 0 {
             if let Ok(c_wid) = CString::new(wid.to_string()) {
                 let ret = unsafe {
                     (api.mpv_set_property_string)(handle, c"wid".as_ptr(), c_wid.as_ptr())
@@ -362,8 +363,16 @@ impl MpvInstance {
             }
         }
 
-        // Set hwdec to auto-safe (post-init, runtime-configurable)
-        if let Ok(c_hwdec) = CString::new("auto-safe") {
+        // Set hwdec (post-init, runtime-configurable).
+        //
+        // Empirically verified on this hardware (Ryzen 7 5700U / Vega iGPU):
+        // `auto-safe` picks vaapi-copy (hardware decode + GPU->RAM->GPU copy
+        // every frame), which caps 4K playback at ~15-24fps. Forcing `vaapi`
+        // makes mpv fall back to SOFTWARE decoding of 10-bit 4K HEVC here
+        // (yuv420p10, the offscreen surfaceless context can't do zero-copy
+        // interop for p010), but that avoids the per-frame GPU round-trip and
+        // sustains ~24-25fps realtime on 23.976fps content. Keep `vaapi`.
+        if let Ok(c_hwdec) = CString::new("vaapi") {
             let _ = unsafe {
                 (api.mpv_set_property_string)(handle, c"hwdec".as_ptr(), c_hwdec.as_ptr())
             };
@@ -381,10 +390,23 @@ impl MpvInstance {
             stop_flag,
             is_playing,
             app_handle,
+            gpu_renderer: None,
             #[cfg(target_os = "linux")]
             render_context: None,
-            linux_lowering: None,
         })
+    }
+
+    pub fn start_gpu_renderer(
+        &mut self,
+        surface: Arc<crate::mpv::gpu_surface::GpuVideoSurface>,
+    ) -> Result<(), String> {
+        self.gpu_renderer = Some(super::gpu_renderer::GpuRenderer::start(
+            self.app_handle.clone(),
+            self.handle,
+            Arc::clone(&self.api),
+            surface,
+        )?);
+        Ok(())
     }
 
     // ------------------------------------------------------------------
@@ -635,8 +657,6 @@ impl MpvInstance {
     /// - time-pos, duration, pause, media-title
     /// - track-list, eof-reached, demuxer-cache-time
     ///
-    /// On Linux with custom controls, passes the lowering state so the
-    /// event loop can lower the mpv child window on `file-loaded`.
     pub fn start_event_loop(&self) {
         self.stop_event_loop();
 
@@ -649,21 +669,13 @@ impl MpvInstance {
         let handle_ptr = self.handle as usize;
         let stop_flag = Arc::clone(&self.stop_flag);
         let is_playing = Arc::clone(&self.is_playing);
-        let linux_lowering = self.linux_lowering.clone();
 
         let thread_handle = std::thread::Builder::new()
             .name("mpv-event-loop".into())
             .spawn(move || {
                 let handle = handle_ptr as *mut mpv_handle;
                 unsafe {
-                    mpv_event_loop(
-                        app_handle,
-                        api,
-                        handle,
-                        stop_flag,
-                        is_playing,
-                        linux_lowering,
-                    );
+                    mpv_event_loop(app_handle, api, handle, stop_flag, is_playing);
                 }
             })
             .expect("Failed to spawn mpv event loop thread");
@@ -739,6 +751,9 @@ impl MpvInstance {
         crate::mpv::platform::windows::clear_input_bridge(self.handle);
 
         self.stop_event_loop();
+        if let Some(mut renderer) = self.gpu_renderer.take() {
+            renderer.stop();
+        }
 
         // Clean up the render context before destroying the mpv handle.
         // The render loop reads mpv properties (dwidth/dheight), so it must
@@ -773,6 +788,14 @@ impl MpvInstance {
     pub fn get_render_frame(&self) -> Option<super::render_context::FrameBuffer> {
         self.render_context.as_ref().and_then(|rc| rc.get_frame())
     }
+
+    /// Get the latest rendered frame counter (cheap poll for the frontend).
+    #[cfg(target_os = "linux")]
+    pub fn get_frame_counter(&self) -> u32 {
+        self.render_context
+            .as_ref()
+            .map_or(0, |rc| rc.get_frame_counter())
+    }
 }
 
 impl Drop for MpvInstance {
@@ -781,13 +804,13 @@ impl Drop for MpvInstance {
         crate::mpv::platform::windows::clear_input_bridge(self.handle);
 
         self.stop_event_loop();
+        if let Some(mut renderer) = self.gpu_renderer.take() {
+            renderer.stop();
+        }
 
         // mpv_render_context_free DEBE ejecutarse antes de mpv_destroy.
-        // Drop fields despues del cuerpo del drop, asi que forzamos el drop aqui.
         #[cfg(target_os = "linux")]
-        {
-            self.render_context.take();
-        }
+        self.render_context.take();
 
         if !self.handle.is_null() {
             unsafe {

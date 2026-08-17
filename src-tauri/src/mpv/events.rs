@@ -7,14 +7,13 @@ use crate::mpv::ffi::{
     c_str_to_string, mpv_event_end_file, mpv_event_id, mpv_event_log_message, mpv_event_property,
     mpv_format, mpv_handle, mpv_node, MpvApi,
 };
-use crate::mpv::handle::LinuxLoweringState;
 use serde::Serialize;
 use serde_json::json;
 use std::ffi::{c_char, c_int, CStr, CString};
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 #[cfg(target_os = "windows")]
-use std::time::{Duration, Instant};
+use std::time::Duration;
 #[cfg(target_os = "windows")]
 use tauri::Manager;
 use tauri::{AppHandle, Emitter};
@@ -107,10 +106,6 @@ pub struct MpvRestartPayload;
 /// Observes a fixed set of properties and forwards their changes to the
 /// frontend via Tauri's event system.
 ///
-/// On Linux with custom controls, `linux_lowering` carries the X11 state
-/// needed to lower the mpv child window below the webview on `file-loaded`
-/// so custom HTML controls render on top of the video.
-///
 /// # Safety
 /// `handle` must be a live libmpv handle owned by the event-loop lifetime.
 pub unsafe fn mpv_event_loop(
@@ -119,7 +114,6 @@ pub unsafe fn mpv_event_loop(
     handle: *mut mpv_handle,
     stop_flag: Arc<AtomicBool>,
     is_playing: Arc<AtomicBool>,
-    linux_lowering: Option<Arc<LinuxLoweringState>>,
 ) {
     // Create a client handle for event processing (reduces interference
     // with the main mpv_handle operations).
@@ -132,7 +126,7 @@ pub unsafe fn mpv_event_loop(
 
     // mpv_request_log_messages is per-handle; keep important diagnostics while
     // avoiding verbose messages that may contain sensitive stream URLs.
-    let log_level = if cfg!(target_os = "windows") {
+    let log_level = if cfg!(any(target_os = "windows", debug_assertions)) {
         "info"
     } else {
         "warn"
@@ -260,9 +254,6 @@ pub unsafe fn mpv_event_loop(
     let mut last_is_buffering: bool = false;
     let mut last_demuxer_cache_time: f64 = 0.0;
     let mut end_file_emitted: bool = false;
-    #[cfg(target_os = "windows")]
-    let mut last_input_snapshot = Instant::now() - Duration::from_secs(2);
-
     loop {
         if stop_flag.load(Ordering::Relaxed) {
             break;
@@ -270,17 +261,6 @@ pub unsafe fn mpv_event_loop(
 
         if take_back_request(&api, event_client) {
             let _ = app_handle.emit("player://close", ());
-        }
-
-        #[cfg(target_os = "windows")]
-        if last_input_snapshot.elapsed() >= Duration::from_secs(2) {
-            if let Some(host) = app_handle
-                .try_state::<crate::mpv::platform::windows::WindowsVideoHost>()
-                .filter(|host| host.is_visible())
-            {
-                let _ = host.log_input_snapshot();
-            }
-            last_input_snapshot = Instant::now();
         }
 
         let event = unsafe { (api.mpv_wait_event)(event_client, 0.1) };
@@ -311,56 +291,12 @@ pub unsafe fn mpv_event_loop(
                 #[cfg(target_os = "windows")]
                 log_windows_mpv_state(&api, event_client);
 
-                #[cfg(target_os = "windows")]
-                if let Some(host) =
-                    app_handle.try_state::<crate::mpv::platform::windows::WindowsVideoHost>()
-                {
-                    if let Err(e) = host.focus() {
-                        log::warn!("WindowsVideoHost focus on file-loaded failed: {e}");
-                    }
-                }
-
-                // On Linux with custom controls, lower mpv child window below the
-                // webview so HTML controls render on top of the video.
-                #[cfg(target_os = "linux")]
-                if let Some(ref state) = linux_lowering {
-                    if !state.child_lowered.load(Ordering::Acquire) {
-                        eprintln!("[mpv-events] Intentando bajar ventana mpv (top_xid=0x{:x}, {} pre-hijos)",
-                            state.top_xid, state.pre_children.len());
-                        match crate::mpv::platform::linux::lower_mpv_child(
-                            state.top_xid,
-                            &state.pre_children,
-                        ) {
-                            Ok(true) => {
-                                eprintln!(
-                                    "[mpv-events] Ventana mpv bajada correctamente bajo el webview"
-                                );
-                                state.child_lowered.store(true, Ordering::Release);
-                            }
-                            Ok(false) => {
-                                eprintln!("[mpv-events] No se encontro ventana mpv para bajar (se reintentara en proximo file-loaded)");
-                            }
-                            Err(e) => {
-                                eprintln!("[mpv-events] Error al bajar ventana mpv: {e}");
-                            }
-                        }
-                    }
-                }
             }
 
             mpv_event_id::MPV_EVENT_PLAYBACK_RESTART => {
                 is_playing.store(!last_is_paused, Ordering::Relaxed);
                 let _ = app_handle.emit("mpv://playback-restart", MpvRestartPayload);
                 emit_unified_event(&app_handle, "playback-restart", None);
-
-                #[cfg(target_os = "windows")]
-                if let Some(host) =
-                    app_handle.try_state::<crate::mpv::platform::windows::WindowsVideoHost>()
-                {
-                    if let Err(e) = host.focus() {
-                        log::warn!("WindowsVideoHost focus on playback-restart failed: {e}");
-                    }
-                }
             }
 
             mpv_event_id::MPV_EVENT_END_FILE => {
@@ -640,26 +576,44 @@ fn observe(api: &MpvApi, client: *mut mpv_handle, id: u64, name: &str, format: m
 }
 
 #[cfg(target_os = "windows")]
-fn log_windows_mpv_state(api: &MpvApi, client: *mut mpv_handle) {
-    fn property(api: &MpvApi, client: *mut mpv_handle, name: &str) -> String {
-        let Ok(name) = CString::new(name) else {
-            return "invalid-name".to_string();
-        };
-        let value = unsafe { (api.mpv_get_property_string)(client, name.as_ptr()) };
-        if value.is_null() {
-            return "unavailable".to_string();
-        }
-        let result = unsafe { CStr::from_ptr(value).to_string_lossy().to_string() };
-        unsafe { (api.mpv_free)(value.cast()) };
-        result
+fn command(api: &MpvApi, client: *mut mpv_handle, args: &[&str]) {
+    let Ok(values) = args
+        .iter()
+        .map(|arg| CString::new(*arg))
+        .collect::<Result<Vec<_>, _>>()
+    else {
+        return;
+    };
+    let mut pointers = values.iter().map(|arg| arg.as_ptr()).collect::<Vec<_>>();
+    pointers.push(std::ptr::null());
+    let result = unsafe { (api.mpv_command)(client, pointers.as_ptr()) };
+    if result < 0 {
+        log::warn!("mpv command {args:?} failed: {result}");
     }
+}
 
+#[cfg(target_os = "windows")]
+fn string_property(api: &MpvApi, client: *mut mpv_handle, name: &str) -> String {
+    let Ok(name) = CString::new(name) else {
+        return "invalid-name".to_string();
+    };
+    let value = unsafe { (api.mpv_get_property_string)(client, name.as_ptr()) };
+    if value.is_null() {
+        return "unavailable".to_string();
+    }
+    let result = unsafe { CStr::from_ptr(value).to_string_lossy().to_string() };
+    unsafe { (api.mpv_free)(value.cast()) };
+    result
+}
+
+#[cfg(target_os = "windows")]
+fn log_windows_mpv_state(api: &MpvApi, client: *mut mpv_handle) {
     crate::mpv::platform::windows::diagnostic_log(format!(
         "file-loaded mpv-state script-names={:?} osc={:?} input-vo-keyboard={:?} input-cursor={:?}",
-        property(api, client, "script-names"),
-        property(api, client, "osc"),
-        property(api, client, "input-vo-keyboard"),
-        property(api, client, "input-cursor"),
+        string_property(api, client, "script-names"),
+        string_property(api, client, "osc"),
+        string_property(api, client, "input-vo-keyboard"),
+        string_property(api, client, "input-cursor"),
     ));
 }
 

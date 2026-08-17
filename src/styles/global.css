@@ -75,6 +75,12 @@ html, body, #root {
   -webkit-user-select: none;
 }
 
+html.player-active,
+html.player-active body,
+html.player-active #root {
+  background: transparent;
+}
+
 /* ── Scrollbar ───────────────────────────────────── */
 ::-webkit-scrollbar {
   width: 5px;

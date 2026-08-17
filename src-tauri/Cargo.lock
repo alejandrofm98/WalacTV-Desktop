@@ -5768,10 +5768,12 @@ dependencies = [
 name = "walactv-desktop"
 version = "1.0.0"
 dependencies = [
+ "anyhow",
  "keyring",
  "libc",
  "libloading 0.8.9",
  "librqbit",
+ "librqbit-core",
  "librqbit-dualstack-sockets",
  "log",
  "parking_lot",
@@ -5786,7 +5788,6 @@ dependencies = [
  "tauri-plugin-updater",
  "tokio",
  "windows-sys 0.59.0",
- "x11",
 ]
 
 [[package]]

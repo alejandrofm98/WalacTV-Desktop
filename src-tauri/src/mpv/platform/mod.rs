@@ -3,8 +3,6 @@
 //! Provides a unified interface to get the platform window ID (wid) that
 //! mpv uses for hardware-accelerated video output embedding.
 
-#[cfg(target_os = "linux")]
-pub mod linux;
 #[cfg(target_os = "macos")]
 pub mod macos;
 #[cfg(target_os = "windows")]

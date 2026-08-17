@@ -1,0 +1,11 @@
+{
+  "permissions": {
+    "allow": [
+      "Shell(ls -la ~/.local/share/opencode/ 2>/dev/null; echo \"---\"; ls -la ~/.config/opencode/ 2>/dev/null; echo \"---\"; ls -la ~/.opencode/ 2>/dev/null)",
+      "Shell(sqlite3:*)",
+      "Shell(sqlite3 ~/.local/share/opencode/opencode.db \".schema message\" 2>/dev/null; echo \"===\"; sqlite3 ~/.local/share/opencode/opencode.db \".schema part\" 2>/dev/null)"
+    ],
+    "deny": [],
+    "defaultMode": "default"
+  }
+}
