@@ -146,7 +146,10 @@ export function SeriesDetail({ item }: Props) {
     const key = `${cwEntry.seasonNumber}|${cwEntry.episodeNumber}`
     const el = episodeRefs.current.get(key)
     if (el) {
-      const raf = requestAnimationFrame(() => el.scrollIntoView({ block: 'center', behavior: 'smooth' }))
+      const raf = requestAnimationFrame(() => {
+        el.scrollIntoView({ block: 'center', behavior: 'smooth' })
+        el.focus({ preventScroll: true })
+      })
       return () => cancelAnimationFrame(raf)
     }
   }, [cwEntry, selectedSeason, episodes])
@@ -417,7 +420,7 @@ export function SeriesDetail({ item }: Props) {
                     className={`${styles.episodeRow} ${isContinue ? styles.episodeRowActive : ''}`}
                     role="button"
                     tabIndex={0}
-                     onClick={() => { void handlePlayEpisode(ep) }}
+                    onClick={() => { void handlePlayEpisode(ep) }}
                     onContextMenu={(e) => { e.preventDefault(); setContextEpisode(ep) }}
                       onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); void handlePlayEpisode(ep) } }}
                     aria-label={`Reproducir T${ep.seasonNumber ?? '?'} E${ep.episodeNumber ?? '?'}: ${ep.tmdbTitle ?? ep.title}`}

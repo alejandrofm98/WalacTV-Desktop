@@ -1,7 +1,7 @@
 import { useEffect, useRef } from 'react'
 import { invoke } from '@tauri-apps/api/core'
 import { useAppStore } from './store/useAppStore'
-import { login as apiLogin, setToken, getToken, getHomeCatalog, getWatchProgress, getWatchedItems, applyWatchedState, getPreferredLanguage, cwGroupKey } from './api/client'
+import { login as apiLogin, setToken, getToken, getHomeCatalog, getHomeContinueWatching, getWatchedItems, applyWatchedState, getPreferredLanguage, cwGroupKey } from './api/client'
 import { loadCredentials } from './credentials'
 import { checkForUpdates } from './updater'
 import { LoginScreen } from './components/LoginScreen'
@@ -44,9 +44,12 @@ export default function App() {
     const savedUser = localStorage.getItem('walactv_username')
     if (saved && savedUser) {
       setToken(saved)
-      loadCredentials().catch(() => {})
-      useAppStore.setState({ signedIn: true, token: saved, username: savedUser })
-      loadData()
+      loadCredentials()
+        .then(() => {
+          useAppStore.setState({ signedIn: true, token: saved, username: savedUser })
+          return loadData()
+        })
+        .catch(() => useAppStore.getState().signOut())
     }
   }, [])
 
@@ -77,7 +80,7 @@ export default function App() {
       const lang = getPreferredLanguage()
       const [home, cw, watched] = await Promise.all([
         getHomeCatalog(lang).catch(() => null),
-        getWatchProgress(20).catch(() => ({ items: [] })),
+        getHomeContinueWatching(20).catch(() => ({ items: [] })),
         getWatchedItems(500).catch(() => ({ items: [] })),
       ])
 
@@ -167,7 +170,7 @@ export default function App() {
     prevPlayerItemRef.current = playerItem
     document.documentElement.classList.toggle('player-active', Boolean(playerItem))
     if (prev && !playerItem) {
-      getWatchProgress(20)
+      getHomeContinueWatching(20)
         .then((cw) => {
           if (cw?.items) setContinueWatching(buildCwMap(cw.items))
         })

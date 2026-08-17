@@ -1,7 +1,7 @@
 import { useMemo, useCallback, useEffect, useRef, useState } from 'react'
 import { useAppStore } from '../store/useAppStore'
 import { SectionRow } from './SectionRow'
-import { getContentById, getSeriesEpisodes, cwGroupKey, markSeriesEpisodesWatched, markWatched, saveWatchProgress, getAllSeriesEpisodes, getWatchProgress, getWatchedItems, applyWatchedState, removeWatchProgress } from '../api/client'
+import { getContentById, getSeriesEpisodes, cwGroupKey, markSeriesEpisodesWatched, markWatched, saveWatchProgress, getAllSeriesEpisodes, getHomeContinueWatching, getWatchedItems, applyWatchedState, removeWatchProgress } from '../api/client'
 import type { CatalogItem, BrowseSection, WatchProgressItem } from '../api/types'
 import { pickFirstUnwatched } from '../utils/series'
 import styles from './HomeContent.module.css'
@@ -112,7 +112,7 @@ export function HomeContent() {
       } else {
         await markWatched(item.stableId)
       }
-      const { items } = await getWatchProgress(20)
+      const { items } = await getHomeContinueWatching(20)
       const map = new Map<string, WatchProgressItem>()
       for (const entry of items) {
         const key = cwGroupKey(entry.contentType, entry.seriesName, entry.contentId)
@@ -167,7 +167,7 @@ export function HomeContent() {
     }
 
     try {
-      const { items } = await getWatchProgress(20)
+      const { items } = await getHomeContinueWatching(20)
       const map = new Map<string, WatchProgressItem>()
       for (const item of items) {
         const key = cwGroupKey(item.contentType, item.seriesName, item.contentId)
@@ -187,7 +187,7 @@ export function HomeContent() {
       console.error('removeWatchProgress failed', err),
     )
     try {
-      const { items } = await getWatchProgress(20)
+      const { items } = await getHomeContinueWatching(20)
       const map = new Map<string, WatchProgressItem>()
       for (const item of items) {
         const key = cwGroupKey(item.contentType, item.seriesName, item.contentId)

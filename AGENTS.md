@@ -168,6 +168,7 @@ Ver secciones 4.1 y 4.2 de `iptv-api/AGENTS.md`. Los endpoints principales:
 - `GET /api/series/{name}/episodes?page=...`
 - `GET /api/channel-favorites`
 - `GET /api/watch-progress`
+- `GET /api/watch-progress/continue` — resumen para Home, una entrada por película o serie
 - `GET /api/playback-preferences/{movie|series}/{catalog_id}`
 - `PUT /api/playback-preferences/{movie|series}/{catalog_id}`
 - `GET /api/calendar/{date}?client=desktop`
