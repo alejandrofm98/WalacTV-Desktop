@@ -126,11 +126,7 @@ export function HomeContent() {
   }, [setContinueWatching, refreshWatchedState])
 
   const handleCwViewDetail = useCallback((item: CatalogItem, entry: WatchProgressItem) => {
-    if (item.kind === 'SERIES') {
-      openDetail({ ...item, stableId: entry.contentId })
-      return
-    }
-    openDetail(item)
+    openDetail({ ...item, stableId: entry.contentId, catalogId: entry.contentId })
   }, [openDetail])
 
   const handleCwMarkWatched = useCallback(async (entry: WatchProgressItem) => {
@@ -212,6 +208,8 @@ export function HomeContent() {
     if (continueWatchingEntries.size === 0) return null
     const items: CatalogItem[] = [...continueWatchingEntries.values()].map((e) => ({
       stableId: cwGroupKey(e.contentType, e.seriesName, e.contentId),
+      catalogId: e.contentId,
+      imdbId: e.imdbId ?? null,
       title: e.title,
       subtitle: e.seriesName || '',
       seriesName: e.seriesName || null,
