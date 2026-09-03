@@ -1,15 +1,20 @@
 {
   "identifier": "default",
   "description": "Capability for the main window",
-  "windows": ["main"],
+  "windows": [
+    "main"
+  ],
   "permissions": [
     "core:default",
     {
       "identifier": "http:default",
       "allow": [
-        { "url": "https://iptv.walerike.com" },
-        { "url": "https://dev-iptv.walerike.com" },
-        { "url": "https://torrentio.strem.fun" }
+        {
+          "url": "https://iptv.walerike.com"
+        },
+        {
+          "url": "https://torrentio.strem.fun"
+        }
       ]
     },
     "http:allow-fetch",
