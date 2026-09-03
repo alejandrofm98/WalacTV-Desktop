@@ -236,7 +236,7 @@ mod windows {
                 cDepthBits: 0,
                 cStencilBits: 0,
                 cAuxBuffers: 0,
-                iLayerType: PFD_MAIN_PLANE,
+                iLayerType: PFD_MAIN_PLANE as u8,
                 bReserved: 0,
                 dwLayerMask: 0,
                 dwVisibleMask: 0,
