@@ -572,10 +572,149 @@ export async function getContentById(contentType: string, contentId: string): Pr
   }
 }
 
+// ── Torrentio directo desde el cliente (sin pasar por iptv-api) ─────────
+// Evita el proxy caido del servidor (181.177.103.211:9613) y el 400 "Ruta no valida".
+// Replica la logica de iptv-api/src/iptv_api/services/torrentio_service.py
+
+const TORRENTIO_BASE_URL = (import.meta.env.VITE_TORRENTIO_BASE_URL as string | undefined)?.replace(/\/$/, '') || 'https://torrentio.strem.fun'
+const TORRENTIO_PROVIDERS = (import.meta.env.VITE_TORRENTIO_PROVIDERS as string | undefined) ?? 'wolfmax4k'
+const TORRENTIO_LANGUAGES = (import.meta.env.VITE_TORRENTIO_LANGUAGES as string | undefined) ?? 'spanish,english'
+const TORRENTIO_TIMEOUT_MS = 15_000
+const TORRENTIO_CACHE_TTL_MS = 60_000
+
+const _IMDB_RE = /^tt\d+$/i
+const _SEEDERS_RE = /[👤]\s*([\d,.]+)/
+const _SIZE_RE = /💾\s*([\d,.]+)\s*(KB|MB|GB|TB)/i
+const _QUALITY_RE = /\b(4k|2160p|1080p|720p|480p)\b/i
+
+const _LANG_FLAGS: Record<string, string> = { '🇪🇸': 'ES', '🇬🇧': 'EN', '🇯🇵': 'JP' }
+const _EXCLUDED_MARKERS = ['🇲🇽', 'latino']
+const _FOREIGN_FLAGS = ['🇮🇹', '🇵🇹', '🇷🇺', '🇫🇷', '🇩🇪', '🇵🇱', '🇨🇳', '🇯🇵']
+
+const torrentioCache = new Map<string, { expiresAt: number; items: StreamOption[] }>()
+
+function torrentioConfigPath(): string {
+  const parts: string[] = []
+  if (TORRENTIO_PROVIDERS) parts.push(`providers=${TORRENTIO_PROVIDERS}`)
+  if (TORRENTIO_LANGUAGES) parts.push(`language=${TORRENTIO_LANGUAGES}`)
+  return parts.join('|')
+}
+
+function torrentioDetectLanguage(title: string): string | null {
+  const lowered = title.toLowerCase()
+  if (_EXCLUDED_MARKERS.some((m) => lowered.includes(m.toLowerCase()) || title.includes(m))) return null
+  const hasForeign = _FOREIGN_FLAGS.some((f) => title.includes(f))
+  const hasKnown = Object.keys(_LANG_FLAGS).some((f) => title.includes(f))
+  if (hasForeign && !hasKnown) return null
+  if (title.includes('🇪🇸')) return 'ES'
+  if (title.includes('🇬🇧')) return 'EN'
+  if (title.includes('🇯🇵') || /\b(japanese|japonesa?|japon(?:es|és)?)\b/i.test(lowered)) return 'JP'
+  if (title.includes('日本語') || title.includes('日本')) return 'JP'
+  if (/\b(spanish|castellano)\b/i.test(lowered)) return 'ES'
+  if (/\benglish\b/i.test(lowered)) return 'EN'
+  for (const [flag, code] of Object.entries(_LANG_FLAGS)) {
+    if (title.includes(flag)) return code
+  }
+  return 'EN'
+}
+
+function torrentioProviderLabel(title: string): string {
+  const marker = '⚙️'
+  if (title.includes(marker)) {
+    const after = title.slice(title.indexOf(marker) + marker.length).trim()
+    const label = after.split('\n')[0]?.trim()
+    if (label) return label
+  }
+  return 'Torrentio'
+}
+
+function torrentioParseSeeders(title: string): number | null {
+  const m = _SEEDERS_RE.exec(title)
+  if (!m) return null
+  const n = parseInt(m[1].replace(/[,.]/g, ''), 10)
+  return Number.isNaN(n) ? null : n
+}
+
+function torrentioParseSizeBytes(title: string): number | null {
+  const m = _SIZE_RE.exec(title)
+  if (!m) return null
+  const v = parseFloat(m[1].replace(',', '.'))
+  if (Number.isNaN(v)) return null
+  const mult: Record<string, number> = { KB: 1024, MB: 1024 ** 2, GB: 1024 ** 3, TB: 1024 ** 4 }
+  const k = m[2].toUpperCase()
+  return Math.round(v * (mult[k] ?? 0)) || null
+}
+
+function torrentioNormalize(raw: Record<string, unknown>): StreamOption | null {
+  const infoHash = String((raw['infoHash'] as string | undefined) ?? '').trim()
+  if (!/^[a-fA-F0-9]{40}$/.test(infoHash)) return null
+  const title = String((raw['title'] as string | undefined) ?? '').trim()
+  const lang = torrentioDetectLanguage(title)
+  if (lang == null) return null
+  const name = String((raw['name'] as string | undefined) ?? '').trim()
+  const qm = _QUALITY_RE.exec(name) ?? _QUALITY_RE.exec(title)
+  const quality = qm ? qm[1].toUpperCase() : null
+  const providerLabel = torrentioProviderLabel(title)
+  return {
+    label: providerLabel,
+    url: '',
+    rawUrl: '',
+    quality,
+    source: 'torrentio',
+    provider: providerLabel,
+    language: lang,
+    playable: false,
+    requiresResolution: true,
+    infoHash,
+    fileIdx: (raw['fileIdx'] as number | null) ?? null,
+    seeders: torrentioParseSeeders(title),
+    sizeBytes: torrentioParseSizeBytes(title),
+    torrentTitle: title,
+  }
+}
+
+async function fetchTorrentioStreams(contentType: 'movie' | 'series', contentId: string): Promise<StreamOption[]> {
+  if (!_IMDB_RE.test(contentId.split(':')[0] ?? '')) {
+    throw new Error('imdb_id debe tener formato tt1234567')
+  }
+  const config = torrentioConfigPath()
+  const cacheKey = `${config}/${contentType}/${contentId}`
+  const now = Date.now()
+  const cached = torrentioCache.get(cacheKey)
+  if (cached && cached.expiresAt > now) return [...cached.items]
+
+  const encodedConfig = encodeURIComponent(config).replace(/%7C/g, '|').replace(/%3D/g, '=').replace(/%2C/g, ',')
+  // El addon espera el config sin encodear el separador | y = , (igual que en el servicio python)
+  // Usamos la forma que funciona en produccion: providers=wolfmax4k|language=spanish,english
+  // quote(..., safe="=,") en python deja | encodeado como %7C, ambas formas funcionan.
+  const url = `${TORRENTIO_BASE_URL}/${config}/stream/${contentType}/${contentId}.json`
+  // Fallback: si el servidor responde 400 por el | sin encodear, el fetch directo con | funciona (probado con curl)
+  void encodedConfig
+
+  const controller = new AbortController()
+  const timer = setTimeout(() => controller.abort(), TORRENTIO_TIMEOUT_MS)
+  try {
+    const resp = await fetch(url, {
+      headers: { Accept: 'application/json', 'User-Agent': 'WalacTV-Desktop/Torrentio' },
+      signal: controller.signal,
+    } as unknown as RequestInit)
+    if (!resp.ok) throw new Error(`${resp.status} ${resp.statusText}`)
+    const payload = (await resp.json()) as { streams?: unknown }
+    const rawStreams = Array.isArray(payload?.streams) ? payload.streams as Record<string, unknown>[] : []
+    const items = rawStreams.map((r) => torrentioNormalize(r)).filter((x): x is StreamOption => x != null)
+    // trim cache
+    for (const [k, v] of torrentioCache.entries()) if (v.expiresAt <= now) torrentioCache.delete(k)
+    torrentioCache.set(cacheKey, { expiresAt: now + TORRENTIO_CACHE_TTL_MS, items })
+    return [...items]
+  } finally {
+    clearTimeout(timer)
+  }
+}
+
 export async function getTorrentioMovieStreams(movieId: string): Promise<StreamOption[]> {
-  console.log(`[Torrentio] movie lookup: ${movieId}`)
-  const raw = await get<{ items?: RawStreamOption[] }>(`/api/torrentio/movies/${encodeURIComponent(movieId)}`)
-  const streams = mapStreamOptions(raw.items ?? [])
+  console.log(`[Torrentio] movie lookup (direct): ${movieId}`)
+  if (!_IMDB_RE.test(movieId)) throw new Error('La pelicula no tiene imdb_id para consultar Torrentio')
+  const streams = await fetchTorrentioStreams('movie', movieId)
   console.log(`[Torrentio] movie streams: ${streams.length}`)
   return streams
 }
@@ -585,13 +724,43 @@ export async function getTorrentioEpisodeStreams(
   season: number,
   episode: number,
 ): Promise<StreamOption[]> {
-  console.log(`[Torrentio] episode lookup: ${seriesId} S${season}E${episode}`)
-  const raw = await get<{ items?: RawStreamOption[] }>(
-    `/api/torrentio/series/${encodeURIComponent(seriesId)}/episodes/${season}/${episode}`,
-  )
-  const streams = mapStreamOptions(raw.items ?? [])
+  console.log(`[Torrentio] episode lookup (direct): ${seriesId} S${season}E${episode}`)
+  if (!_IMDB_RE.test(seriesId)) throw new Error('La serie no tiene imdb_id para consultar Torrentio')
+  if (season < 0 || episode < 0) throw new Error('season y episode deben ser positivos')
+  const streams = await fetchTorrentioStreams('series', `${seriesId}:${season}:${episode}`)
   console.log(`[Torrentio] episode streams: ${streams.length}`)
   return streams
+}
+
+/** Un stream es reproducible si tiene URL real o infoHash de torrent. */
+export function isPlayableOption(o: StreamOption): boolean {
+  return Boolean((o.url ?? '').trim() || o.infoHash)
+}
+
+function qualityRankOf(o: StreamOption): number {
+  const q = (o.quality ?? '').toLowerCase()
+  if (q.includes('2160') || q === '4k') return 4
+  if (q.includes('1080')) return 3
+  if (q.includes('720')) return 2
+  const hay = `${o.label} ${o.torrentTitle ?? ''}`.toLowerCase()
+  if (hay.includes('2160') || hay.includes('4k')) return 4
+  if (hay.includes('1080')) return 3
+  if (hay.includes('720')) return 2
+  return 1
+}
+
+/** Indice del mejor stream reproducible: torrent por calidad+seeds, si no el primero valido. */
+export function pickBestStreamIndex(options: StreamOption[]): number {
+  let best = -1
+  let bestScore = -1
+  options.forEach((o, i) => {
+    if (!isPlayableOption(o)) return
+    const score = o.infoHash
+      ? 100 + qualityRankOf(o) * 10 + Math.min(o.seeders ?? 0, 9)
+      : qualityRankOf(o)
+    if (score > bestScore) { bestScore = score; best = i }
+  })
+  return best >= 0 ? best : 0
 }
 
 // Watch Progress

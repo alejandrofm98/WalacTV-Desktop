@@ -8,7 +8,8 @@
       "identifier": "http:default",
       "allow": [
         { "url": "https://iptv.walerike.com" },
-        { "url": "https://dev-iptv.walerike.com" }
+        { "url": "https://dev-iptv.walerike.com" },
+        { "url": "https://torrentio.strem.fun" }
       ]
     },
     "http:allow-fetch",

@@ -2,7 +2,7 @@ import { useState, useEffect, useRef, useCallback, useMemo } from 'react'
 import { createPortal } from 'react-dom'
 import { Play, ArrowLeft } from 'lucide-react'
 import type { CatalogItem, StreamOption, WatchProgressItem } from '../api/types'
-import { getAllSeriesEpisodes, getWatchProgress, markSeriesEpisodesWatched, cwGroupKey, getTorrentioEpisodeStreams } from '../api/client'
+import { getAllSeriesEpisodes, getWatchProgress, markSeriesEpisodesWatched, cwGroupKey, getTorrentioEpisodeStreams, isPlayableOption, pickBestStreamIndex } from '../api/client'
 import { useAppStore } from '../store/useAppStore'
 import styles from './SeriesDetail.module.css'
 
@@ -83,6 +83,11 @@ export function SeriesDetail({ item }: Props) {
   const preselectedRef = useRef(false)
   const wasPlayingRef = useRef(false)
   const episodeRefs = useRef<Map<string, HTMLElement>>(new Map())
+  // imdb del serie: el tile de Continuar viendo llega sin imdb_id, se recupera
+  // del primer episodio que lo traiga (el backend lo incluye por episodio).
+  const [seriesImdb, setSeriesImdb] = useState<string | null>(
+    item.imdbId && /^tt\d+$/i.test(item.imdbId) ? item.imdbId : null,
+  )
 
   const fetchEpisodes = useCallback(() => {
     if (!seriesId) return
@@ -91,6 +96,11 @@ export function SeriesDetail({ item }: Props) {
     return getAllSeriesEpisodes(seriesId)
       .then((eps) => {
         setEpisodes(eps ?? [])
+        setSeriesImdb((current) => {
+          if (current) return current
+          const found = (eps ?? []).find((e) => e.imdbId && /^tt\d+$/i.test(e.imdbId))
+          return found?.imdbId ?? null
+        })
         if (!preselectedRef.current) {
           preselectedRef.current = true
           const cw = computeCwEntry(item, useAppStore.getState().continueWatchingEntries)
@@ -191,26 +201,7 @@ export function SeriesDetail({ item }: Props) {
     return sortedAll[0] ?? null
   }, [episodes, cwEntry])
 
-  // Reproduccion directa: mezcla Torrentio con los streams del episodio y abre
-  // el player. La fila del episodio reproduce el mejor stream disponible.
-  const handlePlayEpisode = useCallback(async (episode: CatalogItem) => {
-    if (episode.seasonNumber != null && episode.episodeNumber != null) {
-      try {
-        const streams = await getTorrentioEpisodeStreams(
-          item.imdbId ?? item.catalogId ?? item.stableId,
-          episode.seasonNumber,
-          episode.episodeNumber,
-        )
-        openPlayer({ ...episode, streamOptions: [...episode.streamOptions, ...streams] })
-        return
-      } catch {
-        // IPTV playback remains available when Torrentio is unavailable.
-      }
-    }
-    openPlayer(episode)
-  }, [item, openPlayer])
-
-  // Abre el modal de fuentes para el episodio: consulta Torrentio y combina
+  // Abre el modal de fuentes para el episodio: consulta Torrentio directo y combina
   // con los streams IPTV del episodio. La mejor fuente queda preseleccionada.
   const handleChooseSource = useCallback(async (episode: CatalogItem) => {
     setSourceEpisode(episode)
@@ -218,26 +209,54 @@ export function SeriesDetail({ item }: Props) {
     setSourceStreams([])
     setSourceError(false)
     setSourceLoading(true)
-    const iptv = episode.streamOptions.filter((o) => !isTorrentStream(o))
+    const iptv = episode.streamOptions.filter((o) => isPlayableOption(o) && !isTorrentStream(o))
     const base = [...iptv, ...episode.streamOptions.filter(isTorrentStream)]
-    if (episode.seasonNumber != null && episode.episodeNumber != null) {
+    if (episode.seasonNumber != null && episode.episodeNumber != null && seriesImdb) {
       try {
         const torrents = await getTorrentioEpisodeStreams(
-          item.imdbId ?? item.catalogId ?? item.stableId,
+          seriesImdb,
           episode.seasonNumber,
           episode.episodeNumber,
         )
         setSourceStreams([...base, ...torrents])
-      } catch {
+      } catch (err) {
+        console.warn('[Torrentio] source modal lookup failed:', err)
         setSourceStreams(base)
         setSourceError(true)
       }
     } else {
       setSourceStreams(base)
-      setSourceError(true)
+      setSourceError(false)
     }
     setSourceLoading(false)
-  }, [item])
+  }, [seriesImdb])
+
+  // Reproduccion directa: mezcla Torrentio directo (sin servidor) con los streams del episodio.
+  const handlePlayEpisode = useCallback(async (episode: CatalogItem) => {
+    if (episode.seasonNumber != null && episode.episodeNumber != null && seriesImdb) {
+      try {
+        const torrents = await getTorrentioEpisodeStreams(
+          seriesImdb,
+          episode.seasonNumber,
+          episode.episodeNumber,
+        )
+        if (torrents.length > 0) {
+          const opts = [...episode.streamOptions.filter((o) => isPlayableOption(o) && !o.infoHash), ...torrents]
+          openPlayer({ ...episode, streamOptions: opts }, pickBestStreamIndex(opts))
+          return
+        }
+      } catch {
+        // IPTV playback remains available when Torrentio is unavailable.
+      }
+    }
+    const fallback = episode.streamOptions.filter(isPlayableOption)
+    if (fallback.length === 0) {
+      // Nada reproducible: abre el modal de fuentes para mostrar el estado en vez de un player roto.
+      void handleChooseSource(episode)
+      return
+    }
+    openPlayer({ ...episode, streamOptions: fallback }, pickBestStreamIndex(fallback))
+  }, [seriesImdb, openPlayer, handleChooseSource])
 
   const bestTorrentIndex = useMemo(() => {
     if (sourceStreams.length === 0) return -1

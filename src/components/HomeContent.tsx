@@ -1,7 +1,7 @@
 import { useMemo, useCallback, useEffect, useRef, useState } from 'react'
 import { useAppStore } from '../store/useAppStore'
 import { SectionRow } from './SectionRow'
-import { getContentById, getSeriesEpisodes, cwGroupKey, markSeriesEpisodesWatched, markWatched, saveWatchProgress, getAllSeriesEpisodes, getHomeContinueWatching, getWatchedItems, applyWatchedState, removeWatchProgress } from '../api/client'
+import { getContentById, getSeriesEpisodes, cwGroupKey, markSeriesEpisodesWatched, markWatched, saveWatchProgress, getAllSeriesEpisodes, getHomeContinueWatching, getWatchedItems, applyWatchedState, removeWatchProgress, getTorrentioMovieStreams, getTorrentioEpisodeStreams, isPlayableOption, pickBestStreamIndex } from '../api/client'
 import type { CatalogItem, BrowseSection, WatchProgressItem } from '../api/types'
 import { pickFirstUnwatched } from '../utils/series'
 import styles from './HomeContent.module.css'
@@ -73,9 +73,29 @@ export function HomeContent() {
           cw.contentId,
         )
       }
-      if (fullItem && fullItem.streamOptions.length > 0) {
-        openPlayer(fullItem, 0, startOver ? 0 : cw.positionMs)
-        return
+      if (fullItem) {
+        // Descarta streams IPTV vacios (contenido solo-torrent devuelve "Ver" con url "")
+        let opts = fullItem.streamOptions.filter(isPlayableOption)
+        // Torrentio directo: peliculas por imdb; episodios por imdb+S+E
+        const imdb = fullItem.imdbId?.trim() ?? ''
+        if (/^tt\d+$/i.test(imdb)) {
+          try {
+            const torrents = fullItem.kind === 'SERIES'
+              ? (cw.seasonNumber != null && cw.episodeNumber != null
+                ? await getTorrentioEpisodeStreams(imdb, cw.seasonNumber, cw.episodeNumber)
+                : [])
+              : await getTorrentioMovieStreams(imdb)
+            if (torrents.length > 0) {
+              opts = [...opts.filter((o) => !o.infoHash), ...torrents]
+            }
+          } catch (err) {
+            console.warn('[Torrentio] continue-watching lookup failed:', err)
+          }
+        }
+        if (opts.length > 0) {
+          openPlayer({ ...fullItem, streamOptions: opts }, pickBestStreamIndex(opts), startOver ? 0 : cw.positionMs)
+          return
+        }
       }
     }
 

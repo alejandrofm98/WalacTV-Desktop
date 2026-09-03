@@ -1,6 +1,6 @@
 import { useEffect, useState, useMemo, type ReactNode } from 'react'
 import type { CatalogItem, StreamOption, WatchProgressItem } from '../api/types'
-import { cwGroupKey, getTorrentioMovieStreams } from '../api/client'
+import { cwGroupKey, getTorrentioMovieStreams, isPlayableOption } from '../api/client'
 import { useAppStore } from '../store/useAppStore'
 import styles from './MovieDetail.module.css'
 
@@ -48,20 +48,26 @@ export function MovieDetail({ item }: Props) {
     let active = true
     setTorrentStreams([])
     setTorrentError(false)
+    // Torrentio directo requiere imdb_id (tt...). Si no hay, no se consulta.
+    const imdb = item.imdbId?.trim() ?? ''
+    if (!/^tt\d+$/i.test(imdb)) {
+      setTorrentLoading(false)
+      return () => { active = false }
+    }
     setTorrentLoading(true)
-    const identifier = item.imdbId ?? item.catalogId ?? item.stableId
-    getTorrentioMovieStreams(identifier)
+    getTorrentioMovieStreams(imdb)
       .then((streams) => { if (active) setTorrentStreams(streams) })
       .catch((error) => {
         console.warn('[Torrentio] movie lookup failed:', error)
-        if (active) { setTorrentStreams([]); setTorrentError(true) }
+        const isMissingImdb = String((error as Error)?.message ?? '').includes('imdb_id')
+        if (active) { setTorrentStreams([]); setTorrentError(!isMissingImdb) }
       })
       .finally(() => { if (active) setTorrentLoading(false) })
     return () => { active = false }
-  }, [item.imdbId, item.catalogId, item.stableId])
+  }, [item.imdbId])
 
   const iptvStreams = useMemo(
-    () => item.streamOptions.filter((o) => !o.infoHash),
+    () => item.streamOptions.filter((o) => isPlayableOption(o) && !o.infoHash),
     [item.streamOptions],
   )
   const torrents = useMemo(
