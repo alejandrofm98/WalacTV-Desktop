@@ -47,3 +47,7 @@ squashfs-root/
 # libmpv bundled DLLs (downloaded by CI on Windows only)
 src-tauri/resources/libmpv/*
 !src-tauri/resources/libmpv/LICENSE.libmpv.txt
+
+# Configuracion local de agentes
+.commandcode/
+mockups/
