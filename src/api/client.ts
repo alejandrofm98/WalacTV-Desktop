@@ -711,10 +711,18 @@ async function fetchTorrentioStreams(contentType: 'movie' | 'series', contentId:
   }
 }
 
+// Solo torrents cuyo idioma declarado coincide con el preferido del usuario
+// (espejo del filtro filterByPreferredLanguage del cliente Android). Si no
+// hay ninguno, no se ofrece opcion torrent.
+function filterByPreferredLanguage(streams: StreamOption[]): StreamOption[] {
+  const target = getPreferredLanguage().toUpperCase()
+  return streams.filter((s) => s.language?.toUpperCase() === target)
+}
+
 export async function getTorrentioMovieStreams(movieId: string): Promise<StreamOption[]> {
   console.log(`[Torrentio] movie lookup (direct): ${movieId}`)
   if (!_IMDB_RE.test(movieId)) throw new Error('La pelicula no tiene imdb_id para consultar Torrentio')
-  const streams = await fetchTorrentioStreams('movie', movieId)
+  const streams = filterByPreferredLanguage(await fetchTorrentioStreams('movie', movieId))
   console.log(`[Torrentio] movie streams: ${streams.length}`)
   return streams
 }
@@ -727,7 +735,7 @@ export async function getTorrentioEpisodeStreams(
   console.log(`[Torrentio] episode lookup (direct): ${seriesId} S${season}E${episode}`)
   if (!_IMDB_RE.test(seriesId)) throw new Error('La serie no tiene imdb_id para consultar Torrentio')
   if (season < 0 || episode < 0) throw new Error('season y episode deben ser positivos')
-  const streams = await fetchTorrentioStreams('series', `${seriesId}:${season}:${episode}`)
+  const streams = filterByPreferredLanguage(await fetchTorrentioStreams('series', `${seriesId}:${season}:${episode}`))
   console.log(`[Torrentio] episode streams: ${streams.length}`)
   return streams
 }
