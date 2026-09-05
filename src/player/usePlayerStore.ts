@@ -1,5 +1,5 @@
 import { create } from 'zustand'
-import type { PlayerError, PlayerQuality } from './types'
+import type { PlayerError, PlayerQuality, TorrentOverlayInfo, TorrentStats } from './types'
 
 interface PlayerState {
   currentItemId: string | null
@@ -13,6 +13,8 @@ interface PlayerState {
   streamLabel: string | null
   isOpening: boolean
   quality: PlayerQuality
+  torrentInfo: TorrentOverlayInfo | null
+  torrentStats: TorrentStats | null
 }
 
 interface PlayerActions {
@@ -28,6 +30,8 @@ interface PlayerActions {
   setStreamLabel: (label: string | null) => void
   setOpening: (v: boolean) => void
   setQuality: (q: PlayerQuality) => void
+  setTorrentInfo: (info: TorrentOverlayInfo | null) => void
+  setTorrentStats: (stats: TorrentStats | null) => void
   reset: () => void
 }
 
@@ -45,6 +49,8 @@ const initial: PlayerState = {
   streamLabel: null,
   isOpening: false,
   quality: 'auto',
+  torrentInfo: null,
+  torrentStats: null,
 }
 
 export const usePlayerStore = create<PlayerStore>()((set) => ({
@@ -62,6 +68,8 @@ export const usePlayerStore = create<PlayerStore>()((set) => ({
   setStreamLabel: (streamLabel) => set({ streamLabel }),
   setOpening: (isOpening) => set({ isOpening }),
   setQuality: (quality) => set({ quality }),
+  setTorrentInfo: (torrentInfo) => set({ torrentInfo }),
+  setTorrentStats: (torrentStats) => set({ torrentStats }),
   reset: () => set({ ...initial }),
 }))
 
@@ -77,3 +85,5 @@ export const selectError = (s: PlayerStore) => s.error
 export const selectStreamLabel = (s: PlayerStore) => s.streamLabel
 export const selectIsOpening = (s: PlayerStore) => s.isOpening
 export const selectQuality = (s: PlayerStore) => s.quality
+export const selectTorrentInfo = (s: PlayerStore) => s.torrentInfo
+export const selectTorrentStats = (s: PlayerStore) => s.torrentStats

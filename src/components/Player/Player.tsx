@@ -14,6 +14,7 @@ import { PlayerOverlay } from './PlayerOverlay'
 import { PlayerIntroSkip } from './PlayerIntroSkip'
 import { PlayerErrorState } from './PlayerErrorState'
 import { PlayerLoadingState } from './PlayerLoadingState'
+import { TorrentLoadingOverlay } from './TorrentLoadingOverlay'
 import styles from './Player.module.css'
 
 /**
@@ -38,6 +39,8 @@ export function Player() {
   const isBuffering = usePlayerStore((s) => s.isBuffering)
   const isOpening = usePlayerStore((s) => s.isOpening)
   const isPlaying = usePlayerStore((s) => s.isPlaying)
+  const torrentInfo = usePlayerStore((s) => s.torrentInfo)
+  const torrentStats = usePlayerStore((s) => s.torrentStats)
 
   // Draw mpv's offscreen frames onto the canvas while playing (Linux).
   const [renderFps, setRenderFps] = useState<number | null>(null)
@@ -306,6 +309,8 @@ export function Player() {
           onRetry={handleRetry}
           onClose={closePlayer}
         />
+      ) : torrentInfo && (isOpening || isBuffering) ? (
+        <TorrentLoadingOverlay info={torrentInfo} stats={torrentStats} />
       ) : isOpening || isBuffering ? (
         <PlayerLoadingState variant={isOpening ? 'opening' : 'buffering'} />
       ) : null}

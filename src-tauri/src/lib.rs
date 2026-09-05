@@ -17,7 +17,7 @@ use commands::player::{
     mpv_get_variant_tracks, mpv_init, mpv_loadfile, mpv_observe_property, mpv_set_property,
     mpv_set_render_size, PlayerState,
 };
-use commands::torrent::{torrent_start, torrent_stop, TorrentState};
+use commands::torrent::{torrent_start, torrent_stats, torrent_stop, TorrentState};
 
 #[cfg(target_os = "linux")]
 use commands::player::{mpv_get_frame_counter, mpv_get_render_frame};
@@ -348,6 +348,7 @@ pub fn run() {
             mpv_get_frame_counter,
             torrent_start,
             torrent_stop,
+            torrent_stats,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application")
