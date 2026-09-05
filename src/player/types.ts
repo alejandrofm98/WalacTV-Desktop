@@ -62,6 +62,25 @@ export interface MpvStateChange {
   buffering: boolean
 }
 
+// ── Torrent (overlay de carga estilo Android) ────────────────────────
+
+/** Espejo de TorrentStatsDto en src-tauri/src/commands/torrent.rs */
+export interface TorrentStats {
+  ready: boolean
+  finished: boolean
+  totalBytes: number
+  progressBytes: number
+  downloadRateBps: number
+}
+
+/** Datos del titulo para el overlay mientras se descarga el torrent. */
+export interface TorrentOverlayInfo {
+  title: string
+  subtitle: string
+  posterUrl: string | null
+  backdropUrl: string | null
+}
+
 export interface MpvTracksChanged {
   type: 'tracks-changed'
 }

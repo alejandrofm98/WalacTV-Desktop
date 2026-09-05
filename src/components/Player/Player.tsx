@@ -14,6 +14,7 @@ import { PlayerOverlay } from './PlayerOverlay'
 import { PlayerIntroSkip } from './PlayerIntroSkip'
 import { PlayerErrorState } from './PlayerErrorState'
 import { PlayerLoadingState } from './PlayerLoadingState'
+import { TorrentLoadingOverlay } from './TorrentLoadingOverlay'
 import styles from './Player.module.css'
 
 /**
@@ -38,12 +39,23 @@ export function Player() {
   const isBuffering = usePlayerStore((s) => s.isBuffering)
   const isOpening = usePlayerStore((s) => s.isOpening)
   const isPlaying = usePlayerStore((s) => s.isPlaying)
+  const torrentInfo = usePlayerStore((s) => s.torrentInfo)
+  const torrentStats = usePlayerStore((s) => s.torrentStats)
 
   // Draw mpv's offscreen frames onto the canvas while playing.
   // Both Linux (EGL readback) and Windows (WGL FBO readback) deliver frames
   // through `mpv_get_render_frame`; the native window is never shown.
+  // The canvas stays mounted on all OSes: on Windows the webview is opaque
+  // and would hide any native surface below it (airspace), so offscreen
+  // readback + canvas is the only working path (verified ~23fps prod).
+  const [canvasOs, setCanvasOs] = useState<string | null>(null)
   const [renderFps, setRenderFps] = useState<number | null>(null)
-  useRenderFrame(canvasRef, playerItem?.stableId ?? null, isPlaying, setRenderFps)
+  useRenderFrame(
+    canvasRef,
+    playerItem?.stableId ?? null,
+    isPlaying,
+    setRenderFps,
+  )
 
   // True on Linux where mpv renders its own native OSC as a child window.
   // When true, the HTML PlayerOverlay is hidden to avoid a flash of HTML
@@ -154,6 +166,7 @@ export function Player() {
         // 1. Attach — llama a mpv_init() en Rust (no necesita elemento DOM)
         await service.attach()
         setNativeControls(service.getNativeControls())
+        setCanvasOs(service.getOs())
 
         if (cancelled) return
 
@@ -278,7 +291,8 @@ export function Player() {
   return (
     <div ref={setContainerRef} className={styles.container}>
       <div className={styles.videoWrapper}>
-        {/* Canvas where mpv's offscreen frames are drawn (CPU readback) */}
+        {/* Canvas where mpv's offscreen frames are drawn (CPU readback).
+            Mounted on all OSes: Linux EGL + Windows WGL FBO readback. */}
         <canvas ref={canvasRef} className={styles.canvas} />
         {renderFps !== null && isPlaying && (
           <div className={styles.fpsCounter}>{renderFps} fps</div>
@@ -309,6 +323,8 @@ export function Player() {
           onRetry={handleRetry}
           onClose={closePlayer}
         />
+      ) : torrentInfo && (isOpening || isBuffering) ? (
+        <TorrentLoadingOverlay info={torrentInfo} stats={torrentStats} />
       ) : isOpening || isBuffering ? (
         <PlayerLoadingState variant={isOpening ? 'opening' : 'buffering'} />
       ) : null}

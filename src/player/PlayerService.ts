@@ -1,6 +1,6 @@
 import { invoke } from '@tauri-apps/api/core'
 import { type UnlistenFn, listen } from '@tauri-apps/api/event'
-import type { PlayerState, PlayerItem, StreamOption, PlayerError, PlayerQuality, MpvEvent, AudioTrack, SubTrack, VariantTrack } from './types'
+import type { PlayerState, PlayerItem, StreamOption, PlayerError, PlayerQuality, MpvEvent, AudioTrack, SubTrack, VariantTrack, TorrentStats } from './types'
 import { classifyMpvError } from './PlayerError'
 import { usePlayerStore } from './usePlayerStore'
 import { API_URL } from '../config'
@@ -116,8 +116,9 @@ export class PlayerService extends EventTarget {
 
   // ── Init info (from mpv_init return) ───────────────────────────
 
-  private _initMode: string = 'wid'
-  private _nativeControls: boolean = false
+private _initMode: string = 'wid'
+private _nativeControls: boolean = false
+private _os: string | null = null
 
   /** Returns the mpv rendering mode: "wid" (native embedding) or "render" (canvas). */
   getInitMode(): string {
@@ -127,6 +128,11 @@ export class PlayerService extends EventTarget {
   /** Returns true when mpv renders its own native OSC (Linux with wid embedding). */
   getNativeControls(): boolean {
     return this._nativeControls
+  }
+
+  /** SO host del mpv inicializado ('windows' | 'linux' | 'darwin' | null). */
+  getOs(): string | null {
+    return this._os
   }
 
   // ── Attach / Detach ──────────────────────────────────────────────
@@ -143,6 +149,7 @@ export class PlayerService extends EventTarget {
       const result = await invoke<{ mode: string; os: string; useCustom: boolean; nativeControls: boolean }>('mpv_init')
       this._initMode = result.mode
       this._nativeControls = result.nativeControls
+      this._os = result.os
 
       this._unlisteners.push(
         await listen<MpvEvent>('mpv://event', (e) => {
@@ -235,13 +242,17 @@ export class PlayerService extends EventTarget {
     usePlayerStore.getState().setCurrentItem(item.stableId)
     usePlayerStore.getState().setOpening(true)
     usePlayerStore.getState().setError(null)
+    usePlayerStore.getState().setTorrentInfo(null)
+    usePlayerStore.getState().setTorrentStats(null)
     this._setState('loading')
 
-    // mpv's native window swallows HTML overlays on Linux/Windows, so a
-    // long resolve + load shows a plain black screen. Show a loading
-    // message through mpv's own OSD (drawn inside the native window) and
-    // clear it once the file actually loads or whenever playback ends.
-    void this._showLoadingOsd()
+    // mpv's native window used to swallow HTML overlays; since the Render
+    // API backend (video below the webview) they are visible again. Torrent
+    // streams get a rich overlay (poster + progress) driven by rqbit stats;
+    // direct streams keep the mpv OSD spinner for the resolve gap.
+    if (!streamOptions.some((o) => o.source === 'torrentio' || o.requiresResolution)) {
+      void this._showLoadingOsd()
+    }
 
     if (streamOptions.length === 0) {
       const error: PlayerError = {
@@ -263,6 +274,24 @@ export class PlayerService extends EventTarget {
       usePlayerStore.getState().setStreamLabel(option.label)
 
       try {
+        const isTorrent = option.source === 'torrentio' || option.requiresResolution
+        if (isTorrent) {
+          const title = item.kind === 'SERIES' && item.seriesName
+            ? item.seriesName
+            : item.tmdbTitle ?? item.title
+          let torrentSubtitle = item.subtitle ?? ''
+          if (item.kind === 'SERIES' && item.seasonNumber != null && item.episodeNumber != null) {
+            const episode = `T${item.seasonNumber}:E${item.episodeNumber}`
+            torrentSubtitle = item.title && item.title !== title ? `${episode} · ${item.title}` : episode
+          }
+          usePlayerStore.getState().setTorrentInfo({
+            title,
+            subtitle: torrentSubtitle,
+            posterUrl: item.tmdbPosterUrl ?? item.imageUrl ?? null,
+            backdropUrl: item.backdropUrl ?? null,
+          })
+        }
+
         const url = await this._resolvePlaybackUrl(option)
         console.log(`[PlayerService] Loading stream: label="${option.label}" url="${url}"`)
 
@@ -304,6 +333,7 @@ export class PlayerService extends EventTarget {
         if (this._activeTorrentHash) {
           await this._stopActiveTorrent()
         }
+        this._clearTorrentOverlay()
 
         const classified = classifyMpvError(err)
         const isLast = i === streamOptions.length - 1
@@ -596,13 +626,39 @@ export class PlayerService extends EventTarget {
         },
       })
       this._activeTorrentHash = result.infoHash
+      this._startTorrentStatsPolling(result.infoHash)
       return result.url
     }
     await this._stopActiveTorrent()
     return this._resolveStreamUrl(option)
   }
 
+  private _torrentStatsTimer: ReturnType<typeof setInterval> | null = null
+
+  private _startTorrentStatsPolling(infoHash: string): void {
+    this._stopTorrentStatsPolling()
+    this._torrentStatsTimer = setInterval(() => {
+      invoke<TorrentStats>('torrent_stats', { infoHash })
+        .then((stats) => usePlayerStore.getState().setTorrentStats(stats))
+        .catch(() => {})
+    }, 1000)
+  }
+
+  private _stopTorrentStatsPolling(): void {
+    if (this._torrentStatsTimer) {
+      clearInterval(this._torrentStatsTimer)
+      this._torrentStatsTimer = null
+    }
+  }
+
+  private _clearTorrentOverlay(): void {
+    this._stopTorrentStatsPolling()
+    usePlayerStore.getState().setTorrentInfo(null)
+    usePlayerStore.getState().setTorrentStats(null)
+  }
+
   private async _stopActiveTorrent(): Promise<void> {
+    this._stopTorrentStatsPolling()
     const hash = this._activeTorrentHash
     this._activeTorrentHash = null
     if (!hash) return
@@ -756,6 +812,8 @@ export class PlayerService extends EventTarget {
         } else if (payload.buffering) {
           this._setState('buffering')
         } else {
+          // Video is actually rendering: the torrent overlay's job is done.
+          this._clearTorrentOverlay()
           this._setState('playing')
         }
         break

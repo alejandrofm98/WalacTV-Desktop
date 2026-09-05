@@ -577,7 +577,7 @@ export async function getContentById(contentType: string, contentId: string): Pr
 // Replica la logica de iptv-api/src/iptv_api/services/torrentio_service.py
 
 const TORRENTIO_BASE_URL = (import.meta.env.VITE_TORRENTIO_BASE_URL as string | undefined)?.replace(/\/$/, '') || 'https://torrentio.strem.fun'
-const TORRENTIO_PROVIDERS = (import.meta.env.VITE_TORRENTIO_PROVIDERS as string | undefined) ?? 'wolfmax4k'
+const TORRENTIO_PROVIDERS = (import.meta.env.VITE_TORRENTIO_PROVIDERS as string | undefined) ?? 'wolfmax4k,comando,yts,eztv,rarbg,1337x,thepiratebay,kickasstorrents,torrentgalaxy,magnetdl,torrentproject,ibit,filelist'
 const TORRENTIO_LANGUAGES = (import.meta.env.VITE_TORRENTIO_LANGUAGES as string | undefined) ?? 'spanish,english'
 const TORRENTIO_TIMEOUT_MS = 15_000
 const TORRENTIO_CACHE_TTL_MS = 60_000

@@ -1,6 +1,9 @@
+import { readFileSync } from 'fs'
 import { defineConfig } from 'vite'
 import react from '@vitejs/plugin-react'
 import path from 'path'
+
+const pkg = JSON.parse(readFileSync('./package.json', 'utf8')) as { version: string }
 
 export default defineConfig({
   plugins: [react()],
@@ -8,6 +11,11 @@ export default defineConfig({
     alias: { '@': path.resolve(__dirname, './src') },
   },
   clearScreen: false,
+  define: {
+    // Version unica fuente de verdad: package.json (la misma que usa
+    // tauri.conf.json). Evita constantes hardcodeadas desactualizadas.
+    __APP_VERSION__: JSON.stringify(pkg.version),
+  },
   server: {
     host: true,
     port: 1420,

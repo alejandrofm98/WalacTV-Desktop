@@ -1,3 +1,5 @@
-// Version synced across package.json, tauri.conf.json, and UI.
-// To bump: update package.json and tauri.conf.json, this stays in sync.
-export const APP_VERSION = '1.6.1'
+// Version inyectada en build desde package.json (vite.config.ts define
+// __APP_VERSION__). No hardcodear: se sincroniza sola con tauri.conf.json.
+declare const __APP_VERSION__: string
+
+export const APP_VERSION: string = __APP_VERSION__

@@ -9,7 +9,7 @@ use librqbit::storage::StorageFactoryExt;
 use librqbit::tracing_subscriber_config_utils::{init_logging, InitLoggingOptions, LineBroadcast};
 use librqbit::{
     AddTorrent, AddTorrentOptions, AddTorrentResponse, Api, ConnectionOptions, DhtSessionConfig,
-    ListenerMode, ListenerOptions, ManagedTorrent, Session, SessionOptions,
+    ListenerMode, ListenerOptions, ManagedTorrent, Session, SessionOptions, TorrentStatsState,
 };
 use librqbit_dualstack_sockets::TcpListener;
 use serde::{Deserialize, Serialize};
@@ -269,4 +269,50 @@ pub async fn torrent_stop(state: State<'_, TorrentState>, info_hash: String) -> 
         .delete(torrent, true)
         .await
         .map_err(|error| format!("No se pudo limpiar el torrent: {error:#}"))
+}
+
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct TorrentStatsDto {
+    /// Metadata recibida y torrent en marcha.
+    pub ready: bool,
+    pub finished: bool,
+    pub total_bytes: u64,
+    pub progress_bytes: u64,
+    /// Velocidad de descarga en bytes/segundo.
+    pub download_rate_bps: u64,
+}
+
+/// Estadisticas en vivo del torrent activo (para el overlay de carga).
+#[tauri::command]
+pub async fn torrent_stats(
+    state: State<'_, TorrentState>,
+    info_hash: String,
+) -> Result<TorrentStatsDto, String> {
+    let info_hash = info_hash.trim().to_ascii_lowercase();
+    let guard = state.engine.lock().await;
+    let Some(engine) = guard.as_ref() else {
+        return Err("Motor torrent no iniciado".to_string());
+    };
+    let torrent = TorrentIdOrHash::try_from(info_hash.as_str())
+        .map_err(|error| format!("infoHash torrent invalido: {error:#}"))?;
+    let handle: Arc<ManagedTorrent> = engine
+        .session
+        .get(torrent)
+        .ok_or_else(|| "Torrent no activo".to_string())?;
+    let stats = handle.stats();
+    let (download_rate_bps, ready) = match stats.live {
+        Some(live) => (live.download_speed.as_bytes(), true),
+        None => (
+            0,
+            matches!(stats.state, TorrentStatsState::Live),
+        ),
+    };
+    Ok(TorrentStatsDto {
+        ready,
+        finished: stats.finished,
+        total_bytes: stats.total_bytes,
+        progress_bytes: stats.progress_bytes,
+        download_rate_bps,
+    })
 }
