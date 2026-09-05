@@ -363,7 +363,11 @@ impl MpvInstance {
             }
         }
 
-        // Set hwdec (post-init, runtime-configurable).
+        // Set hwdec (post-init, runtime-configurable). Platform-specific:
+        // Linux keeps `vaapi` (see note below); Windows uses `d3d11va` for
+        // the WGL render path (`vaapi` does not exist there and requesting
+        // it can leave the decoder in a bad state); macOS keeps mpv's
+        // default (videotoolbox auto).
         //
         // Empirically verified on this hardware (Ryzen 7 5700U / Vega iGPU):
         // `auto-safe` picks vaapi-copy (hardware decode + GPU->RAM->GPU copy
@@ -372,7 +376,14 @@ impl MpvInstance {
         // (yuv420p10, the offscreen surfaceless context can't do zero-copy
         // interop for p010), but that avoids the per-frame GPU round-trip and
         // sustains ~24-25fps realtime on 23.976fps content. Keep `vaapi`.
+        #[cfg(target_os = "linux")]
         if let Ok(c_hwdec) = CString::new("vaapi") {
+            let _ = unsafe {
+                (api.mpv_set_property_string)(handle, c"hwdec".as_ptr(), c_hwdec.as_ptr())
+            };
+        }
+        #[cfg(target_os = "windows")]
+        if let Ok(c_hwdec) = CString::new("d3d11va") {
             let _ = unsafe {
                 (api.mpv_set_property_string)(handle, c"hwdec".as_ptr(), c_hwdec.as_ptr())
             };
@@ -407,6 +418,27 @@ impl MpvInstance {
             surface,
         )?);
         Ok(())
+    }
+
+    /// Latest CPU-readback frame (Windows readback backend, like Linux).
+    #[cfg(target_os = "windows")]
+    pub fn get_render_frame(&self) -> Option<super::gpu_renderer::RenderFrame> {
+        self.gpu_renderer.as_ref().and_then(|r| r.latest_frame())
+    }
+
+    /// Frame counter of the latest readback frame (Windows).
+    #[cfg(target_os = "windows")]
+    pub fn get_frame_counter(&self) -> u32 {
+        self.gpu_renderer.as_ref().map_or(0, |r| r.frame_counter())
+    }
+
+    /// Target render size from the frontend ResizeObserver (Windows).
+    /// Clamped to the 720p readback cap inside the renderer.
+    #[cfg(target_os = "windows")]
+    pub fn set_render_size(&self, width: u32, height: u32) {
+        if let Some(renderer) = self.gpu_renderer.as_ref() {
+            renderer.set_target_size(width, height);
+        }
     }
 
     // ------------------------------------------------------------------

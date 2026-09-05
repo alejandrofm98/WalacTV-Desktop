@@ -19,7 +19,7 @@ use commands::player::{
 };
 use commands::torrent::{torrent_start, torrent_stop, TorrentState};
 
-#[cfg(target_os = "linux")]
+#[cfg(any(target_os = "linux", target_os = "windows"))]
 use commands::player::{mpv_get_frame_counter, mpv_get_render_frame};
 
 use serde::Serialize;
@@ -105,6 +105,10 @@ fn sync_overlay_to_main(app: &tauri::AppHandle) {
 /// readback) and the frontend draws frames on a `<canvas>` in the webview.
 #[cfg(not(target_os = "linux"))]
 fn create_main_window(app: &tauri::App) -> Result<(), Box<dyn std::error::Error>> {
+    // NOTE: the main window stays opaque on purpose. On Windows mpv renders
+    // offscreen (WGL FBO + CPU readback, like Linux) and the frontend draws
+    // the frames on a `<canvas>` — no native video window is ever shown, so
+    // no WebView2 transparency (airspace) is needed.
     let main = tauri::window::WindowBuilder::new(app, "main")
         .title("WalacTV")
         .inner_size(1280.0, 720.0)
@@ -294,9 +298,22 @@ pub fn run() {
                 }
             }
 
-            // Keep the child GPU surface sized to the main window client area.
+            // Create the native GPU video surface (Windows Render API backend).
+            // It must be managed BEFORE any mpv_init call, which retrieves it
+            // via app.state::<Arc<GpuVideoSurface>>(). Missing this manage()
+            // panics inside mpv_init, breaking all playback on Windows
+            // (Linux never touches this state, which is why it worked there).
             #[cfg(target_os = "windows")]
             {
+                let surface = std::sync::Arc::new(
+                    crate::mpv::gpu_surface::GpuVideoSurface::new(app.handle())?,
+                );
+                if let Err(e) = surface.sync() {
+                    eprintln!("GpuVideoSurface initial sync failed: {e}");
+                }
+                app.manage(surface);
+
+                // Keep the child GPU surface sized to the main window client area.
                 let main_window = app.get_window("main").ok_or("Main window not found")?;
                 let app_clone = app.handle().clone();
                 main_window.on_window_event(move |event| {
@@ -342,9 +359,9 @@ pub fn run() {
             mpv_check_health,
             ensure_libmpv_installed_command,
             mpv_set_render_size,
-            #[cfg(target_os = "linux")]
+            #[cfg(any(target_os = "linux", target_os = "windows"))]
             mpv_get_render_frame,
-            #[cfg(target_os = "linux")]
+            #[cfg(any(target_os = "linux", target_os = "windows"))]
             mpv_get_frame_counter,
             torrent_start,
             torrent_stop,

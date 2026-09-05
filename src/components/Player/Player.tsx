@@ -39,7 +39,9 @@ export function Player() {
   const isOpening = usePlayerStore((s) => s.isOpening)
   const isPlaying = usePlayerStore((s) => s.isPlaying)
 
-  // Draw mpv's offscreen frames onto the canvas while playing (Linux).
+  // Draw mpv's offscreen frames onto the canvas while playing.
+  // Both Linux (EGL readback) and Windows (WGL FBO readback) deliver frames
+  // through `mpv_get_render_frame`; the native window is never shown.
   const [renderFps, setRenderFps] = useState<number | null>(null)
   useRenderFrame(canvasRef, playerItem?.stableId ?? null, isPlaying, setRenderFps)
 
@@ -264,6 +266,7 @@ export function Player() {
 
     try {
       await service.attach()
+      setNativeControls(service.getNativeControls())
       await service.load(playerItem, playerItem.streamOptions)
     } catch (err) {
       console.error('[Player] retry load failed:', err)
@@ -275,7 +278,7 @@ export function Player() {
   return (
     <div ref={setContainerRef} className={styles.container}>
       <div className={styles.videoWrapper}>
-        {/* Canvas where mpv's offscreen frames are drawn (Linux readback) */}
+        {/* Canvas where mpv's offscreen frames are drawn (CPU readback) */}
         <canvas ref={canvasRef} className={styles.canvas} />
         {renderFps !== null && isPlaying && (
           <div className={styles.fpsCounter}>{renderFps} fps</div>

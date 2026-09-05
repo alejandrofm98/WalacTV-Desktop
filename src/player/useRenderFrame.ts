@@ -1,35 +1,74 @@
 import { useEffect, useRef, type RefObject } from 'react'
 import { invoke } from '@tauri-apps/api/core'
 
-interface FrameInfo {
-  width: number
-  height: number
-  counter: number
-  pixels: Uint8ClampedArray<ArrayBuffer> | null
+
+
+/**
+ * Reads the frame header from mpv_get_render_frame.
+ * Layout: [width:u32 LE][height:u32 LE][counter:u32 LE][RGBA8 pixels...]
+ */
+function parseHeader(buf: ArrayBuffer): { width: number; height: number; counter: number } {
+  const view = new DataView(buf)
+  return {
+    width: view.getUint32(0, true),
+    height: view.getUint32(4, true),
+    counter: view.getUint32(8, true),
+  }
 }
 
 /**
- * Parses the raw binary frame from mpv_get_render_frame.
- * Layout: [width:u32 LE][height:u32 LE][counter:u32 LE][RGBA8 pixels...]
+ * Views the frame pixels without copying. The invoke transport may hand back
+ * a SharedArrayBuffer (which ImageData rejects), so callers must copy into a
+ * reusable ImageData via `.set()` instead of constructing one over this view.
  */
-function parseFrame(buf: ArrayBuffer): FrameInfo {
-  const view = new DataView(buf)
-  const width = view.getUint32(0, true)
-  const height = view.getUint32(4, true)
-  const counter = view.getUint32(8, true)
-
-  if (width === 0 || height === 0) {
-    return { width: 0, height: 0, counter: 0, pixels: null }
-  }
-
+function framePixels(
+  buf: ArrayBuffer,
+  width: number,
+  height: number,
+): Uint8ClampedArray<ArrayBufferLike> | null {
+  if (width === 0 || height === 0) return null
   const pixelLen = width * height * 4
-  // Allocate fresh buffer; ImageData<ArrayBuffer> rejects SharedArrayBuffer
-  const ab = new ArrayBuffer(pixelLen)
-  const src = new Uint8Array(buf, 12, pixelLen)
-  const dst = new Uint8Array(ab)
-  dst.set(src)
-  const pixels = new Uint8ClampedArray(ab) as Uint8ClampedArray<ArrayBuffer>
-  return { width, height, counter, pixels }
+  if (buf.byteLength < 12 + pixelLen) return null
+  return new Uint8ClampedArray(buf, 12, pixelLen)
+}
+
+/**
+ * Describe the wire shape of an invoke binary result (used in errors).
+ * Tauri may resolve ArrayBuffer, SharedArrayBuffer, or (postMessage
+ * fallback) a plain number array — handle all of them.
+ */
+function describeWire(v: unknown): string {
+  const tag = Object.prototype.toString.call(v)
+  const anyV = v as { byteLength?: unknown; length?: unknown }
+  const size =
+    typeof anyV?.byteLength === 'number'
+      ? `bytes=${anyV.byteLength}`
+      : typeof anyV?.length === 'number'
+        ? `len=${anyV.length}`
+        : 'nosize'
+  return `${tag} ${size}`
+}
+
+/**
+ * Normalize any invoke binary shape to a fresh ArrayBuffer copy.
+ * Throws with shape info when the value is unusable.
+ */
+function toFrameBuffer(v: unknown): ArrayBuffer {
+  if (v instanceof ArrayBuffer) {
+    // SharedArrayBuffer is NOT instanceof ArrayBuffer — handled below.
+    return v
+  }
+  const tag = Object.prototype.toString.call(v)
+  if (tag === '[object SharedArrayBuffer]') {
+    const src = new Uint8Array(v as SharedArrayBuffer)
+    const out = new Uint8Array(src.byteLength)
+    out.set(src)
+    return out.buffer
+  }
+  if (Array.isArray(v)) {
+    return new Uint8Array(v as number[]).buffer
+  }
+  throw new Error(`frame wire shape unsupported: ${describeWire(v)}`)
 }
 
 /**
@@ -71,6 +110,9 @@ export function useRenderFrame(
   const rafId = useRef<number>(0)
   const lastSize = useRef({ w: 0, h: 0 })
   const fpsState = useRef({ count: 0, start: 0 })
+  // Reusable ImageData sized to the current frame: avoids allocating and
+  // copying an 8MB buffer on every frame (~100ms/s saved at 1080p).
+  const imageDataRef = useRef<ImageData | null>(null)
 
   useEffect(() => {
     if (!playerItemId || !isActive) return
@@ -119,12 +161,15 @@ export function useRenderFrame(
         }
         lastCounter.current = counter
 
-        // invoke returns ArrayBuffer when the Rust command returns Response
-        const buf = (await invoke('mpv_get_render_frame')) as ArrayBuffer
-        const { width, height, pixels } = parseFrame(buf)
+        // invoke returns ArrayBuffer when the Rust command returns Response,
+        // but be tolerant (postMessage fallback may hand other shapes).
+        const raw = (await invoke('mpv_get_render_frame')) as unknown
+        const buf = toFrameBuffer(raw)
+        const { width, height } = parseHeader(buf)
+        const pixels = framePixels(buf, width, height)
 
         const canvas = canvasRef.current
-        if (!canvas) {
+        if (!canvas || !pixels) {
           rafId.current = requestAnimationFrame(poll)
           return
         }
@@ -135,15 +180,22 @@ export function useRenderFrame(
           return
         }
 
-        // Resize canvas if the frame dimensions changed
+        // Resize canvas (and the reusable ImageData) if dimensions changed
         if (width !== lastSize.current.w || height !== lastSize.current.h) {
           canvas.width = width
           canvas.height = height
           lastSize.current = { w: width, h: height }
+          imageDataRef.current = new ImageData(width, height)
+        }
+        if (!imageDataRef.current) {
+          imageDataRef.current = new ImageData(width, height)
         }
 
-        if (pixels) {
-          const imageData = new ImageData(pixels, width, height)
+        {
+          // Copy into the reusable ImageData (single copy; no per-frame
+          // ArrayBuffer/ImageData allocation) and blit to the canvas.
+          const imageData = imageDataRef.current
+          imageData.data.set(pixels)
           ctx.putImageData(imageData, 0, 0)
 
           // Report frames-per-second once per second to the caller.
@@ -177,6 +229,7 @@ export function useRenderFrame(
       cancelAnimationFrame(rafId.current)
       lastCounter.current = 0
       fpsState.current = { count: 0, start: 0 }
+      imageDataRef.current = null
       if (observer && wrapperEl) {
         observer.unobserve(wrapperEl)
         observer.disconnect()

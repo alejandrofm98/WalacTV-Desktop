@@ -283,6 +283,15 @@ export class PlayerService extends EventTarget {
         await invoke('mpv_loadfile', { url, startPosition: startPosition ?? null })
 
         usePlayerStore.getState().setOpening(false)
+        // mpv starts playback unpaused and the event loop may have emitted
+        // the initial pause=false before listen() was registered (attach
+        // awaits mpv_init first). Sync the state explicitly so the render
+        // loop and controls don't stay stuck thinking we're paused.
+        // Buffering starts true until file-loaded/state-change proves
+        // frames flow (same race affects paused-for-cache).
+        this._isPaused = false
+        usePlayerStore.getState().setPlaying(true)
+        usePlayerStore.getState().setBuffering(true)
         this._setState('playing')
         return i
       } catch (err: unknown) {
@@ -788,6 +797,11 @@ export class PlayerService extends EventTarget {
       case 'file-loaded':
         console.debug('[PlayerService] file-loaded: el archivo se cargo correctamente')
         void this._clearLoadingOsd()
+        // Sync point: a newly loaded file plays (unless the user paused).
+        // Covers the same listen() registration race as load().
+        this._isPaused = false
+        usePlayerStore.getState().setPlaying(true)
+        usePlayerStore.getState().setBuffering(false)
         if (this._streamSwitchInProgress) {
           try {
             await this._restorePendingAudioTrack()

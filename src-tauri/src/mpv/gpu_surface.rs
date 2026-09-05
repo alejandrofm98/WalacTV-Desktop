@@ -82,10 +82,6 @@ impl WindowsGlContext {
     pub fn make_current(&self) -> Result<(), String> {
         windows::make_current(self.dc, self.glrc)
     }
-
-    pub fn swap_buffers(&self) {
-        windows::swap_buffers(self.dc);
-    }
 }
 
 #[cfg(target_os = "windows")]
@@ -102,8 +98,8 @@ mod windows {
     use windows_sys::Win32::Graphics::Gdi::{CreateSolidBrush, GetDC, ReleaseDC};
     use windows_sys::Win32::Graphics::OpenGL::{
         wglCreateContext, wglDeleteContext, wglGetProcAddress, wglMakeCurrent, ChoosePixelFormat,
-        SetPixelFormat, SwapBuffers, PFD_DOUBLEBUFFER, PFD_DRAW_TO_WINDOW, PFD_MAIN_PLANE,
-        PFD_SUPPORT_OPENGL, PFD_TYPE_RGBA, PIXELFORMATDESCRIPTOR,
+        SetPixelFormat, PFD_DOUBLEBUFFER, PFD_DRAW_TO_WINDOW, PFD_MAIN_PLANE, PFD_SUPPORT_OPENGL,
+        PFD_TYPE_RGBA, PIXELFORMATDESCRIPTOR,
     };
     use windows_sys::Win32::System::LibraryLoader::{
         GetModuleHandleA, GetModuleHandleW, GetProcAddress,
@@ -169,6 +165,10 @@ mod windows {
                 GetLastError()
             }));
         }
+        crate::mpv::platform::windows::diagnostic_log(format!(
+            "GpuVideoSurface created main=0x{main:x} video=0x{:x}",
+            video as usize
+        ));
         Ok(super::GpuVideoSurface {
             main,
             video: video as isize,
@@ -200,11 +200,17 @@ mod windows {
     pub fn show(main: isize, video: isize) -> Result<(), String> {
         sync(main, video)?;
         unsafe { ShowWindow(video as HWND, SW_SHOW) };
+        crate::mpv::platform::windows::diagnostic_log(format!(
+            "GpuVideoSurface show video=0x{video:x}"
+        ));
         Ok(())
     }
 
     pub fn hide(video: isize) -> Result<(), String> {
         unsafe { ShowWindow(video as HWND, SW_HIDE) };
+        crate::mpv::platform::windows::diagnostic_log(format!(
+            "GpuVideoSurface hide video=0x{video:x}"
+        ));
         Ok(())
     }
 
@@ -269,10 +275,6 @@ mod windows {
             }));
         }
         Ok(())
-    }
-
-    pub fn swap_buffers(dc: isize) {
-        unsafe { SwapBuffers(dc as _) };
     }
 
     pub fn destroy_gl_context(hwnd: isize, dc: isize, glrc: isize) {

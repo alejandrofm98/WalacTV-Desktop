@@ -390,19 +390,22 @@ pub async fn mpv_get_state(state: State<'_, PlayerState>) -> Result<PlayerStateI
 /// The frontend parses the header and renders via ImageData on a `<canvas>`.
 ///
 /// Returns an empty frame (all-zeros header) if no frame is available yet.
-#[cfg(target_os = "linux")]
+#[cfg(any(target_os = "linux", target_os = "windows"))]
 #[tauri::command]
 pub async fn mpv_get_render_frame(state: State<'_, PlayerState>) -> Result<Response, String> {
     let guard = state.inner.lock();
     match guard.as_ref() {
         Some(instance) => {
-            match instance.get_render_frame() {
-                Some(fb) => {
-                    let w = fb.width;
-                    let h = fb.height;
-                    let counter = fb.frame_count as u32;
-                    let pixels = fb.data;
-
+            #[cfg(target_os = "linux")]
+            let frame = instance
+                .get_render_frame()
+                .map(|fb| (fb.width, fb.height, fb.frame_count as u32, fb.data));
+            #[cfg(target_os = "windows")]
+            let frame = instance
+                .get_render_frame()
+                .map(|fb| (fb.width, fb.height, fb.counter as u32, fb.pixels));
+            match frame {
+                Some((w, h, counter, pixels)) => {
                     let mut bytes = Vec::with_capacity(12 + pixels.len());
                     bytes.extend_from_slice(&w.to_le_bytes());
                     bytes.extend_from_slice(&h.to_le_bytes());
@@ -428,7 +431,7 @@ pub async fn mpv_get_render_frame(state: State<'_, PlayerState>) -> Result<Respo
 /// Get the frame counter of the latest rendered frame.
 /// Cheap — the frontend polls this every animation frame and only fetches the
 /// full frame via `mpv_get_render_frame` when the counter advances.
-#[cfg(target_os = "linux")]
+#[cfg(any(target_os = "linux", target_os = "windows"))]
 #[tauri::command]
 pub async fn mpv_get_frame_counter(state: State<'_, PlayerState>) -> Result<u32, String> {
     let guard = state.inner.lock();
@@ -534,7 +537,7 @@ pub async fn mpv_set_render_size(
     let w = width.clamp(16, 3840);
     let h = height.clamp(16, 3840);
     with_player(&state, |instance| {
-        #[cfg(target_os = "linux")]
+        #[cfg(any(target_os = "linux", target_os = "windows"))]
         instance.set_render_size(w, h);
         Ok(())
     })
