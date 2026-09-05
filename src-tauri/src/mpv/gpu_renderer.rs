@@ -85,6 +85,7 @@ pub struct RenderFrame {
     pub pixels: Vec<u8>,
 }
 
+#[cfg(target_os = "windows")]
 impl RenderFrame {
     fn empty() -> Self {
         Self {
