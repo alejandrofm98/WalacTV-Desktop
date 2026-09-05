@@ -114,7 +114,12 @@ fn create_main_window(app: &tauri::App) -> Result<(), Box<dyn std::error::Error>
         .build()?;
 
     main.add_child(
-        tauri::webview::WebviewBuilder::new("main", build_main_url(app)).auto_resize(),
+        tauri::webview::WebviewBuilder::new("main", build_main_url(app))
+            // WebView2 transparente: el video vive en una ventana hijo Win32
+            // (GpuVideoSurface) por DEBAJO de este webview; sin esto el
+            // WebView2 es opaco y tapa el video siempre (pantalla negra).
+            .transparent(true)
+            .auto_resize(),
         tauri::LogicalPosition::new(0, 0),
         main.inner_size()?,
     )?;

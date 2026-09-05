@@ -116,8 +116,9 @@ export class PlayerService extends EventTarget {
 
   // ── Init info (from mpv_init return) ───────────────────────────
 
-  private _initMode: string = 'wid'
-  private _nativeControls: boolean = false
+private _initMode: string = 'wid'
+private _nativeControls: boolean = false
+private _os: string | null = null
 
   /** Returns the mpv rendering mode: "wid" (native embedding) or "render" (canvas). */
   getInitMode(): string {
@@ -127,6 +128,11 @@ export class PlayerService extends EventTarget {
   /** Returns true when mpv renders its own native OSC (Linux with wid embedding). */
   getNativeControls(): boolean {
     return this._nativeControls
+  }
+
+  /** SO host del mpv inicializado ('windows' | 'linux' | 'darwin' | null). */
+  getOs(): string | null {
+    return this._os
   }
 
   // ── Attach / Detach ──────────────────────────────────────────────
@@ -143,6 +149,7 @@ export class PlayerService extends EventTarget {
       const result = await invoke<{ mode: string; os: string; useCustom: boolean; nativeControls: boolean }>('mpv_init')
       this._initMode = result.mode
       this._nativeControls = result.nativeControls
+      this._os = result.os
 
       this._unlisteners.push(
         await listen<MpvEvent>('mpv://event', (e) => {

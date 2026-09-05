@@ -43,8 +43,17 @@ export function Player() {
   const torrentStats = usePlayerStore((s) => s.torrentStats)
 
   // Draw mpv's offscreen frames onto the canvas while playing (Linux).
+  // On Windows the video lives on the native GPU surface BELOW the webview:
+  // an opaque canvas here would cover it (black screen), so it only mounts
+  // on Linux where frames are read back and drawn.
+  const [canvasOs, setCanvasOs] = useState<string | null>(null)
   const [renderFps, setRenderFps] = useState<number | null>(null)
-  useRenderFrame(canvasRef, playerItem?.stableId ?? null, isPlaying, setRenderFps)
+  useRenderFrame(
+    canvasRef,
+    playerItem?.stableId ?? null,
+    isPlaying && canvasOs === 'linux',
+    setRenderFps,
+  )
 
   // True on Linux where mpv renders its own native OSC as a child window.
   // When true, the HTML PlayerOverlay is hidden to avoid a flash of HTML
@@ -155,6 +164,7 @@ export function Player() {
         // 1. Attach — llama a mpv_init() en Rust (no necesita elemento DOM)
         await service.attach()
         setNativeControls(service.getNativeControls())
+        setCanvasOs(service.getOs())
 
         if (cancelled) return
 
@@ -278,8 +288,12 @@ export function Player() {
   return (
     <div ref={setContainerRef} className={styles.container}>
       <div className={styles.videoWrapper}>
-        {/* Canvas where mpv's offscreen frames are drawn (Linux readback) */}
-        <canvas ref={canvasRef} className={styles.canvas} />
+        {/* Canvas donde mpv dibuja sus frames offscreen (solo Linux:
+            readback por CPU). En Windows el video es la superficie GPU
+            nativa de bajo del webview y el canvas ni siquiera se monta. */}
+        {canvasOs === 'linux' && (
+          <canvas ref={canvasRef} className={styles.canvas} />
+        )}
         {renderFps !== null && isPlaying && (
           <div className={styles.fpsCounter}>{renderFps} fps</div>
         )}
