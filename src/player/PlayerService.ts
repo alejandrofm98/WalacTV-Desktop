@@ -68,6 +68,13 @@ export class PlayerService extends EventTarget {
   private _duration = 0
   private _isLive = false
   private _isPaused = true
+  /**
+   * Explicit user pause intent (via pause()/play() only — mpv-initiated
+   * pauses such as cache stalls never touch this). Guards the file-loaded
+   * sync below: if the user paused while the file was loading, the event
+   * must not flip the UI back to "playing" while mpv is actually paused.
+   */
+  private _userPaused = false
 
   // Cached track data (refreshed via 'tracks-changed' event)
   private _audioTracks: AudioTrack[] = []
@@ -244,6 +251,7 @@ private _os: string | null = null
     usePlayerStore.getState().setError(null)
     usePlayerStore.getState().setTorrentInfo(null)
     usePlayerStore.getState().setTorrentStats(null)
+    this._userPaused = false
     this._setState('loading')
 
     // mpv's native window used to swallow HTML overlays; since the Render
@@ -379,6 +387,7 @@ private _os: string | null = null
   async unload(): Promise<void> {
     this._loadGeneration++
     this._currentStreamUrl = null
+    this._userPaused = false
     this._clearLoadingOsd()
     await this._stopActiveTorrent()
     this._alternativeAudioLoadedForUrl = null
@@ -398,19 +407,35 @@ private _os: string | null = null
   // ── Playback controls ────────────────────────────────────────────
 
   play(): void {
+    this._userPaused = false
     invoke('mpv_set_property', { name: 'pause', value: false }).catch(() => {})
   }
 
   pause(): void {
+    this._userPaused = true
     invoke('mpv_set_property', { name: 'pause', value: true }).catch(() => {})
   }
 
   togglePlay(): void {
-    if (this._isPaused) {
-      this.play()
-    } else {
-      this.pause()
-    }
+    // Never trust the cached flag alone: a missed pause event (e.g. the
+    // listen() race at attach) would desync it and every toggle would send
+    // the wrong command forever. mpv is the source of truth.
+    invoke<unknown>('mpv_get_property', { name: 'pause' })
+      .then((value) => {
+        const paused = value === true || value === 'yes' || value === 'true' || value === 1
+        if (paused) {
+          this.play()
+        } else {
+          this.pause()
+        }
+      })
+      .catch(() => {
+        if (this._isPaused) {
+          this.play()
+        } else {
+          this.pause()
+        }
+      })
   }
 
   seek(seconds: number): void {
@@ -855,11 +880,20 @@ private _os: string | null = null
       case 'file-loaded':
         console.debug('[PlayerService] file-loaded: el archivo se cargo correctamente')
         void this._clearLoadingOsd()
-        // Sync point: a newly loaded file plays (unless the user paused).
+        // Sync point: a newly loaded file plays (unless the user paused
+        // while it was loading — pause() already sent pause=true to mpv, so
+        // forcing "playing" here would desync the UI from mpv forever).
         // Covers the same listen() registration race as load().
-        this._isPaused = false
-        usePlayerStore.getState().setPlaying(true)
-        usePlayerStore.getState().setBuffering(false)
+        if (this._userPaused) {
+          this._isPaused = true
+          usePlayerStore.getState().setPlaying(false)
+          usePlayerStore.getState().setBuffering(false)
+          this._setState('paused')
+        } else {
+          this._isPaused = false
+          usePlayerStore.getState().setPlaying(true)
+          usePlayerStore.getState().setBuffering(false)
+        }
         if (this._streamSwitchInProgress) {
           try {
             await this._restorePendingAudioTrack()

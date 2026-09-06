@@ -15,7 +15,7 @@ use librqbit_dualstack_sockets::TcpListener;
 use serde::{Deserialize, Serialize};
 use tauri::{AppHandle, Manager, State};
 
-use crate::commands::torrent_storage::BudgetStorageFactory;
+use crate::commands::torrent_storage::{sweep_stale_spill_dirs, BudgetStorageFactory};
 
 const VIDEO_EXTENSIONS: &[&str] = &[
     "avi", "m4v", "mkv", "mov", "mp4", "mpeg", "mpg", "ts", "webm", "wmv",
@@ -51,11 +51,11 @@ impl TorrentState {
         std::fs::create_dir_all(&torrent_dir)
             .map_err(|error| format!("No se pudo crear el directorio torrent: {error}"))?;
 
-        // Clean up leftover media data from older disk-based runs. The
-        // in-memory storage never writes anything, so the whole directory is
-        // stale (e.g. interrupted/crashed sessions or pre-in-memory versions).
-        if let Ok(entries) = std::fs::read_dir(&torrent_dir) {
-            let mut removed = 0u32;
+        // Clean up leftover media data from older disk-based runs and
+        // interrupted sessions. Spilled pieces live under the OS temp dir
+        // (see sweep_stale_spill_dirs), never here, so the whole directory
+        // is stale if present.
+        if let Ok(entries) = std::fs::read_dir(&torrent_dir) {            let mut removed = 0u32;
             for entry in entries.flatten() {
                 let path = entry.path();
                 if path.is_dir() {
@@ -70,6 +70,10 @@ impl TorrentState {
                 eprintln!("[torrent] limpieza: {removed} entradas huerfanas eliminadas");
             }
         }
+
+        // Spill files from crashed sessions (see torrent_storage.rs). Only
+        // day-old dirs are removed, so live instances are never affected.
+        sweep_stale_spill_dirs();
 
         let session = Session::new_with_opts(
             torrent_dir,

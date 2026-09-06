@@ -444,6 +444,18 @@ pub unsafe fn mpv_event_loop(
                     PAUSED_FOR_CACHE_ID => {
                         if prop.format == mpv_format::MPV_FORMAT_FLAG && !value_ptr.is_null() {
                             last_is_buffering = unsafe { *(value_ptr as *mut c_int) != 0 };
+                            // Cache stalls don't touch `pause`, so without
+                            // this the frontend would never learn mpv ran out
+                            // of data (frozen frame, no overlay). Forward the
+                            // combined state exactly like PAUSE_ID does.
+                            emit_unified_event(
+                                &app_handle,
+                                "state-change",
+                                Some(json!({
+                                    "pause": last_is_paused,
+                                    "buffering": last_is_buffering,
+                                })),
+                            );
                         }
                     }
 
