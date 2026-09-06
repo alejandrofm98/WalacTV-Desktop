@@ -545,11 +545,21 @@ pub unsafe fn mpv_event_loop(
                     eprintln!("[mpv-log] {}: {}: {}", prefix_s, level_s, text_s);
                     #[cfg(target_os = "windows")]
                     {
+                        // Persist mpv diagnostics to walactv-player.log. Always
+                        // keep errors/warnings; for info+ keep UI prefixes plus
+                        // the streaming pipeline (stream/cache/demux/cplayer/
+                        // ffmpeg/lavf) so network stalls and open failures can
+                        // be diagnosed from the log file in prod builds.
                         let prefix = prefix_s.to_ascii_lowercase();
-                        if ["uosc", "osc", "lua", "input", "win32"]
+                        let level = level_s.to_ascii_lowercase();
+                        let interesting = ["uosc", "osc", "lua", "input", "win32"]
                             .iter()
-                            .any(|value| prefix.contains(value))
-                        {
+                            .any(|value| prefix.contains(value));
+                        let pipeline = ["stream", "cache", "demux", "cplayer", "ffmpeg", "lavf"]
+                            .iter()
+                            .any(|value| prefix.contains(value));
+                        let important = ["fatal", "error", "warn"].iter().any(|value| level == *value);
+                        if interesting || important || pipeline {
                             crate::mpv::platform::windows::diagnostic_log(format!(
                                 "mpv[{prefix_s}/{level_s}] {text_s}"
                             ));
