@@ -45,7 +45,16 @@ export default function App() {
     if (saved && savedUser) {
       setToken(saved)
       loadCredentials()
-        .then(() => {
+        .then((creds) => {
+          // Stream URLs embed {{USERNAME}}/{{PASSWORD}} (live, VOD direct).
+          // A token alone is not enough: without keyring credentials every
+          // such URL resolves to the provider index page and mpv fails with
+          // "Failed to recognize file format". Force a fresh login instead
+          // of signing in half-broken.
+          if (!creds) {
+            useAppStore.getState().signOut()
+            return null
+          }
           useAppStore.setState({ signedIn: true, token: saved, username: savedUser })
           return loadData()
         })

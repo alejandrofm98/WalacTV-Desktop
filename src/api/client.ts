@@ -219,6 +219,9 @@ export function normalizeRemoteImageUrl(url: string | null | undefined): string 
 }
 
 function resolveUrl(url: string): string {
+  if ((url.includes('{{USERNAME}}') || url.includes('{{PASSWORD}}')) && (!getUsername() || !getPassword())) {
+    console.warn('[api] URL con credenciales vacias (keyring sin credenciales): el stream fallara. Forzar login.')
+  }
   return url
     .replace(/\{\{USERNAME\}\}/g, encodeURIComponent(getUsername()))
     .replace(/\{\{PASSWORD\}\}/g, encodeURIComponent(getPassword()))
