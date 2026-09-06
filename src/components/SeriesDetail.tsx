@@ -179,13 +179,38 @@ export function SeriesDetail({ item }: Props) {
   }, [cwEntry, selectedSeason, episodes])
 
   const playerItem = useAppStore((s) => s.playerItem)
+
+  // Posiciones guardadas por episodio ("T|E" -> ms): el listado de episodios
+  // no trae position_ms, se resuelven desde watch-progress para reanudar.
+  const [positionsByEp, setPositionsByEp] = useState<Map<string, number>>(new Map())
+  const fetchPositions = useCallback(() => {
+    // El endpoint acepta limit<=50: con mas da 422 y las posiciones no llegan.
+    getWatchProgress(50)
+      .then(({ items }) => {
+        const map = new Map<string, number>()
+        for (const p of items) {
+          if (p.contentType !== 'series') continue
+          if (p.seasonNumber == null || p.episodeNumber == null) continue
+          if (!p.positionMs || p.isWatched) continue
+          map.set(`${p.seasonNumber}|${p.episodeNumber}`, p.positionMs)
+        }
+        setPositionsByEp(map)
+      })
+      .catch(() => {})
+  }, [])
+
+  useEffect(() => {
+    fetchPositions()
+  }, [fetchPositions])
+
   useEffect(() => {
     const playing = !!playerItem
     if (wasPlayingRef.current && !playing) {
       fetchEpisodes()
+      fetchPositions()
     }
     wasPlayingRef.current = playing
-  }, [playerItem, fetchEpisodes])
+  }, [playerItem, fetchEpisodes, fetchPositions])
 
   const continueProgress = cwEntry && cwEntry.durationMs > 0
     ? Math.min(100, (cwEntry.positionMs / cwEntry.durationMs) * 100)
@@ -246,7 +271,13 @@ export function SeriesDetail({ item }: Props) {
   }, [seriesImdb])
 
   // Reproduccion directa: mezcla Torrentio directo (sin servidor) con los streams del episodio.
+  // Reanuda a mitad si el episodio tiene posicion guardada (watch-progress, ms).
   const handlePlayEpisode = useCallback(async (episode: CatalogItem) => {
+    const epKey = episode.seasonNumber != null && episode.episodeNumber != null
+      ? `${episode.seasonNumber}|${episode.episodeNumber}`
+      : null
+    const savedMs = (epKey ? positionsByEp.get(epKey) : undefined) ?? 0
+    const resumeMs = savedMs && !episode.isWatched ? savedMs : 0
     if (episode.seasonNumber != null && episode.episodeNumber != null && seriesImdb) {
       try {
         const torrents = await getTorrentioEpisodeStreams(
@@ -259,6 +290,7 @@ export function SeriesDetail({ item }: Props) {
           openPlayer(
             withSeriesArt({ ...episode, streamOptions: opts, seriesTmdbTitle: seriesDisplayTitle }, item),
             pickBestStreamIndex(opts),
+            resumeMs,
           )
           return
         }
@@ -275,8 +307,9 @@ export function SeriesDetail({ item }: Props) {
     openPlayer(
       withSeriesArt({ ...episode, streamOptions: fallback, seriesTmdbTitle: seriesDisplayTitle }, item),
       pickBestStreamIndex(fallback),
+      resumeMs,
     )
-  }, [seriesImdb, openPlayer, handleChooseSource, seriesDisplayTitle, item])
+  }, [seriesImdb, openPlayer, handleChooseSource, seriesDisplayTitle, item, positionsByEp])
 
   const bestTorrentIndex = useMemo(() => {
     if (sourceStreams.length === 0) return -1
@@ -312,9 +345,14 @@ export function SeriesDetail({ item }: Props) {
   // el índice elegido en el modal coincide con el array que recibe el player.
   const handlePlayFromSource = useCallback((index: number) => {
     if (!sourceEpisode) return
-    openPlayer(withSeriesArt({ ...sourceEpisode, streamOptions: sourceStreams, seriesTmdbTitle: seriesDisplayTitle }, item), index)
+    const epKey = sourceEpisode.seasonNumber != null && sourceEpisode.episodeNumber != null
+      ? `${sourceEpisode.seasonNumber}|${sourceEpisode.episodeNumber}`
+      : null
+    const savedMs = (epKey ? positionsByEp.get(epKey) : undefined) ?? 0
+    const resumeMs = savedMs && !sourceEpisode.isWatched ? savedMs : 0
+    openPlayer(withSeriesArt({ ...sourceEpisode, streamOptions: sourceStreams, seriesTmdbTitle: seriesDisplayTitle }, item), index, resumeMs)
     setSourceEpisode(null)
-  }, [sourceEpisode, sourceStreams, openPlayer, seriesDisplayTitle, item])
+  }, [sourceEpisode, sourceStreams, openPlayer, seriesDisplayTitle, item, positionsByEp])
 
   const handlePlayHero = useCallback(() => {
     if (firstUnwatched) void handlePlayEpisode(firstUnwatched)

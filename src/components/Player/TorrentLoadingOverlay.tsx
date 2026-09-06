@@ -45,23 +45,22 @@ export function TorrentLoadingOverlay({ info, stats }: TorrentLoadingOverlayProp
   const percent = stats?.finished ? 100 : Math.min(100, (progress / target) * 100)
   const remainingToTarget = Math.max(0, target - progress)
   const eta = formatEta(remainingToTarget, stats?.downloadRateBps ?? 0)
-  const backdrop = info.backdropUrl || info.posterUrl
+  // El POSTER del titulo es el fondo grande (no el backdrop): peticion del
+  // usuario. Si no hay poster se recurre al backdrop/backdrop del episodio.
+  const bg = info.posterUrl || info.backdropUrl
   const isDirect = !stats
 
   return (
     <div className={styles.overlay}>
-      {backdrop && (
+      {bg && (
         <div
-          className={styles.backdrop}
-          style={{ backgroundImage: `url(${backdrop})` }}
+          className={styles.posterBg}
+          style={{ backgroundImage: `url(${bg})` }}
         />
       )}
       <div className={styles.scrim} />
 
       <div className={styles.content}>
-        {info.posterUrl && (
-          <img className={styles.poster} src={info.posterUrl} alt="" />
-        )}
         <div className={styles.panel}>
           <h2 className={styles.title}>{info.title}</h2>
           {info.subtitle && <p className={styles.subtitle}>{info.subtitle}</p>}

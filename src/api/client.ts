@@ -337,6 +337,9 @@ export function mapItem(raw: RawCatalogItem): CatalogItem {
     airDate: raw.air_date ?? null,
     episodeType: raw.episode_type ?? null,
     isWatched: raw.is_watched != null ? Boolean(raw.is_watched) : undefined,
+    // Posicion de reproduccion guardada (episodios): permite reanudar a mitad.
+    positionMs: raw.position_ms != null && raw.position_ms > 0 ? raw.position_ms : undefined,
+    durationMs: raw.duration_ms != null && raw.duration_ms > 0 ? raw.duration_ms : undefined,
   }
 }
 
@@ -829,15 +832,21 @@ function qualityRankOf(o: StreamOption): number {
   return 1
 }
 
-/** Indice del mejor stream reproducible: torrent por calidad+seeds, si no el primero valido. */
-export function pickBestStreamIndex(options: StreamOption[]): number {
+/** Indice del mejor stream reproducible para auto-play. Orden exigido:
+ *  1) directo del proveedor en el idioma del home, 2) torrentio en ese idioma,
+ *  3) directo en otro idioma, 4) torrentio en otro idioma. Dentro de cada
+ *  grupo decide la calidad (y seeds como desempate en torrents). */
+export function pickBestStreamIndex(options: StreamOption[], preferredLanguage?: string): number {
+  const target = (preferredLanguage ?? getPreferredLanguage()).toUpperCase()
   let best = -1
   let bestScore = -1
   options.forEach((o, i) => {
     if (!isPlayableOption(o)) return
-    const score = o.infoHash
-      ? 100 + qualityRankOf(o) * 10 + Math.min(o.seeders ?? 0, 9)
-      : qualityRankOf(o)
+    // Grupo 0: directo+idioma, 1: torrent+idioma, 2: directo+otro, 3: torrent+otro.
+    // Menor grupo = mejor: el peso del grupo (3000/2000/1000/0) domina siempre
+    // sobre calidad y seeds, que solo desempatan dentro del mismo grupo.
+    const group = (o.infoHash ? 1 : 0) + (streamOptionMatchesLanguage(o, target) ? 0 : 2)
+    const score = (3 - group) * 1000 + qualityRankOf(o) * 10 + Math.min(o.seeders ?? 0, 9)
     if (score > bestScore) { bestScore = score; best = i }
   })
   return best >= 0 ? best : 0

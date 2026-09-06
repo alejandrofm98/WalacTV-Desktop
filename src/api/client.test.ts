@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { mapItem, normalizeRemoteImageUrl, orderEpisodeStreams, playbackSubtitle, playbackTitle, streamOptionMatchesLanguage } from './client'
+import { mapItem, normalizeRemoteImageUrl, orderEpisodeStreams, pickBestStreamIndex, playbackSubtitle, playbackTitle, streamOptionMatchesLanguage } from './client'
 import type { CatalogItem, StreamOption } from './types'
 
 function opt(label: string, extra: Partial<StreamOption> = {}): StreamOption {
@@ -83,6 +83,31 @@ describe('episode stream ordering', () => {
   it('drops unplayable options', () => {
     const ordered = orderEpisodeStreams([opt('ES', { url: '' })], [], 'ES')
     expect(ordered).toEqual([])
+  })
+
+  it('pickBestStreamIndex prefers direct same-lang, then torrent same-lang, then others', () => {
+    const options = [
+      opt('ENG 1080p', { infoHash: 'b', language: 'EN', seeders: 50 }),
+      opt('SPA 1080p', { infoHash: 'a', language: 'ES', seeders: 50 }),
+      opt('EN'),
+      opt('ES'),
+    ]
+    // ES: directo en ES (indice 3), aunque el torrent EN tenga mas seeds.
+    expect(pickBestStreamIndex(options, 'ES')).toBe(3)
+    // EN: directo en EN (indice 2).
+    expect(pickBestStreamIndex(options, 'EN')).toBe(2)
+    // FR: sin idioma propio — directo en otro idioma (EN) antes que torrent.
+    expect(pickBestStreamIndex(options, 'FR')).toBe(2)
+  })
+
+  it('pickBestStreamIndex ranks quality inside the same group', () => {
+    const options = [
+      opt('ES 720p'),
+      opt('ES 1080p'),
+      opt('ES 4K', { infoHash: 'a', language: 'ES', seeders: 9 }),
+    ]
+    // Mismo grupo 0 (directo ES): gana la mejor calidad (1080p).
+    expect(pickBestStreamIndex(options, 'ES')).toBe(1)
   })
 })
 

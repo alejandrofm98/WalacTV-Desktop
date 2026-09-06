@@ -24,6 +24,8 @@ const VIDEO_EXTENSIONS: &[&str] = &[
 pub struct TorrentEngine {
     session: Arc<Session>,
     http_port: u16,
+    /// Seeds declaradas por Torrentio por info_hash (solo informativo).
+    seeds_by_hash: std::sync::Mutex<std::collections::HashMap<String, u32>>,
 }
 
 pub struct TorrentState {
@@ -135,7 +137,11 @@ impl TorrentState {
             }
         });
 
-        let engine = Arc::new(TorrentEngine { session, http_port });
+        let engine = Arc::new(TorrentEngine {
+            session,
+            http_port,
+            seeds_by_hash: std::sync::Mutex::new(std::collections::HashMap::new()),
+        });
         *guard = Some(Arc::clone(&engine));
         Ok(engine)
     }
@@ -153,6 +159,9 @@ pub struct TorrentStartRequest {
     pub info_hash: String,
     pub file_idx: Option<usize>,
     pub max_download_mb: Option<u64>,
+    /// Seeds reportadas por Torrentio para este torrent (solo para mostrarlas
+    /// en el overlay de carga; el swarm real lo dan los peers).
+    pub seeds: Option<u32>,
 }
 
 #[derive(Serialize)]
@@ -249,6 +258,11 @@ pub async fn torrent_start(
         .await
         .map_err(|error| format!("No se pudo inicializar el torrent: {error:#}"))?;
     let actual_hash = handle.info_hash().as_string();
+    if let Some(seeds) = request.seeds {
+        if let Ok(mut map) = engine.seeds_by_hash.lock() {
+            map.insert(actual_hash.clone(), seeds);
+        }
+    }
     Ok(TorrentStreamInfo {
         url: format!(
             "http://127.0.0.1:{}/torrents/{actual_hash}/stream/{file_idx}",
@@ -266,6 +280,9 @@ pub async fn torrent_stop(state: State<'_, TorrentState>, info_hash: String) -> 
     let Some(engine) = guard.as_ref() else {
         return Ok(());
     };
+    if let Ok(mut map) = engine.seeds_by_hash.lock() {
+        map.remove(&info_hash);
+    }
     let torrent = TorrentIdOrHash::try_from(info_hash.as_str())
         .map_err(|error| format!("infoHash torrent invalido: {error:#}"))?;
     engine
@@ -289,6 +306,8 @@ pub struct TorrentStatsDto {
     pub peers: u32,
     /// Peers en proceso de conexión.
     pub peers_connecting: u32,
+    /// Seeds declaradas por Torrentio al resolver (puede faltar si no se pasaron).
+    pub seeds: Option<u32>,
 }
 
 /// Estadisticas en vivo del torrent activo (para el overlay de carga).
@@ -325,6 +344,11 @@ pub async fn torrent_stats(
             )
         })
         .unwrap_or((0, 0));
+    let seeds = engine
+        .seeds_by_hash
+        .lock()
+        .ok()
+        .and_then(|map| map.get(&info_hash).copied());
     Ok(TorrentStatsDto {
         ready,
         finished: stats.finished,
@@ -333,5 +357,6 @@ pub async fn torrent_stats(
         download_rate_bps,
         peers,
         peers_connecting,
+        seeds,
     })
 }

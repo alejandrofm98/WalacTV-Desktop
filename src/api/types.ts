@@ -76,6 +76,9 @@ export interface CatalogItem {
   imdbId?: string | null
   hasIptvSource?: boolean
   hasTorrentSource?: boolean
+  /** Posicion guardada del episodio en ms (reanudar a mitad). */
+  positionMs?: number
+  durationMs?: number
   skipSegments?: SkipSegments | null
 }
 

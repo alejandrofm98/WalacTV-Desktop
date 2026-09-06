@@ -680,6 +680,8 @@ export class PlayerService extends EventTarget {
           infoHash: option.infoHash,
           fileIdx: option.fileIdx ?? null,
           maxDownloadMb: getTorrentMaxMb(),
+          // Seeds de Torrentio, solo informativas para el overlay de carga.
+          seeds: option.seeders ?? null,
         },
       })
       this._activeTorrentHash = result.infoHash
