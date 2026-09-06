@@ -3,6 +3,8 @@ import type { PlayerError, PlayerQuality, TorrentOverlayInfo, TorrentStats } fro
 
 interface PlayerState {
   currentItemId: string | null
+  /** Indice de la fuente en reproduccion dentro de item.streamOptions (eventos). */
+  currentSourceIndex: number | null
   isPlaying: boolean
   isBuffering: boolean
   volume: number
@@ -19,6 +21,7 @@ interface PlayerState {
 
 interface PlayerActions {
   setCurrentItem: (id: string | null) => void
+  setCurrentSourceIndex: (index: number | null) => void
   setPlaying: (v: boolean) => void
   setBuffering: (v: boolean) => void
   setVolume: (v: number) => void
@@ -39,6 +42,7 @@ export type PlayerStore = PlayerState & PlayerActions
 
 const initial: PlayerState = {
   currentItemId: null,
+  currentSourceIndex: null,
   isPlaying: false,
   isBuffering: false,
   volume: 1,
@@ -57,6 +61,7 @@ export const usePlayerStore = create<PlayerStore>()((set) => ({
   ...initial,
 
   setCurrentItem: (currentItemId) => set({ currentItemId }),
+  setCurrentSourceIndex: (currentSourceIndex) => set({ currentSourceIndex }),
   setPlaying: (isPlaying) => set({ isPlaying }),
   setBuffering: (isBuffering) => set({ isBuffering }),
   setVolume: (volume) => set({ volume: Math.max(0, Math.min(1, volume)) }),

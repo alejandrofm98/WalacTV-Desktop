@@ -133,6 +133,14 @@ export const HARDCODED_COUNTRIES = [
   { value: 'WO', label: 'Mundial' },
 ]
 
+export function countryLabelFor(code: string | null | undefined): string | null {
+  if (!code) return null
+  const found = HARDCODED_COUNTRIES.find(
+    (c) => c.value.toLowerCase() === code.toLowerCase() || c.label.toLowerCase() === code.toLowerCase(),
+  )
+  return found ? found.label : code
+}
+
 export function setToken(t: string) { _token = t }
 export function getToken() { return _token }
 
@@ -763,13 +771,22 @@ export function playbackTitle(item: CatalogItem): string {
   return item.tmdbTitle ?? item.title
 }
 
-/** Subtítulo durante la reproducción: T/E más el nombre TMDB del capítulo. */
+/** Subtítulo durante la reproducción: T/E más el nombre TMDB del capítulo.
+ *  En canales en directo, línea de identidad: país, grupo y número de canal. */
 export function playbackSubtitle(item: CatalogItem): string {
   if (item.kind === 'SERIES' && item.seasonNumber != null && item.episodeNumber != null) {
     const epTag = `T${item.seasonNumber}:E${item.episodeNumber}`
     const epName = item.tmdbTitle ?? item.title
     const title = playbackTitle(item)
     return epName && epName !== title ? `${epTag} · ${epName}` : epTag
+  }
+  if (item.kind === 'CHANNEL') {
+    const parts = [
+      countryLabelFor(item.countries?.[0]),
+      item.group || null,
+      item.channelNumber != null ? `Canal ${item.channelNumber}` : null,
+    ].filter((p): p is string => p != null)
+    if (parts.length > 0) return parts.join(' · ')
   }
   return item.subtitle ?? ''
 }

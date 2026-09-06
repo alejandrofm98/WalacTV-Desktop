@@ -2,7 +2,10 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import type { CSSProperties, ChangeEvent, PointerEvent as ReactPointerEvent } from 'react'
 import {
   Check,
+  ChevronDown,
+  ChevronUp,
   Languages,
+  ListVideo,
   Maximize,
   Minimize,
   Pause,
@@ -204,6 +207,23 @@ export function PlayerControls({ item, activePanel, onPanelChange }: PlayerContr
   const rightClusterRef = useRef<HTMLDivElement | null>(null)
 
   const isLive = item.kind === 'CHANNEL' || item.kind === 'EVENT'
+  const isChannel = item.kind === 'CHANNEL'
+  const isEvent = item.kind === 'EVENT'
+
+  const guideOpen = useAppStore((s) => s.guideOpen)
+  const setGuideOpen = useAppStore((s) => s.setGuideOpen)
+  const guideCount = useAppStore((s) => s.guideChannels.length)
+  // TV zapping: en canales recorre la guia; en eventos cambia de fuente
+  // (tambien via teclado: flechas arriba/abajo en directo).
+  const zapChannel = useAppStore((s) => s.zapChannel)
+  const zapSource = useAppStore((s) => s.zapSource)
+  const eventSourceCount = isEvent ? (item.streamOptions?.length ?? 0) : 0
+  const canZap = isChannel ? guideCount > 0 : eventSourceCount > 1
+
+  const zap = (dir: 1 | -1) => {
+    if (isChannel) zapChannel(dir)
+    else zapSource(dir)
+  }
 
   // Re-read track lists when Shaka signals track changes
   useEffect(() => {
@@ -392,6 +412,18 @@ export function PlayerControls({ item, activePanel, onPanelChange }: PlayerContr
       )}
 
       <div className={styles.buttonsRow}>
+        {isLive && (
+          <button
+            className={styles.controlBtn}
+            onClick={() => zap(-1)}
+            disabled={!canZap}
+            aria-label={isChannel ? 'Canal anterior' : 'Fuente anterior'}
+            title={isChannel ? 'Canal anterior' : 'Fuente anterior'}
+          >
+            <ChevronUp size={20} />
+          </button>
+        )}
+
         <button
           className={`${styles.controlBtn} ${styles.playBtn}`}
           onClick={() => service.togglePlay()}
@@ -404,6 +436,18 @@ export function PlayerControls({ item, activePanel, onPanelChange }: PlayerContr
             <Play size={24} fill="currentColor" />
           )}
         </button>
+
+        {isLive && (
+          <button
+            className={styles.controlBtn}
+            onClick={() => zap(1)}
+            disabled={!canZap}
+            aria-label={isChannel ? 'Canal siguiente' : 'Fuente siguiente'}
+            title={isChannel ? 'Canal siguiente' : 'Fuente siguiente'}
+          >
+            <ChevronDown size={20} />
+          </button>
+        )}
 
         {isSeriesEpisode && (
           <button
@@ -454,6 +498,20 @@ export function PlayerControls({ item, activePanel, onPanelChange }: PlayerContr
               aria-expanded={activePanel === 'quality'}
             >
               <Settings size={20} />
+            </button>
+          )}
+
+          {isLive && (
+            <button
+              className={`${styles.controlBtn} ${guideOpen ? styles.controlBtnActive : ''}`}
+              onClick={() => setGuideOpen(!guideOpen)}
+              aria-label={guideOpen
+                ? (isChannel ? 'Ocultar guia de canales' : 'Ocultar fuentes del evento')
+                : (isChannel ? 'Mostrar guia de canales' : 'Mostrar fuentes del evento')}
+              aria-pressed={guideOpen}
+              title={isChannel ? 'Guia de canales' : 'Fuentes del evento'}
+            >
+              <ListVideo size={20} />
             </button>
           )}
 

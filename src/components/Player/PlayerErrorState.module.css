@@ -10,6 +10,24 @@
   animation: fadeIn 0.3s ease;
 }
 
+/* Variante para canales en directo: tarjeta flotante centrada que no
+   bloquea la interaccion (guia, zapping y controles siguen operativos). */
+.compact {
+  background: transparent;
+  backdrop-filter: none;
+  pointer-events: none;
+  align-items: flex-end;
+  padding-bottom: 170px;
+}
+
+.compact .card {
+  pointer-events: auto;
+  background: oklch(11% 0.024 252 / 0.94);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-lg);
+  border: 1px solid var(--surface-variant);
+}
+
 .card {
   display: flex;
   flex-direction: column;

@@ -9,8 +9,10 @@ import { useIntroSkip } from '../../player/useIntroSkip'
 import { usePlayerControls } from '../../player/usePlayerControls'
 import { usePlayerStore } from '../../player/usePlayerStore'
 import { getVolume } from '../../settings'
-import { markWatched } from '../../api/client'
+import { markWatched, getCatalogPage } from '../../api/client'
 import { PlayerOverlay } from './PlayerOverlay'
+import { PlayerChannelGuide } from './PlayerChannelGuide'
+import { PlayerEventSources } from './PlayerEventSources'
 import { PlayerIntroSkip } from './PlayerIntroSkip'
 import { PlayerErrorState } from './PlayerErrorState'
 import { PlayerLoadingState } from './PlayerLoadingState'
@@ -28,8 +30,15 @@ import styles from './Player.module.css'
 export function Player() {
   const playerItem = useAppStore((s) => s.playerItem)
   const closePlayer = useAppStore((s) => s.closePlayer)
+  const guideOpen = useAppStore((s) => s.guideOpen)
+
+  const isChannel = playerItem?.kind === 'CHANNEL'
+  const isEvent = playerItem?.kind === 'EVENT'
+  const showGuide = (isChannel || isEvent) && guideOpen
+  const isLiveItem = playerItem?.kind === 'CHANNEL' || isEvent
 
   const containerRef = useRef<HTMLDivElement | null>(null)
+  const [containerEl, setContainerEl] = useState<HTMLDivElement | null>(null)
   const canvasRef = useRef<HTMLCanvasElement | null>(null)
   const pipVideoRef = useRef<HTMLVideoElement | null>(null)
   const prevItemRef = useRef(playerItem)
@@ -48,7 +57,6 @@ export function Player() {
   // The canvas stays mounted on all OSes: on Windows the webview is opaque
   // and would hide any native surface below it (airspace), so offscreen
   // readback + canvas is the only working path (verified ~23fps prod).
-  const [canvasOs, setCanvasOs] = useState<string | null>(null)
   const [renderFps, setRenderFps] = useState<number | null>(null)
   useRenderFrame(
     canvasRef,
@@ -114,7 +122,10 @@ export function Player() {
   }, [isPlaying])
 
   // Controls auto-hide + keyboard
+  // En directo (canales/eventos): ↑/↓ zapean y ←/→ suben/bajan volumen.
+  // En VOD: ←/→ saltan ±10s y ↑/↓ volumen.
   const { controlsVisible } = usePlayerControls({
+    isLive: isLiveItem,
     onTogglePlay: () => service.togglePlay(),
     onSeek: (delta) => {
       const current = service.getCurrentTime()
@@ -134,11 +145,47 @@ export function Player() {
     },
     onFullscreen: () => service.toggleFullscreen(),
     onPip: () => service.togglePip(),
+    // Estilo TV: en canales ↑/↓ zapean canales; en eventos cambian de fuente.
+    onChannelUp: () => {
+      const st = useAppStore.getState()
+      if (isChannel) st.zapChannel(-1)
+      else st.zapSource(-1)
+    },
+    onChannelDown: () => {
+      const st = useAppStore.getState()
+      if (isChannel) st.zapChannel(1)
+      else st.zapSource(1)
+    },
   })
+
+  // Rueda del raton sobre el reproductor: subir/bajar volumen (10% por paso).
+  // Listener nativo en el contenedor (la delegacion sintetica de React no
+  // dispara fiable con wheel). Se ignora si el cursor esta sobre la guia de
+  // canales (su lista hace scroll) o sobre un input. Subir volumen cancela
+  // el silencio; la rueda tambien muestra los controles (ver usePlayerControls).
+  // El contenedor solo existe con playerItem, por eso depende de containerEl.
+  useEffect(() => {
+    const el = containerEl
+    if (!el) return
+    const onWheel = (e: WheelEvent) => {
+      const target = e.target as HTMLElement | null
+      if (target?.closest('[class*=guide]')) return
+      const tag = target?.tagName
+      if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT') return
+      const step = e.deltaY < 0 ? 0.1 : -0.1
+      const state = usePlayerStore.getState()
+      const vol = Math.min(1, Math.max(0, state.volume + step))
+      if (vol > state.volume && state.isMuted) service.setMuted(false)
+      service.setVolume(vol)
+    }
+    el.addEventListener('wheel', onWheel, { passive: true })
+    return () => el.removeEventListener('wheel', onWheel)
+  }, [containerEl, service])
 
   // Store DOM refs for the player service
   const setContainerRef = useCallback((el: HTMLDivElement | null) => {
     containerRef.current = el
+    setContainerEl(el)
     // Tell the service about the container for fullscreen
     service.setContainerEl(el)
   }, [service])
@@ -166,7 +213,6 @@ export function Player() {
         // 1. Attach — llama a mpv_init() en Rust (no necesita elemento DOM)
         await service.attach()
         setNativeControls(service.getNativeControls())
-        setCanvasOs(service.getOs())
 
         if (cancelled) return
 
@@ -230,6 +276,36 @@ export function Player() {
     }
   }, [playerItem, service])
 
+  // Lista base para zapping (flechas arriba/abajo y botones de canal) cuando
+  // la guia nunca se ha abierto: la guia publica su lista al montarse, pero
+  // si esta cerrada no hay referencia. Se carga la primera pagina del
+  // catalogo de canales; si la guia ya tiene lista (p. ej. filtrada), se respeta.
+  useEffect(() => {
+    if (!isChannel) return
+    if (useAppStore.getState().guideChannels.length > 0) return
+    let cancelled = false
+    getCatalogPage({ content_type: 'channels', page: 1, page_size: 48 })
+      .then((r) => {
+        if (cancelled) return
+        if (useAppStore.getState().guideChannels.length === 0) {
+          useAppStore.setState({ guideChannels: r.items })
+        }
+      })
+      .catch(() => {})
+    return () => {
+      cancelled = true
+    }
+  }, [isChannel, playerItem?.stableId])
+
+  // Channel guide: SOLO se abre con el boton de guia (manual). Al estar
+  // abierta en un canal, se auto-cierra a los ~3s de que el canal este
+  // reproduciendose (estilo TV); cambiar de canal reinicia el contador.
+  useEffect(() => {
+    if (!showGuide || !isPlaying) return
+    const id = setTimeout(() => useAppStore.setState({ guideOpen: false }), 3000)
+    return () => clearTimeout(id)
+  }, [showGuide, isPlaying, playerItem?.stableId])
+
   // Close on Escape via window keydown (works when webview has focus).
   // When fullscreen or PiP is active, let the browser consume Escape to
   // exit that mode first; a second press closes the player.
@@ -237,6 +313,18 @@ export function Player() {
     function onKey(e: KeyboardEvent) {
       if (e.key === 'Escape') {
         if (document.fullscreenElement || document.pictureInPictureElement) return
+        // La guia de canales abierta se pliega primero; escribiendo en su
+        // campo de busqueda solo se desenfoca el input en vez de plegarla.
+        if (useAppStore.getState().guideOpen) {
+          const ae = document.activeElement
+          if (ae && (ae.tagName === 'INPUT' || ae.tagName === 'TEXTAREA' || ae.tagName === 'SELECT')) {
+            ;(ae as HTMLElement).blur()
+            return
+          }
+          e.preventDefault()
+          useAppStore.setState({ guideOpen: false })
+          return
+        }
         // La ventana Tauri en pantalla completa no la gestiona el navegador:
         // primer Escape sale de fullscreen, el segundo cierra el player.
         if (usePlayerStore.getState().isFullscreen) {
@@ -300,44 +388,55 @@ export function Player() {
 
   return (
     <div ref={setContainerRef} className={styles.container}>
-      <div className={styles.videoWrapper}>
-        {/* Canvas where mpv's offscreen frames are drawn (CPU readback).
-            Mounted on all OSes: Linux EGL + Windows WGL FBO readback. */}
-        <canvas ref={canvasRef} className={styles.canvas} />
-        {renderFps !== null && isPlaying && (
-          <div className={styles.fpsCounter}>{renderFps} fps</div>
-        )}
-        {/* Hidden video element for PiP API support only */}
-        <video
-          ref={setPipVideoRef}
-          style={{ display: 'none' }}
-          playsInline
-        />
+      <div className={styles.body}>
+        <div className={styles.stage}>
+          <div className={styles.videoWrapper}>
+            {/* Canvas where mpv's offscreen frames are drawn (CPU readback).
+                Mounted on all OSes: Linux EGL + Windows WGL FBO readback. */}
+            <canvas ref={canvasRef} className={styles.canvas} />
+            {renderFps !== null && isPlaying && (
+              <div className={styles.fpsCounter}>{renderFps} fps</div>
+            )}
+            {/* Hidden video element for PiP API support only */}
+            <video
+              ref={setPipVideoRef}
+              style={{ display: 'none' }}
+              playsInline
+            />
+          </div>
+
+          {/* En directo (canales/eventos) el overlay sigue montado aunque
+              haya error: los botones de zapping/fuentes deben poder usarse
+              siempre para cambiar sin cerrar el reproductor. */}
+          {(!storeError || isLiveItem) && nativeControls === false && (
+            <PlayerOverlay
+              visible={controlsVisible}
+              item={playerItem}
+              epg={null}
+              onBack={closePlayer}
+            />
+          )}
+          {!storeError && (
+            <PlayerIntroSkip segment={activeSegment} onSkip={doSkip} />
+          )}
+
+          {storeError ? (
+            <PlayerErrorState
+              error={storeError}
+              onRetry={handleRetry}
+              onClose={closePlayer}
+              compact={isChannel || isEvent}
+            />
+          ) : torrentInfo && (isOpening || isBuffering) ? (
+            <TorrentLoadingOverlay info={torrentInfo} stats={torrentStats} />
+          ) : isOpening || isBuffering ? (
+            <PlayerLoadingState variant={isOpening ? 'opening' : 'buffering'} />
+          ) : null}
+        </div>
+
+        {showGuide && isChannel && <PlayerChannelGuide currentId={playerItem.stableId} />}
+        {showGuide && isEvent && <PlayerEventSources item={playerItem} />}
       </div>
-
-      {!storeError && nativeControls === false && (
-        <PlayerOverlay
-          visible={controlsVisible}
-          item={playerItem}
-          epg={null}
-          onBack={closePlayer}
-        />
-      )}
-      {!storeError && (
-        <PlayerIntroSkip segment={activeSegment} onSkip={doSkip} />
-      )}
-
-      {storeError ? (
-        <PlayerErrorState
-          error={storeError}
-          onRetry={handleRetry}
-          onClose={closePlayer}
-        />
-      ) : torrentInfo && (isOpening || isBuffering) ? (
-        <TorrentLoadingOverlay info={torrentInfo} stats={torrentStats} />
-      ) : isOpening || isBuffering ? (
-        <PlayerLoadingState variant={isOpening ? 'opening' : 'buffering'} />
-      ) : null}
     </div>
   )
 }

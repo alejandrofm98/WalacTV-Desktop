@@ -66,6 +66,18 @@ function getEpisodeStatus(
   return { label: '', variant: 'play' }
 }
 
+// Completa un capítulo para el player con el arte de la serie: los
+// episodios suelen venir sin póster/backdrop y la pantalla de carga debe
+// mostrar lo mismo que la ficha.
+function withSeriesArt(ep: CatalogItem, series: CatalogItem): CatalogItem {
+  return {
+    ...ep,
+    imageUrl: ep.imageUrl || series.imageUrl,
+    tmdbPosterUrl: ep.tmdbPosterUrl ?? series.tmdbPosterUrl ?? null,
+    backdropUrl: ep.backdropUrl ?? series.backdropUrl ?? null,
+  }
+}
+
 export function SeriesDetail({ item }: Props) {
   const { closeDetail, openPlayer, continueWatchingEntries, setContinueWatching } = useAppStore()
   const [episodes, setEpisodes] = useState<CatalogItem[]>([])
@@ -244,7 +256,10 @@ export function SeriesDetail({ item }: Props) {
         )
         if (torrents.length > 0) {
           const opts = [...episode.streamOptions.filter((o) => isPlayableOption(o) && !o.infoHash), ...torrents]
-          openPlayer({ ...episode, streamOptions: opts, seriesTmdbTitle: seriesDisplayTitle }, pickBestStreamIndex(opts))
+          openPlayer(
+            withSeriesArt({ ...episode, streamOptions: opts, seriesTmdbTitle: seriesDisplayTitle }, item),
+            pickBestStreamIndex(opts),
+          )
           return
         }
       } catch {
@@ -257,8 +272,11 @@ export function SeriesDetail({ item }: Props) {
       void handleChooseSource(episode)
       return
     }
-    openPlayer({ ...episode, streamOptions: fallback, seriesTmdbTitle: seriesDisplayTitle }, pickBestStreamIndex(fallback))
-  }, [seriesImdb, openPlayer, handleChooseSource, seriesDisplayTitle])
+    openPlayer(
+      withSeriesArt({ ...episode, streamOptions: fallback, seriesTmdbTitle: seriesDisplayTitle }, item),
+      pickBestStreamIndex(fallback),
+    )
+  }, [seriesImdb, openPlayer, handleChooseSource, seriesDisplayTitle, item])
 
   const bestTorrentIndex = useMemo(() => {
     if (sourceStreams.length === 0) return -1
@@ -294,9 +312,9 @@ export function SeriesDetail({ item }: Props) {
   // el índice elegido en el modal coincide con el array que recibe el player.
   const handlePlayFromSource = useCallback((index: number) => {
     if (!sourceEpisode) return
-    openPlayer({ ...sourceEpisode, streamOptions: sourceStreams, seriesTmdbTitle: seriesDisplayTitle }, index)
+    openPlayer(withSeriesArt({ ...sourceEpisode, streamOptions: sourceStreams, seriesTmdbTitle: seriesDisplayTitle }, item), index)
     setSourceEpisode(null)
-  }, [sourceEpisode, sourceStreams, openPlayer, seriesDisplayTitle])
+  }, [sourceEpisode, sourceStreams, openPlayer, seriesDisplayTitle, item])
 
   const handlePlayHero = useCallback(() => {
     if (firstUnwatched) void handlePlayEpisode(firstUnwatched)

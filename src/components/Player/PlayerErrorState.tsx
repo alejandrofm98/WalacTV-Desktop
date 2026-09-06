@@ -30,12 +30,16 @@ interface PlayerErrorStateProps {
   error: PlayerError
   onRetry?: () => void
   onClose: () => void
+  /** Modo compacto (canales en directo): tarjeta flotante que no bloquea
+   *  la guia ni los controles, para poder seguir haciendo zapping. */
+  compact?: boolean
 }
 
 /**
  * Full-screen error state shown when playback fails terminally.
+ * En canales (compact) la tarjeta flota sin tapar la interfaz.
  */
-export function PlayerErrorState({ error, onRetry, onClose }: PlayerErrorStateProps) {
+export function PlayerErrorState({ error, onRetry, onClose, compact }: PlayerErrorStateProps) {
   const [installing, setInstalling] = useState(false)
   const [installError, setInstallError] = useState<string | null>(null)
 
@@ -67,7 +71,7 @@ export function PlayerErrorState({ error, onRetry, onClose }: PlayerErrorStatePr
   }
 
   return (
-    <div className={styles.overlay}>
+    <div className={`${styles.overlay} ${compact ? styles.compact : ''}`}>
       <div className={styles.card}>
         <AlertCircle size={56} className={styles.icon} />
         <h2 className={styles.title}>{title}</h2>

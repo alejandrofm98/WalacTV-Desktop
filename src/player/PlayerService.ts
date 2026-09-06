@@ -124,9 +124,9 @@ export class PlayerService extends EventTarget {
 
   // ── Init info (from mpv_init return) ───────────────────────────
 
-private _initMode: string = 'wid'
-private _nativeControls: boolean = false
-private _os: string | null = null
+  private _initMode: string = 'wid'
+  private _nativeControls: boolean = false
+  private _os: string | null = null
 
   /** Returns the mpv rendering mode: "wid" (native embedding) or "render" (canvas). */
   getInitMode(): string {
@@ -257,6 +257,7 @@ private _os: string | null = null
     )
 
     usePlayerStore.getState().setCurrentItem(item.stableId)
+    usePlayerStore.getState().setCurrentSourceIndex(null)
     usePlayerStore.getState().setOpening(true)
     usePlayerStore.getState().setError(null)
     usePlayerStore.getState().setTorrentInfo(null)
@@ -298,11 +299,16 @@ private _os: string | null = null
         // Pantalla de carga para pelis y series, sea torrent o directo (en
         // directo las stats quedan a null y el overlay no muestra cifras).
         if (item.kind === 'MOVIE' || item.kind === 'SERIES') {
+          // Fondo estilo Android: backdrop, si no el still del capítulo (los
+          // episodios no suelen traer backdrop); el overlay usa el póster si
+          // tampoco hay fondo.
+          const isEpisode = item.kind === 'SERIES' && item.seasonNumber != null && item.episodeNumber != null
+          const backdropUrl = item.backdropUrl ?? (isEpisode ? item.stillPath : null) ?? null
           usePlayerStore.getState().setTorrentInfo({
             title,
             subtitle: displaySubtitle,
             posterUrl: item.tmdbPosterUrl ?? item.imageUrl ?? null,
-            backdropUrl: item.backdropUrl ?? null,
+            backdropUrl,
           })
         }
 
@@ -316,6 +322,11 @@ private _os: string | null = null
 
         this._currentStreamUrl = url
         await invoke('mpv_loadfile', { url, startPosition: startPosition ?? null })
+
+        // Guarda el indice de la fuente jugada dentro de item.streamOptions
+        // (la lista puede estar rotada por la fuente preferida del usuario).
+        const originalIndex = item.streamOptions?.indexOf(option) ?? i
+        usePlayerStore.getState().setCurrentSourceIndex(originalIndex >= 0 ? originalIndex : null)
 
         usePlayerStore.getState().setOpening(false)
         // mpv starts playback unpaused and the event loop may have emitted

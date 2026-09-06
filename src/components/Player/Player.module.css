@@ -7,6 +7,24 @@
   flex-direction: column;
 }
 
+/* Body row: video stage + optional channel guide side panel.
+   The guide is a flex sibling so the stage shrinks beside it;
+   on narrow windows the guide floats over the stage instead. */
+.body {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: row;
+}
+
+.stage {
+  position: relative;
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+}
+
 .videoWrapper {
   position: relative;
   flex: 1;
@@ -42,9 +60,10 @@
   pointer-events: none;
 }
 
-/* ── Overlay layers (z-index inside .container) ──
+/* ── Overlay layers (z-index inside .container/.stage) ──
    10  PlayerOverlay (top bar + center + bottom controls)
+   15  PlayerChannelGuide (side panel, floats on narrow windows)
    20  PlayerIntroSkip
    30  PlayerLoadingState
    40  PlayerErrorState
-   Each layer positions itself absolute within .container. */
+   Each layer positions itself absolute within .stage. */

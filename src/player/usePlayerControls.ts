@@ -3,6 +3,8 @@ import { useEffect, useRef, useState, useCallback } from 'react'
 const INACTIVITY_TIMEOUT_MS = 3000
 
 interface UsePlayerControlsOptions {
+  /** Contenido en directo: ↑/↓ hacen zapping y ←/→ volumen (estilo TV). */
+  isLive?: boolean
   onSeek?: (seconds: number) => void
   onTogglePlay?: () => void
   onVolumeUp?: () => void
@@ -10,6 +12,8 @@ interface UsePlayerControlsOptions {
   onMute?: () => void
   onFullscreen?: () => void
   onPip?: () => void
+  onChannelUp?: () => void
+  onChannelDown?: () => void
 }
 
 interface UsePlayerControlsReturn {
@@ -17,7 +21,7 @@ interface UsePlayerControlsReturn {
   show: () => void
 }
 
-const ACTIVITY_EVENTS = ['mousemove', 'keydown', 'click', 'touchstart'] as const
+const ACTIVITY_EVENTS = ['mousemove', 'keydown', 'click', 'touchstart', 'wheel'] as const
 
 /**
  * Manages auto-hide behavior for player controls overlay.
@@ -25,6 +29,7 @@ const ACTIVITY_EVENTS = ['mousemove', 'keydown', 'click', 'touchstart'] as const
  * Also binds keyboard shortcuts for common playback actions.
  */
 export function usePlayerControls({
+  isLive = false,
   onSeek,
   onTogglePlay,
   onVolumeUp,
@@ -32,6 +37,8 @@ export function usePlayerControls({
   onMute,
   onFullscreen,
   onPip,
+  onChannelUp,
+  onChannelDown,
 }: UsePlayerControlsOptions = {}): UsePlayerControlsReturn {
   const [controlsVisible, setControlsVisible] = useState(true)
   const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
@@ -75,19 +82,33 @@ export function usePlayerControls({
           break
         case 'ArrowLeft':
           e.preventDefault()
-          onSeek?.(-10)
+          // En directo no hay seek: la flecha izquierda baja el volumen.
+          if (isLive) onVolumeDown?.()
+          else onSeek?.(-10)
           break
         case 'ArrowRight':
           e.preventDefault()
-          onSeek?.(10)
+          if (isLive) onVolumeUp?.()
+          else onSeek?.(10)
           break
         case 'ArrowUp':
           e.preventDefault()
-          onVolumeUp?.()
+          // Estilo TV: arriba/abajo cambian de canal en directo.
+          if (isLive) onChannelUp?.()
+          else onVolumeUp?.()
           break
         case 'ArrowDown':
           e.preventDefault()
-          onVolumeDown?.()
+          if (isLive) onChannelDown?.()
+          else onVolumeDown?.()
+          break
+        case 'PageUp':
+          e.preventDefault()
+          if (isLive) onChannelUp?.()
+          break
+        case 'PageDown':
+          e.preventDefault()
+          if (isLive) onChannelDown?.()
           break
         case 'm':
         case 'M':
@@ -114,7 +135,7 @@ export function usePlayerControls({
 
     window.addEventListener('keydown', handleKey)
     return () => window.removeEventListener('keydown', handleKey)
-  }, [onTogglePlay, onSeek, onVolumeUp, onVolumeDown, onMute, onFullscreen, onPip])
+  }, [isLive, onTogglePlay, onSeek, onVolumeUp, onVolumeDown, onMute, onFullscreen, onPip, onChannelUp, onChannelDown])
 
   return { controlsVisible, show }
 }
