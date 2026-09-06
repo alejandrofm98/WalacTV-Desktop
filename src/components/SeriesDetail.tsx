@@ -80,6 +80,8 @@ export function SeriesDetail({ item }: Props) {
   const [selectedSource, setSelectedSource] = useState(0)
 
   const seriesId = item.stableId || item.seriesName || item.normalizedTitle || item.title
+  // Nombre TMDB de la serie para el player (el del proveedor suele traer suciedad).
+  const seriesDisplayTitle = item.tmdbTitle ?? item.title
   const preselectedRef = useRef(false)
   const wasPlayingRef = useRef(false)
   const episodeRefs = useRef<Map<string, HTMLElement>>(new Map())
@@ -242,7 +244,7 @@ export function SeriesDetail({ item }: Props) {
         )
         if (torrents.length > 0) {
           const opts = [...episode.streamOptions.filter((o) => isPlayableOption(o) && !o.infoHash), ...torrents]
-          openPlayer({ ...episode, streamOptions: opts }, pickBestStreamIndex(opts))
+          openPlayer({ ...episode, streamOptions: opts, seriesTmdbTitle: seriesDisplayTitle }, pickBestStreamIndex(opts))
           return
         }
       } catch {
@@ -255,8 +257,8 @@ export function SeriesDetail({ item }: Props) {
       void handleChooseSource(episode)
       return
     }
-    openPlayer({ ...episode, streamOptions: fallback }, pickBestStreamIndex(fallback))
-  }, [seriesImdb, openPlayer, handleChooseSource])
+    openPlayer({ ...episode, streamOptions: fallback, seriesTmdbTitle: seriesDisplayTitle }, pickBestStreamIndex(fallback))
+  }, [seriesImdb, openPlayer, handleChooseSource, seriesDisplayTitle])
 
   const bestTorrentIndex = useMemo(() => {
     if (sourceStreams.length === 0) return -1
@@ -292,9 +294,9 @@ export function SeriesDetail({ item }: Props) {
   // el índice elegido en el modal coincide con el array que recibe el player.
   const handlePlayFromSource = useCallback((index: number) => {
     if (!sourceEpisode) return
-    openPlayer({ ...sourceEpisode, streamOptions: sourceStreams }, index)
+    openPlayer({ ...sourceEpisode, streamOptions: sourceStreams, seriesTmdbTitle: seriesDisplayTitle }, index)
     setSourceEpisode(null)
-  }, [sourceEpisode, sourceStreams, openPlayer])
+  }, [sourceEpisode, sourceStreams, openPlayer, seriesDisplayTitle])
 
   const handlePlayHero = useCallback(() => {
     if (firstUnwatched) void handlePlayEpisode(firstUnwatched)

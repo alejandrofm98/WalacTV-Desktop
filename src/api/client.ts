@@ -722,6 +722,58 @@ function filterByPreferredLanguage(streams: StreamOption[]): StreamOption[] {
   return streams.filter((s) => s.language?.toUpperCase() === target)
 }
 
+/** ¿La opción es del idioma indicado (ES/EN…)? Mira primero el campo
+ * language y si no los tokens del label ("ES", "ES HD", "Audio EN"…).
+ * Conservador: sin subcadenas ("ENGLISH" no vale para "EN"). */
+export function streamOptionMatchesLanguage(option: StreamOption, target: string): boolean {
+  const code = (target ?? '').toUpperCase()
+  if (!code) return false
+  if ((option.language ?? '').toUpperCase() === code) return true
+  const tokens = (option.label ?? '').toUpperCase().split(/[^A-Z]+/).filter(Boolean)
+  return tokens.includes(code)
+}
+
+/** Orden de reproducción para capítulos: IPTV del proveedor en el idioma
+ * preferido, Torrentio en el idioma preferido, IPTV en otro idioma y por
+ * último Torrentio en otro idioma. Estable dentro de cada grupo. */
+export function orderEpisodeStreams(
+  iptv: StreamOption[],
+  torrents: StreamOption[],
+  preferredLanguage?: string,
+): StreamOption[] {
+  const target = (preferredLanguage ?? getPreferredLanguage()).toUpperCase()
+  const isTorrent = (o: StreamOption) => Boolean(o.infoHash)
+  const options = [...iptv, ...torrents].filter(isPlayableOption)
+  const bucket = (torrent: boolean, sameLang: boolean) =>
+    options.filter((o) => isTorrent(o) === torrent && streamOptionMatchesLanguage(o, target) === sameLang)
+  return [...bucket(false, true), ...bucket(true, true), ...bucket(false, false), ...bucket(true, false)]
+}
+
+/** Título principal durante la reproducción: TMDB/IMDb antes que el proveedor.
+ * En capítulos se usa el nombre TMDB de la serie (seriesTmdbTitle, inyectado al
+ * reproducir); el tmdbTitle del item de un capítulo es el del capítulo, no el
+ * de la serie. Sin dato TMDB se recurre al nombre del proveedor. */
+export function playbackTitle(item: CatalogItem): string {
+  if (item.kind === 'SERIES') {
+    if (item.seasonNumber != null && item.episodeNumber != null) {
+      return item.seriesTmdbTitle ?? item.seriesName ?? item.tmdbTitle ?? item.title
+    }
+    return item.tmdbTitle ?? item.seriesTmdbTitle ?? item.seriesName ?? item.title
+  }
+  return item.tmdbTitle ?? item.title
+}
+
+/** Subtítulo durante la reproducción: T/E más el nombre TMDB del capítulo. */
+export function playbackSubtitle(item: CatalogItem): string {
+  if (item.kind === 'SERIES' && item.seasonNumber != null && item.episodeNumber != null) {
+    const epTag = `T${item.seasonNumber}:E${item.episodeNumber}`
+    const epName = item.tmdbTitle ?? item.title
+    const title = playbackTitle(item)
+    return epName && epName !== title ? `${epTag} · ${epName}` : epTag
+  }
+  return item.subtitle ?? ''
+}
+
 export async function getTorrentioMovieStreams(movieId: string): Promise<StreamOption[]> {
   console.log(`[Torrentio] movie lookup (direct): ${movieId}`)
   if (!_IMDB_RE.test(movieId)) throw new Error('La pelicula no tiene imdb_id para consultar Torrentio')

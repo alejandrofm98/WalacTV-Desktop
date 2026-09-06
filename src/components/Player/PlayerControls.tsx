@@ -6,11 +6,9 @@ import {
   Maximize,
   Minimize,
   Pause,
-  PictureInPicture2,
   Play,
-  RotateCcw,
-  RotateCw,
   Settings,
+  SkipForward,
   Subtitles,
   Volume1,
   Volume2,
@@ -18,13 +16,19 @@ import {
 } from 'lucide-react'
 import { playerService } from '../../player/PlayerService'
 import { usePlayerStore } from '../../player/usePlayerStore'
+import { useAppStore } from '../../store/useAppStore'
+import { invoke } from '@tauri-apps/api/core'
+import {
+  getAllSeriesEpisodes,
+  getTorrentioEpisodeStreams,
+  isPlayableOption,
+  orderEpisodeStreams,
+} from '../../api/client'
 import type { PlayerItem } from '../../player/types'
 import { setVolume as persistVolume, setPreferredQuality } from '../../settings'
 import styles from './PlayerControls.module.css'
 
 export type PanelKind = 'audio' | 'subs' | 'quality' | null
-
-const SEEK_STEP_SECONDS = 10
 
 interface PlayerControlsProps {
   item: PlayerItem
@@ -200,8 +204,6 @@ export function PlayerControls({ item, activePanel, onPanelChange }: PlayerContr
   const rightClusterRef = useRef<HTMLDivElement | null>(null)
 
   const isLive = item.kind === 'CHANNEL' || item.kind === 'EVENT'
-  const pipSupported =
-    typeof document !== 'undefined' && !!document.pictureInPictureEnabled
 
   // Re-read track lists when Shaka signals track changes
   useEffect(() => {
@@ -274,13 +276,6 @@ export function PlayerControls({ item, activePanel, onPanelChange }: PlayerContr
     return () => window.removeEventListener('keydown', onKey)
   }, [service])
 
-  const skip = useCallback(
-    (delta: number) => {
-      service.seek(Math.max(0, service.getCurrentTime() + delta))
-    },
-    [service],
-  )
-
   const effectiveVolume = isMuted ? 0 : volume
 
   const handleVolumeInput = useCallback(
@@ -296,6 +291,82 @@ export function PlayerControls({ item, activePanel, onPanelChange }: PlayerContr
   const toggleMute = useCallback(() => {
     service.setMuted(!isMuted)
   }, [service, isMuted])
+
+  const isSeriesEpisode =
+    item.kind === 'SERIES' && item.seasonNumber != null && item.episodeNumber != null
+  const [nextLoading, setNextLoading] = useState(false)
+
+  // Salta al siguiente capítulo de la serie en reproducción. Replica la
+  // resolución de fuentes de SeriesDetail (IPTV + Torrentio) y abre el
+  // episodio con openPlayer, que recarga el player automáticamente.
+  const handleNextEpisode = useCallback(async () => {
+    const trace = (msg: string) => {
+      invoke('debug_log', { message: `[next] ${msg}` }).catch(() => {})
+    }
+    if (!isSeriesEpisode || nextLoading) return
+    setNextLoading(true)
+    try {
+      const seriesId =
+        item.seriesKey || item.seriesProviderId || item.seriesName || undefined
+      trace(`press kind=${item.kind} S${item.seasonNumber}E${item.episodeNumber} seriesId=${seriesId ?? 'NONE'} stableId=${item.stableId}`)
+      if (!seriesId || item.seasonNumber == null || item.episodeNumber == null) {
+        trace('abort: sin seriesId o S/E')
+        return
+      }
+      const episodes = await getAllSeriesEpisodes(seriesId)
+      trace(`episodios=${episodes.length}`)
+      const ordered = [...episodes].sort(
+        (a, b) =>
+          (a.seasonNumber ?? 0) - (b.seasonNumber ?? 0) ||
+          (a.episodeNumber ?? 0) - (b.episodeNumber ?? 0),
+      )
+      const currentIdx = ordered.findIndex(
+        (e) => e.seasonNumber === item.seasonNumber && e.episodeNumber === item.episodeNumber,
+      )
+      trace(`currentIdx=${currentIdx}`)
+      const next = currentIdx >= 0 ? ordered[currentIdx + 1] : undefined
+      if (!next || next.seasonNumber == null || next.episodeNumber == null) {
+        trace('abort: no hay siguiente (ultimo?)')
+        return
+      }
+      trace(`next=${next.title} S${next.seasonNumber}E${next.episodeNumber} opts=${next.streamOptions.length}`)
+
+      let opts = next.streamOptions.filter((o) => isPlayableOption(o) && !o.infoHash)
+      trace(`opts-iptv=${opts.length}`)
+      const imdb = item.imdbId && /^tt\d+$/i.test(item.imdbId) ? item.imdbId : null
+      let torrents: typeof opts = []
+      if (imdb) {
+        try {
+          torrents = await getTorrentioEpisodeStreams(
+            imdb,
+            next.seasonNumber,
+            next.episodeNumber,
+          )
+          trace(`torrentio=${torrents.length}`)
+        } catch (err) {
+          trace(`torrentio-error: ${String(err)}`)
+          // Sin Torrentio se sigue con las fuentes IPTV del episodio.
+        }
+      } else {
+        trace('sin imdb, sin torrentio')
+      }
+      // Prioridad: directo mismo idioma, torrentio mismo idioma,
+      // directo otro idioma, torrentio otro idioma.
+      opts = orderEpisodeStreams(opts, torrents)
+      if (opts.length === 0) {
+        trace('abort: 0 opciones reproducibles')
+        return
+      }
+      trace(`openPlayer idx=0 total=${opts.length} primero=${opts[0]?.label}`)
+      // Propaga el nombre TMDB de la serie para que el player no use el del proveedor.
+      useAppStore.getState().openPlayer({ ...next, streamOptions: opts, seriesTmdbTitle: item.seriesTmdbTitle ?? null }, 0)
+    } catch (err) {
+      invoke('debug_log', { message: `[next] EXCEPCION: ${String(err)}` }).catch(() => {})
+      console.warn('[Player] no se pudo avanzar al siguiente capítulo:', err)
+    } finally {
+      setNextLoading(false)
+    }
+  }, [isSeriesEpisode, nextLoading, item])
 
   const togglePanel = useCallback(
     (panel: Exclude<PanelKind, null>) => {
@@ -321,20 +392,11 @@ export function PlayerControls({ item, activePanel, onPanelChange }: PlayerContr
       )}
 
       <div className={styles.buttonsRow}>
-        {!isLive && (
-          <button
-            className={styles.controlBtn}
-            onClick={() => skip(-SEEK_STEP_SECONDS)}
-            aria-label={`Retroceder ${SEEK_STEP_SECONDS} segundos`}
-          >
-            <RotateCcw size={20} />
-          </button>
-        )}
-
         <button
           className={`${styles.controlBtn} ${styles.playBtn}`}
           onClick={() => service.togglePlay()}
           aria-label={isPlaying ? 'Pausar' : 'Reproducir'}
+          title={isPlaying ? 'Pausar' : 'Reproducir'}
         >
           {isPlaying ? (
             <Pause size={24} fill="currentColor" />
@@ -343,13 +405,16 @@ export function PlayerControls({ item, activePanel, onPanelChange }: PlayerContr
           )}
         </button>
 
-        {!isLive && (
+        {isSeriesEpisode && (
           <button
             className={styles.controlBtn}
-            onClick={() => skip(SEEK_STEP_SECONDS)}
-            aria-label={`Adelantar ${SEEK_STEP_SECONDS} segundos`}
+            onClick={handleNextEpisode}
+            disabled={nextLoading}
+            aria-label="Siguiente capítulo"
+            title="Siguiente capítulo"
+            style={nextLoading ? { opacity: 0.4 } : undefined}
           >
-            <RotateCw size={20} />
+            <SkipForward size={20} />
           </button>
         )}
 
@@ -361,6 +426,7 @@ export function PlayerControls({ item, activePanel, onPanelChange }: PlayerContr
               className={`${styles.controlBtn} ${activePanel === 'audio' ? styles.controlBtnActive : ''}`}
               onClick={() => togglePanel('audio')}
               aria-label="Idioma de audio"
+              title="Idioma de audio"
               aria-expanded={activePanel === 'audio'}
             >
               <Languages size={20} />
@@ -372,6 +438,7 @@ export function PlayerControls({ item, activePanel, onPanelChange }: PlayerContr
               className={`${styles.controlBtn} ${activePanel === 'subs' ? styles.controlBtnActive : ''}`}
               onClick={() => togglePanel('subs')}
               aria-label="Subtítulos"
+              title="Subtítulos"
               aria-expanded={activePanel === 'subs'}
             >
               <Subtitles size={20} />
@@ -383,54 +450,48 @@ export function PlayerControls({ item, activePanel, onPanelChange }: PlayerContr
               className={`${styles.controlBtn} ${activePanel === 'quality' ? styles.controlBtnActive : ''}`}
               onClick={() => togglePanel('quality')}
               aria-label="Calidad de video"
+              title="Calidad de video"
               aria-expanded={activePanel === 'quality'}
             >
               <Settings size={20} />
             </button>
           )}
 
-          {pipSupported && (
-            <button
-              className={styles.controlBtn}
-              onClick={() => service.togglePip()}
-              aria-label="Picture in picture"
-            >
-              <PictureInPicture2 size={20} />
-            </button>
-          )}
-
           <div className={styles.volumeGroup}>
-            <button
-              className={styles.controlBtn}
-              onClick={toggleMute}
-              aria-label={isMuted ? 'Activar sonido' : 'Silenciar'}
-            >
-              <VolumeIcon size={20} />
-            </button>
-            <input
-              type="range"
-              className={styles.volumeSlider}
-              min={0}
-              max={1}
-              step={0.01}
-              value={effectiveVolume}
-              onChange={handleVolumeInput}
-              aria-label="Volumen"
-              style={
-                { '--volume-pct': `${effectiveVolume * 100}%` } as CSSProperties
-              }
-            />
-          </div>
-
           <button
             className={styles.controlBtn}
-            onClick={() => service.toggleFullscreen()}
-            aria-label={isFullscreen ? 'Salir de pantalla completa' : 'Pantalla completa'}
+            onClick={toggleMute}
+            aria-label={isMuted ? 'Activar sonido' : 'Silenciar'}
+            title={isMuted ? 'Activar sonido' : 'Silenciar'}
           >
-            {isFullscreen ? <Minimize size={20} /> : <Maximize size={20} />}
+            <VolumeIcon size={20} />
           </button>
+          <input
+            type="range"
+            className={styles.volumeSlider}
+            min={0}
+            max={1}
+            step={0.01}
+            value={effectiveVolume}
+            onChange={handleVolumeInput}
+            aria-label="Volumen"
+            title="Volumen"
+            style={
+              { '--volume-pct': `${effectiveVolume * 100}%` } as CSSProperties
+            }
+          />
+        </div>
 
-          {activePanel !== null && (
+        <button
+          className={styles.controlBtn}
+          onClick={() => service.toggleFullscreen()}
+          aria-label={isFullscreen ? 'Salir de pantalla completa' : 'Pantalla completa'}
+          title={isFullscreen ? 'Salir de pantalla completa' : 'Pantalla completa'}
+        >
+          {isFullscreen ? <Minimize size={20} /> : <Maximize size={20} />}
+        </button>
+
+        {activePanel !== null && (
             <div className={styles.panel} role="menu">
               {activePanel === 'audio' && (
                 <>

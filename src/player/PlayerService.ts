@@ -6,7 +6,7 @@ import { usePlayerStore } from './usePlayerStore'
 import { API_URL } from '../config'
 import { getUsername, getPassword } from '../credentials'
 import { getTorrentMaxMb } from '../settings'
-import { getPlaybackTrackPreference, getPreferredLanguage, updatePlaybackTrackPreference } from '../api/client'
+import { getPlaybackTrackPreference, getPreferredLanguage, playbackSubtitle, playbackTitle, updatePlaybackTrackPreference } from '../api/client'
 
 type PlayerServiceEvent = 'state' | 'error' | 'trackschanged' | 'fullscreenchange' | 'pipchange' | 'ended'
 
@@ -59,6 +59,7 @@ export class PlayerService extends EventTarget {
   private _currentItem: PlayerItem | null = null
   private _currentStreamUrl: string | null = null
   private _activeTorrentHash: string | null = null
+  private _activeTorrentSeeders: number | null = null
   private _alternativeAudioLoadedForUrl: string | null = null
   private _streamSwitchInProgress = false
   private _pendingExternalAudioTrack: AudioTrack | null = null
@@ -230,6 +231,15 @@ private _os: string | null = null
     }
     this._loadGeneration++
     const gen = this._loadGeneration
+    // Corta lo que estuviera sonando ANTES de resolver la nueva fuente: la
+    // resolución (magnet torrent, manifests) tarda segundos y si no el
+    // capítulo anterior sigue audible/visible hasta el reemplazo.
+    try {
+      await invoke('mpv_command', { args: ['stop'] })
+    } catch {
+      // Sin nada cargado mpv rechaza el stop; irrelevante.
+    }
+    if (gen !== this._loadGeneration) return -1
     this._currentItemId = item.stableId
     this._currentItem = item
     this._alternativeAudioLoadedForUrl = null
@@ -282,19 +292,15 @@ private _os: string | null = null
       usePlayerStore.getState().setStreamLabel(option.label)
 
       try {
-        const isTorrent = option.source === 'torrentio' || option.requiresResolution
-        if (isTorrent) {
-          const title = item.kind === 'SERIES' && item.seriesName
-            ? item.seriesName
-            : item.tmdbTitle ?? item.title
-          let torrentSubtitle = item.subtitle ?? ''
-          if (item.kind === 'SERIES' && item.seasonNumber != null && item.episodeNumber != null) {
-            const episode = `T${item.seasonNumber}:E${item.episodeNumber}`
-            torrentSubtitle = item.title && item.title !== title ? `${episode} · ${item.title}` : episode
-          }
+        // Título TMDB/IMDb antes que el del proveedor (ver playbackTitle).
+        const title = playbackTitle(item)
+        const displaySubtitle = playbackSubtitle(item)
+        // Pantalla de carga para pelis y series, sea torrent o directo (en
+        // directo las stats quedan a null y el overlay no muestra cifras).
+        if (item.kind === 'MOVIE' || item.kind === 'SERIES') {
           usePlayerStore.getState().setTorrentInfo({
             title,
-            subtitle: torrentSubtitle,
+            subtitle: displaySubtitle,
             posterUrl: item.tmdbPosterUrl ?? item.imageUrl ?? null,
             backdropUrl: item.backdropUrl ?? null,
           })
@@ -303,17 +309,9 @@ private _os: string | null = null
         const url = await this._resolvePlaybackUrl(option)
         console.log(`[PlayerService] Loading stream: label="${option.label}" url="${url}"`)
 
-        const title = item.kind === 'SERIES' && item.seriesName
-          ? item.seriesName
-          : item.tmdbTitle ?? item.title
-        let subtitle = item.subtitle ?? ''
-        if (item.kind === 'SERIES' && item.seasonNumber != null && item.episodeNumber != null) {
-          const episode = `T${item.seasonNumber}:E${item.episodeNumber}`
-          subtitle = item.title && item.title !== title ? `${episode} · ${item.title}` : episode
-        }
         await Promise.all([
           invoke('mpv_set_property', { name: 'user-data/walactv/title', value: title }),
-          invoke('mpv_set_property', { name: 'user-data/walactv/subtitle', value: subtitle }),
+          invoke('mpv_set_property', { name: 'user-data/walactv/subtitle', value: displaySubtitle }),
         ])
 
         this._currentStreamUrl = url
@@ -461,24 +459,47 @@ private _os: string | null = null
   }
 
   // ── Fullscreen ───────────────────────────────────────────────────
+  // Tauri webviews don't reliably honor the DOM Fullscreen API, so the
+  // window is toggled through the Tauri window API (with DOM as fallback).
 
-  enterFullscreen(): void {
-    const el = this._containerEl ?? this._videoEl
-    if (!el) return
-    el.requestFullscreen().catch(() => {})
-  }
-
-  exitFullscreen(): void {
-    if (document.fullscreenElement) {
-      document.exitFullscreen().catch(() => {})
+  private async _setWindowFullscreen(on: boolean): Promise<boolean> {
+    try {
+      const { getCurrentWindow } = await import('@tauri-apps/api/window')
+      const win = getCurrentWindow()
+      await win.setFullscreen(on)
+      usePlayerStore.getState().setFullscreen(on)
+      return true
+    } catch {
+      return false
     }
   }
 
+  enterFullscreen(): void {
+    void this._setWindowFullscreen(true).then((ok) => {
+      if (ok) return
+      const el = this._containerEl ?? this._videoEl
+      if (!el) return
+      el.requestFullscreen().catch(() => {})
+    })
+  }
+
+  exitFullscreen(): void {
+    void this._setWindowFullscreen(false).then((ok) => {
+      if (ok) return
+      if (document.fullscreenElement) {
+        document.exitFullscreen().catch(() => {})
+      } else {
+        usePlayerStore.getState().setFullscreen(false)
+      }
+    })
+  }
+
   toggleFullscreen(): void {
-    if (document.fullscreenElement) {
-      this.exitFullscreen()
-    } else {
+    const show = !usePlayerStore.getState().isFullscreen
+    if (show) {
       this.enterFullscreen()
+    } else {
+      this.exitFullscreen()
     }
   }
 
@@ -651,6 +672,7 @@ private _os: string | null = null
         },
       })
       this._activeTorrentHash = result.infoHash
+      this._activeTorrentSeeders = option.seeders ?? null
       this._startTorrentStatsPolling(result.infoHash)
       return result.url
     }
@@ -664,7 +686,9 @@ private _os: string | null = null
     this._stopTorrentStatsPolling()
     this._torrentStatsTimer = setInterval(() => {
       invoke<TorrentStats>('torrent_stats', { infoHash })
-        .then((stats) => usePlayerStore.getState().setTorrentStats(stats))
+        .then((stats) =>
+          usePlayerStore.getState().setTorrentStats({ ...stats, seeds: this._activeTorrentSeeders }),
+        )
         .catch(() => {})
     }, 1000)
   }
@@ -686,6 +710,7 @@ private _os: string | null = null
     this._stopTorrentStatsPolling()
     const hash = this._activeTorrentHash
     this._activeTorrentHash = null
+    this._activeTorrentSeeders = null
     if (!hash) return
     await invoke('torrent_stop', { infoHash: hash }).catch(() => {})
   }

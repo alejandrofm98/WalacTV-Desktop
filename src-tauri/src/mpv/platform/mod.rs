@@ -8,6 +8,7 @@ pub mod macos;
 #[cfg(target_os = "windows")]
 pub mod windows;
 
+#[cfg(target_os = "linux")]
 use libloading::Library;
 use raw_window_handle::RawWindowHandle;
 use std::ffi::c_void;

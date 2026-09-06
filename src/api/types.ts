@@ -49,6 +49,9 @@ export interface CatalogItem {
   seriesName?: string | null
   seriesKey?: string | null
   seriesProviderId?: string | null
+  /** Nombre TMDB/IMDb de la serie (inyectado al reproducir desde SeriesDetail).
+   * El tmdbTitle de un capítulo es el del capítulo, no el de la serie. */
+  seriesTmdbTitle?: string | null
   seasonNumber?: number | null
   episodeNumber?: number | null
   streamOptions: StreamOption[]

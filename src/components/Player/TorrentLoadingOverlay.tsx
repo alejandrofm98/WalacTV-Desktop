@@ -29,11 +29,15 @@ function formatEta(remainingBytes: number, bps: number): string {
   return `${seconds}s`
 }
 
+function formatPeers(peers: number, connecting: number): string {
+  return connecting > 0 ? `${peers} (+${connecting})` : `${peers}`
+}
+
 /**
- * Overlay de carga para streams torrent: imagen del titulo de fondo,
- * barra de progreso hacia el objetivo de prebuffer y estadisticas en
- * vivo (velocidad, ETA, descargado). Espejo del TorrentLoadingOverlay
- * del cliente Android.
+ * Overlay de carga para pelis y series, tanto torrent como directo: imagen
+ * del titulo de fondo, barra de progreso y estadisticas en vivo.
+ * En directo (stats null) no se muestra ninguna cifra, solo titulo y barra.
+ * Espejo del TorrentLoadingOverlay del cliente Android.
  */
 export function TorrentLoadingOverlay({ info, stats }: TorrentLoadingOverlayProps) {
   const target = prebufferTarget(stats?.totalBytes ?? 0)
@@ -42,6 +46,7 @@ export function TorrentLoadingOverlay({ info, stats }: TorrentLoadingOverlayProp
   const remainingToTarget = Math.max(0, target - progress)
   const eta = formatEta(remainingToTarget, stats?.downloadRateBps ?? 0)
   const backdrop = info.backdropUrl || info.posterUrl
+  const isDirect = !stats
 
   return (
     <div className={styles.overlay}>
@@ -61,29 +66,35 @@ export function TorrentLoadingOverlay({ info, stats }: TorrentLoadingOverlayProp
           <h2 className={styles.title}>{info.title}</h2>
           {info.subtitle && <p className={styles.subtitle}>{info.subtitle}</p>}
 
-          {!stats?.ready ? (
-            <p className={styles.hint}>Recibiendo metadatos del torrent…</p>
-          ) : (
-            <p className={styles.hint}>Preparando la transmisión…</p>
-          )}
+          <p className={styles.hint}>
+            {!isDirect && !stats?.ready
+              ? 'Recibiendo metadatos del torrent…'
+              : 'Preparando la transmisión…'}
+          </p>
 
           <div className={styles.barTrack}>
             <div
-              className={`${styles.barFill} ${!stats?.ready ? styles.barIndeterminate : ''}`}
-              style={{ width: stats?.ready ? `${percent}%` : undefined }}
+              className={`${styles.barFill} ${!stats?.ready || isDirect ? styles.barIndeterminate : ''}`}
+              style={{ width: !stats?.ready || isDirect ? undefined : `${percent}%` }}
             />
           </div>
 
-          <div className={styles.chips}>
-            <span className={styles.chip}>{formatSpeed(stats?.downloadRateBps ?? 0)}</span>
-            <span className={styles.chip}>ETA {eta}</span>
-            {stats?.totalBytes ? (
-              <span className={styles.chip}>
-                {formatMb(progress)} / {formatMb(stats.totalBytes)}
-              </span>
-            ) : null}
-            {stats?.finished && <span className={styles.chip}>Completado</span>}
-          </div>
+          {!isDirect && stats && (
+            <div className={styles.chips}>
+              {stats.seeds != null && (
+                <span className={styles.chip}>Seeds {stats.seeds}</span>
+              )}
+              <span className={styles.chip}>Peers {formatPeers(stats.peers, stats.peersConnecting)}</span>
+              <span className={styles.chip}>{formatSpeed(stats.downloadRateBps)}</span>
+              <span className={styles.chip}>ETA {eta}</span>
+              {stats.totalBytes ? (
+                <span className={styles.chip}>
+                  {formatMb(progress)} / {formatMb(stats.totalBytes)}
+                </span>
+              ) : null}
+              {stats.finished && <span className={styles.chip}>Completado</span>}
+            </div>
+          )}
         </div>
       </div>
     </div>

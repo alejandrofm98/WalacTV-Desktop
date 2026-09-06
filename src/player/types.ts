@@ -71,6 +71,10 @@ export interface TorrentStats {
   totalBytes: number
   progressBytes: number
   downloadRateBps: number
+  peers: number
+  peersConnecting: number
+  /** Seeds del torrent elegido (dato de Torrentio al resolver, no del swarm). */
+  seeds?: number | null
 }
 
 /** Datos del titulo para el overlay mientras se descarga el torrent. */

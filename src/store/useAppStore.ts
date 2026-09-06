@@ -91,8 +91,11 @@ export const useAppStore = create<AppState>((set, get) => ({
   playerStartPosition: 0,
   playerOpening: false,
   openPlayer: (item, streamIndex = 0, startPosition = 0) => {
-    const { playerOpening } = get()
-    if (playerOpening) return
+    const { playerOpening, playerItem } = get()
+    // Ignora reaperturas del MISMO item (doble clic), pero permite cambiar
+    // a otro item con el player ya abierto (p. ej. siguiente capítulo).
+    // Antes se ignoraba todo con el player abierto y el botón ⏭ no hacía nada.
+    if (playerOpening && playerItem?.stableId === item.stableId) return
     set({ playerOpening: true, playerItem: item, playerStreamIndex: streamIndex, playerStartPosition: startPosition })
   },
   closePlayer: () => set({ playerItem: null, playerOpening: false }),

@@ -647,6 +647,7 @@ impl MpvApi {
 ///
 /// Linux:   $XDG_DATA_HOME/walactv-desktop/libmpv/
 ///          or ~/.local/share/walactv-desktop/libmpv/
+#[cfg(target_os = "linux")]
 fn local_libmpv_dir() -> PathBuf {
     let base = std::env::var("XDG_DATA_HOME")
         .map(PathBuf::from)
@@ -658,6 +659,7 @@ fn local_libmpv_dir() -> PathBuf {
 }
 
 /// Full path to the local libmpv.so.2 bundle copy.
+#[cfg(target_os = "linux")]
 fn local_libmpv_path() -> PathBuf {
     local_libmpv_dir().join("libmpv.so.2")
 }

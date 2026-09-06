@@ -285,6 +285,10 @@ pub struct TorrentStatsDto {
     pub progress_bytes: u64,
     /// Velocidad de descarga en bytes/segundo.
     pub download_rate_bps: u64,
+    /// Peers conectados ahora mismo.
+    pub peers: u32,
+    /// Peers en proceso de conexión.
+    pub peers_connecting: u32,
 }
 
 /// Estadisticas en vivo del torrent activo (para el overlay de carga).
@@ -305,18 +309,29 @@ pub async fn torrent_stats(
         .get(torrent)
         .ok_or_else(|| "Torrent no activo".to_string())?;
     let stats = handle.stats();
-    let (download_rate_bps, ready) = match stats.live {
+    let live = stats.live.as_ref();
+    let (download_rate_bps, ready) = match live {
         Some(live) => (live.download_speed.as_bytes(), true),
         None => (
             0,
             matches!(stats.state, TorrentStatsState::Live),
         ),
     };
+    let (peers, peers_connecting) = live
+        .map(|live| {
+            (
+                live.snapshot.peer_stats.live,
+                live.snapshot.peer_stats.connecting,
+            )
+        })
+        .unwrap_or((0, 0));
     Ok(TorrentStatsDto {
         ready,
         finished: stats.finished,
         total_bytes: stats.total_bytes,
         progress_bytes: stats.progress_bytes,
         download_rate_bps,
+        peers,
+        peers_connecting,
     })
 }

@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import { X } from 'lucide-react'
 import type { PlayerItem } from '../../player/types'
+import { playbackSubtitle, playbackTitle } from '../../api/client'
 import { playerService } from '../../player/PlayerService'
 import { PlayerEpg } from './PlayerEpg'
 import type { EpgData } from './PlayerEpg'
@@ -47,18 +48,10 @@ export function PlayerTopBar({ item, epg, onBack }: PlayerTopBarProps) {
     const id = setInterval(tick, 1000)
     return () => clearInterval(id)
   }, [isLive])
-  const title =
-    item.kind === 'SERIES' && item.seriesName
-      ? item.seriesName
-      : item.tmdbTitle ?? item.title
+  const title = playbackTitle(item)
 
-  let subtitle: string | null = null
-  if (item.kind === 'SERIES' && item.seasonNumber != null && item.episodeNumber != null) {
-    const epTag = `T${item.seasonNumber}:E${item.episodeNumber}`
-    subtitle = item.title && item.title !== title ? `${epTag} · ${item.title}` : epTag
-  } else if (item.subtitle) {
-    subtitle = item.subtitle
-  }
+  const rawSubtitle = playbackSubtitle(item)
+  const subtitle = rawSubtitle ? rawSubtitle : null
 
   return (
     <div className={styles.topBar}>
@@ -66,6 +59,7 @@ export function PlayerTopBar({ item, epg, onBack }: PlayerTopBarProps) {
         className={styles.backBtn}
         onClick={onBack}
         aria-label="Cerrar reproductor"
+        title="Cerrar reproductor"
       >
         <X size={22} />
       </button>

@@ -237,13 +237,20 @@ export function Player() {
     function onKey(e: KeyboardEvent) {
       if (e.key === 'Escape') {
         if (document.fullscreenElement || document.pictureInPictureElement) return
+        // La ventana Tauri en pantalla completa no la gestiona el navegador:
+        // primer Escape sale de fullscreen, el segundo cierra el player.
+        if (usePlayerStore.getState().isFullscreen) {
+          e.preventDefault()
+          service.exitFullscreen()
+          return
+        }
         e.preventDefault()
         closePlayer()
       }
     }
     window.addEventListener('keydown', onKey)
     return () => window.removeEventListener('keydown', onKey)
-  }, [closePlayer])
+  }, [closePlayer, service])
 
   // Listen for player://close Tauri event emitted by the global shortcut
   // handler in Rust. This guarantees the player can be closed even when
@@ -266,6 +273,9 @@ export function Player() {
   // Cleanup on unmount
   useEffect(() => {
     return () => {
+      if (usePlayerStore.getState().isFullscreen) {
+        service.exitFullscreen()
+      }
       service.detach()
     }
   }, [service])

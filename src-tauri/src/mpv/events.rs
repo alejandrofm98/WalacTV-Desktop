@@ -13,8 +13,6 @@ use std::ffi::{c_char, c_int, CStr, CString};
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 #[cfg(target_os = "windows")]
-use std::time::Duration;
-#[cfg(target_os = "windows")]
 use tauri::Manager;
 use tauri::{AppHandle, Emitter};
 
@@ -594,23 +592,6 @@ fn observe(api: &MpvApi, client: *mut mpv_handle, id: u64, name: &str, format: m
     let ret = unsafe { (api.mpv_observe_property)(client, id, c_name.as_ptr(), format) };
     if ret < 0 {
         log::warn!("observe_property({name}) failed: {ret}");
-    }
-}
-
-#[cfg(target_os = "windows")]
-fn command(api: &MpvApi, client: *mut mpv_handle, args: &[&str]) {
-    let Ok(values) = args
-        .iter()
-        .map(|arg| CString::new(*arg))
-        .collect::<Result<Vec<_>, _>>()
-    else {
-        return;
-    };
-    let mut pointers = values.iter().map(|arg| arg.as_ptr()).collect::<Vec<_>>();
-    pointers.push(std::ptr::null());
-    let result = unsafe { (api.mpv_command)(client, pointers.as_ptr()) };
-    if result < 0 {
-        log::warn!("mpv command {args:?} failed: {result}");
     }
 }
 

@@ -18,6 +18,7 @@ use commands::player::{
     mpv_set_render_size, PlayerState,
 };
 use commands::torrent::{torrent_start, torrent_stats, torrent_stop, TorrentState};
+use commands::debug::debug_log;
 
 #[cfg(any(target_os = "linux", target_os = "windows"))]
 use commands::player::{mpv_get_frame_counter, mpv_get_render_frame};
@@ -28,11 +29,11 @@ use tauri::{Manager, WebviewUrl};
 
 /// URL for the main window webview (dev server in debug, bundled index in
 /// production).
-fn build_main_url(app: &tauri::App) -> WebviewUrl {
+fn build_main_url(_app: &tauri::App) -> WebviewUrl {
     #[cfg(debug_assertions)]
     {
         WebviewUrl::External(
-            app.config()
+            _app.config()
                 .build
                 .dev_url
                 .clone()
@@ -50,10 +51,10 @@ fn build_main_url(app: &tauri::App) -> WebviewUrl {
 /// controls (the native video lives in the main window via `wid` embedding).
 /// Only used on the non-Linux two-window architecture.
 #[cfg(not(target_os = "linux"))]
-fn build_overlay_url(app: &tauri::App) -> WebviewUrl {
+fn build_overlay_url(_app: &tauri::App) -> WebviewUrl {
     #[cfg(debug_assertions)]
     {
-        let mut s = app
+        let mut s = _app
             .config()
             .build
             .dev_url
@@ -342,6 +343,7 @@ pub fn run() {
         .plugin(tauri_plugin_process::init())
         .invoke_handler(tauri::generate_handler![
             get_scale_info,
+            debug_log,
             secure_credentials_save,
             secure_credentials_load,
             secure_credentials_clear,
