@@ -64,7 +64,6 @@
 }
 
 .favChip {
-  align-self: flex-start;
   padding: 5px 14px;
   border-radius: var(--radius-full);
   font-size: 13px;
@@ -86,6 +85,29 @@
   background: var(--accent-dim);
   color: var(--text-accent);
   border-color: oklch(63% 0.20 255 / 0.4);
+}
+
+.chipsRow {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.clearChip {
+  padding: 5px 14px;
+  border-radius: var(--radius-full);
+  font-size: 13px;
+  font-weight: 600;
+  font-family: var(--font-body);
+  cursor: pointer;
+  background: transparent;
+  color: var(--text-accent);
+  border: 1px solid oklch(63% 0.20 255 / 0.4);
+  transition: background 0.12s ease, color 0.12s ease;
+}
+
+.clearChip:hover {
+  background: var(--accent-dim);
 }
 
 /* ── Channel list ──────────────────────────────── */

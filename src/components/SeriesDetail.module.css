@@ -4,289 +4,506 @@
   overflow-y: auto;
   overflow-x: hidden;
   background: var(--bg);
-  display: flex;
-  flex-direction: column;
 }
 
-/* ── Hero Section ──────────────────────────────── */
-.hero {
+/* ── Masthead compacto ─────────────────────────── */
+.masthead {
   position: relative;
-  height: 60vh;
-  min-height: 500px;
-  max-height: 800px;
-  flex-shrink: 0;
+  padding: 30px 44px 26px;
+  overflow: hidden;
+  background:
+    radial-gradient(ellipse 55% 90% at 88% 20%, oklch(40% 0.12 262 / 0.30), transparent 70%),
+    linear-gradient(180deg, oklch(14% 0.026 252), var(--bg));
 }
 
-.heroImage {
-  width: 100%;
+.masthead::after {
+  content: '';
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  height: 1px;
+  background: oklch(93% 0.008 252 / 0.10);
+}
+
+.mastheadArt {
+  position: absolute;
+  top: 0;
+  right: 0;
   height: 100%;
+  width: 58%;
   object-fit: cover;
-  object-position: center 20%;
-  display: block;
-}
-
-.heroFallback {
-  width: 100%;
-  height: 100%;
-  background: linear-gradient(135deg, var(--surface) 0%, var(--bg) 100%);
-}
-
-.heroGradientLeft {
-  position: absolute;
-  inset: 0;
-  background: linear-gradient(
-    90deg,
-    var(--bg) 0%,
-    oklch(11% 0.024 252 / 0.8) 20%,
-    transparent 60%
-  );
-}
-
-.heroGradientBottom {
-  position: absolute;
-  inset: 0;
-  background: linear-gradient(
-    0deg,
-    var(--bg) 0%,
-    oklch(11% 0.024 252 / 0.8) 15%,
-    transparent 50%
-  );
-}
-
-.heroVignette {
-  position: absolute;
-  inset: 0;
-  background: linear-gradient(
-    180deg,
-    oklch(8% 0.024 252 / 0.55) 0%,
-    transparent 25%,
-    transparent 60%,
-    var(--bg) 100%
-  );
+  object-position: center 22%;
+  opacity: 0.34;
+  -webkit-mask-image: linear-gradient(90deg, transparent 0%, #000 45%);
+  mask-image: linear-gradient(90deg, transparent 0%, #000 45%);
   pointer-events: none;
 }
 
-/* ── Back button ───────────────────────────────── */
-.backBtn {
+.mastheadShade {
   position: absolute;
-  top: 32px;
-  left: 32px;
+  inset: 0;
+  pointer-events: none;
+  background: linear-gradient(90deg, oklch(11% 0.024 252 / 0.85) 0%, transparent 55%);
+}
+
+.backRow {
+  position: relative;
+  z-index: 1;
   display: flex;
   align-items: center;
-  justify-content: center;
-  gap: 8px;
-  padding: 8px 16px;
-  background: rgba(0, 0, 0, 0.6);
-  color: #fff;
-  border: 1px solid rgba(255, 255, 255, 0.1);
+  gap: 16px;
+  margin-bottom: 20px;
+}
+
+.backBtn {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  background: oklch(93% 0.008 252 / 0.10);
+  color: var(--text-primary);
+  border: none;
   border-radius: var(--radius-full);
+  padding: 10px 22px;
   font-size: 14px;
-  font-weight: 600;
+  font-weight: 700;
+  font-family: var(--font-body);
   cursor: pointer;
-  z-index: 10;
-  backdrop-filter: blur(4px);
-  transition: background 0.2s ease, transform 0.2s ease, border-color 0.2s ease;
+  transition: background 0.15s ease;
 }
 
 .backBtn:hover {
-  background: rgba(0, 0, 0, 0.8);
-  border-color: rgba(255, 255, 255, 0.2);
-  transform: scale(1.02);
+  background: oklch(93% 0.008 252 / 0.18);
 }
 
 .backIcon {
   line-height: 1;
 }
 
-/* ── Hero Info ─────────────────────────────────── */
-.heroInfo {
-  position: absolute;
-  bottom: 28px;
-  left: 40px;
-  max-width: 60%;
+.keysHint {
+  margin-left: auto;
+  font-size: 12.5px;
+  color: var(--text-muted);
+}
+
+.keysHint kbd {
+  font-family: inherit;
+  font-size: 11px;
+  font-weight: 700;
+  color: var(--text-secondary);
+  background: var(--surface-variant);
+  border-radius: 6px;
+  padding: 2px 8px;
+  margin: 0 2px;
+}
+
+.showTitle {
+  position: relative;
   z-index: 1;
-}
-
-.heroTitle {
-  color: oklch(97% 0.005 252);
-  font-size: 36px;
+  font-size: 54px;
   font-weight: 800;
-  letter-spacing: -0.5px;
-  margin-bottom: 10px;
-  line-height: 1.1;
-  text-shadow: 0 2px 18px oklch(0% 0 0 / 0.5);
+  letter-spacing: -1.6px;
+  line-height: 1.02;
+  color: var(--text-primary);
 }
 
-.heroMetaRow {
+.showMeta {
+  position: relative;
+  z-index: 1;
   display: flex;
   align-items: center;
   flex-wrap: wrap;
-  gap: 10px;
-  margin-bottom: 12px;
+  gap: 14px;
+  margin-top: 12px;
+  font-size: 15px;
+  color: var(--text-secondary);
 }
 
-.ratingBadge {
-  background: #facc15;
-  color: black;
-  padding: 3px 11px;
-  border-radius: var(--radius-full);
-  font-size: 13px;
+.showMeta b {
+  color: var(--text-primary);
+  font-weight: 600;
+}
+
+.star {
+  color: var(--rating-bg);
   font-weight: 800;
 }
 
-.metaItem {
-  color: var(--text-secondary);
-  font-size: 13px;
-  font-weight: 500;
+/* ── CTAs grandes ──────────────────────────────── */
+.ctaRow {
+  position: relative;
+  z-index: 1;
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  margin-top: 22px;
 }
 
-.heroDescription {
-  color: oklch(88% 0.008 252);
-  font-size: 13.5px;
-  font-weight: 400;
-  line-height: 1.6;
-  max-width: 58ch;
-  margin: 0 0 16px;
-  display: -webkit-box;
-  -webkit-line-clamp: 3;
-  -webkit-box-orient: vertical;
-  overflow: hidden;
-  text-shadow: 0 1px 8px oklch(0% 0 0 / 0.5);
-}
-
-.heroPlayBtn {
+.ctaPlay {
   display: inline-flex;
   align-items: center;
-  gap: 12px;
-  background: white;
-  color: black;
+  gap: 14px;
+  background: var(--text-primary);
+  color: oklch(12% 0.01 252);
   border: none;
-  border-radius: var(--radius-md);
-  padding: 12px 32px;
-  font-size: 16px;
-  font-weight: 700;
+  border-radius: var(--radius-lg);
+  padding: 16px 38px;
+  font-size: 18px;
+  font-weight: 800;
   font-family: var(--font-body);
   cursor: pointer;
-  transition: background 0.2s ease, transform 0.2s ease;
+  transition: background 0.15s ease, transform 0.15s ease;
 }
 
-.heroPlayBtn:hover:not(:disabled) {
-  background: rgba(255, 255, 255, 0.8);
-  transform: scale(1.02);
+.ctaPlay:hover:not(:disabled) {
+  background: oklch(97% 0.004 252);
+  transform: translateY(-1px);
 }
 
-.heroPlayBtn:disabled {
+.ctaPlay:disabled {
   opacity: 0.4;
   cursor: not-allowed;
 }
 
-.heroPlayIcon {
-  font-size: 14px;
-  line-height: 1;
+.ctaTxt {
+  text-align: left;
+  line-height: 1.25;
 }
 
-/* ── Episodes Section ──────────────────────────── */
-.episodesSection {
-  flex: 1;
-  display: flex;
-  flex-direction: column;
-  min-height: 0;
-}
-
-/* ── Season Tabs ───────────────────────────────── */
-.seasonTabs {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  padding: 16px 40px 8px;
-  flex-shrink: 0;
-}
-
-.seasonTab {
-  border: 1px solid var(--surface-variant);
-  background: var(--surface);
-  color: var(--text-secondary);
-  border-radius: var(--radius-full);
-  padding: 7px 16px;
-  font-size: 13px;
+.ctaTxt small {
+  display: block;
+  font-size: 12.5px;
   font-weight: 600;
+  color: oklch(12% 0.01 252 / 0.65);
+}
+
+.ctaSources {
+  display: inline-flex;
+  align-items: center;
+  gap: 12px;
+  background: oklch(93% 0.008 252 / 0.10);
+  color: var(--text-primary);
+  border: 2px solid transparent;
+  border-radius: var(--radius-lg);
+  padding: 16px 30px;
+  font-size: 16px;
+  font-weight: 700;
   font-family: var(--font-body);
   cursor: pointer;
-  transition: background 0.14s ease, border-color 0.14s ease, color 0.14s ease;
+  transition: border-color 0.15s ease, background 0.15s ease;
 }
 
-.seasonTab:hover {
-  background: var(--focus-bg);
+.ctaSources:hover:not(:disabled) {
+  border-color: var(--accent);
+  background: oklch(93% 0.008 252 / 0.14);
+}
+
+.ctaSources:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+.ctaCount {
+  background: var(--accent);
+  color: oklch(98% 0.004 252);
+  font-size: 13px;
+  font-weight: 800;
+  border-radius: var(--radius-full);
+  min-width: 28px;
+  height: 28px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0 8px;
+}
+
+/* ── Rail de episodios ─────────────────────────── */
+.railSection {
+  padding: 26px 0 30px 44px;
+}
+
+.railHead {
+  display: flex;
+  align-items: center;
+  gap: 18px;
+  padding-right: 44px;
+  margin-bottom: 16px;
+}
+
+.railTitle {
+  font-size: 22px;
+  font-weight: 800;
+  letter-spacing: -0.4px;
   color: var(--text-primary);
 }
 
-.seasonTabActive {
-  background: var(--accent);
+.bigTabs {
+  display: flex;
+  gap: 10px;
+}
+
+.bigTab {
+  background: var(--surface);
+  border: 2px solid var(--surface-variant);
+  color: var(--text-secondary);
+  border-radius: var(--radius-full);
+  padding: 9px 24px;
+  font-size: 14.5px;
+  font-weight: 800;
+  font-family: var(--font-body);
+  cursor: pointer;
+  transition: border-color 0.14s ease, color 0.14s ease, background 0.14s ease;
+}
+
+.bigTab:hover {
+  color: var(--text-primary);
+}
+
+.bigTabActive {
   border-color: var(--accent);
-  color: oklch(10% 0.02 252);
+  color: var(--text-primary);
+  background: var(--accent-dim);
 }
 
-/* ── Episodes Scroll ───────────────────────────── */
-.episodesScroll {
-  flex: 1;
-  overflow-y: auto;
-  padding: 8px 40px 28px;
-}
-
-.statusMessage {
+.bigTabFrac {
+  font-size: 12px;
   color: var(--text-muted);
-  text-align: center;
-  padding: 48px;
+  margin-left: 7px;
+  font-weight: 700;
+}
+
+.rail {
+  display: flex;
+  gap: 18px;
+  overflow-x: auto;
+  padding: 4px 44px 18px 2px;
+  scroll-snap-type: x proximity;
+}
+
+.railStatus {
+  color: var(--text-muted);
+  padding: 40px 0;
   font-size: 14px;
 }
 
-.episodeList {
+.cardSkeleton {
+  flex-shrink: 0;
+  width: 330px;
+  height: 262px;
+  border-radius: var(--radius-xl);
+  background: var(--surface);
+  animation: skeletonPulse 1.4s ease-in-out infinite;
+}
+
+@keyframes skeletonPulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.45; }
+}
+
+/* ── Tarjeta de episodio ───────────────────────── */
+.card {
+  position: relative;
+  flex-shrink: 0;
+  width: 330px;
+  cursor: pointer;
+  border-radius: var(--radius-xl);
+  border: 3px solid transparent;
+  background: var(--surface);
+  overflow: hidden;
+  transition: transform 0.16s ease-out, border-color 0.16s ease-out;
+  scroll-snap-align: start;
+}
+
+.card:hover {
+  transform: scale(1.025);
+}
+
+.card:focus-visible {
+  outline: none;
+  border-color: var(--accent);
+  transform: scale(1.03);
+  box-shadow: 0 12px 44px oklch(63% 0.20 255 / 0.22);
+}
+
+.cardFocused {
+  border-color: var(--accent);
+}
+
+.cardStill {
+  position: relative;
+  height: 178px;
+  background: linear-gradient(135deg, var(--surface-variant), var(--surface));
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
+}
+
+.cardStillImg {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+}
+
+.cardStillFallback {
+  font-size: 12px;
+  font-weight: 800;
+  letter-spacing: 3px;
+  color: oklch(80% 0.01 252 / 0.45);
+}
+
+.cardCheck {
+  position: absolute;
+  top: 10px;
+  right: 10px;
+  width: 30px;
+  height: 30px;
+  border-radius: 50%;
+  background: var(--success-solid);
+  color: oklch(14% 0.03 155);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.cardBar {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  height: 5px;
+  background: oklch(0% 0 0 / 0.55);
+}
+
+.cardBar i {
+  display: block;
+  height: 100%;
+  background: var(--accent);
+}
+
+.cardHover {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: oklch(0% 0 0 / 0.4);
+  opacity: 0;
+  transition: opacity 0.16s ease-out;
+}
+
+.card:hover .cardHover,
+.card:focus-visible .cardHover {
+  opacity: 1;
+}
+
+.cardHoverGo {
+  width: 54px;
+  height: 54px;
+  border-radius: 50%;
+  background: var(--text-primary);
+  color: oklch(12% 0.01 252);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding-left: 3px;
+}
+
+.cardBody {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  padding: 13px 14px 14px;
+}
+
+.cardNum {
+  flex-shrink: 0;
+  font-size: 14px;
+  font-weight: 800;
+  color: var(--text-muted);
+  background: var(--surface-variant);
+  border-radius: 9px;
+  padding: 4px 10px;
+}
+
+.cardTexts {
+  flex: 1;
+  min-width: 0;
   display: flex;
   flex-direction: column;
-  gap: 4px;
+  gap: 3px;
 }
 
-/* ── Episode Row ───────────────────────────────── */
-.episodeRow {
-  position: relative;
-  display: flex;
-  gap: 16px;
-  align-items: center;
-  width: 100%;
-  padding: 12px 16px;
-  border-radius: var(--radius-md);
-  cursor: pointer;
-  transition: background 0.14s ease, transform 0.14s ease;
-}
-
-.episodeNumberLeft {
-  width: 32px;
-  flex-shrink: 0;
-  text-align: right;
-  font-size: 24px;
+.cardTitle {
+  font-size: 15px;
   font-weight: 700;
+  line-height: 1.3;
+  color: var(--text-primary);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.cardMeta {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 12.5px;
   color: var(--text-muted);
-  opacity: 0.5;
+  font-weight: 500;
 }
 
-.episodeRow:hover {
-  background: var(--focus-bg);
-  transform: translateX(2px);
+.srcDotIptv,
+.srcDotTorrent {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  flex-shrink: 0;
 }
 
-.episodeRow:focus-visible {
-  outline: 2px solid var(--accent);
-  outline-offset: 2px;
+.srcDotIptv {
+  background: oklch(72% 0.14 210);
 }
 
-.episodeRowActive {
-  background: oklch(62% 0.17 155 / 0.08);
+.srcDotTorrent {
+  background: oklch(72% 0.16 300);
 }
 
-.episodeRowActive:hover {
-  background: oklch(62% 0.17 155 / 0.14);
+.cardLeft {
+  font-size: 12.5px;
+  font-weight: 700;
+  color: oklch(70% 0.2 27);
 }
 
+.cardSourcesBtn {
+  flex-shrink: 0;
+  align-self: center;
+  background: transparent;
+  border: 1px solid var(--surface-variant);
+  color: var(--text-secondary);
+  border-radius: var(--radius-full);
+  font-size: 11.5px;
+  font-weight: 700;
+  font-family: var(--font-body);
+  padding: 6px 12px;
+  cursor: pointer;
+  white-space: nowrap;
+  opacity: 0;
+  transition: opacity 0.14s ease, border-color 0.14s ease, color 0.14s ease;
+}
+
+.card:hover .cardSourcesBtn,
+.card:focus-within .cardSourcesBtn {
+  opacity: 1;
+}
+
+.cardSourcesBtn:hover {
+  border-color: oklch(63% 0.20 255 / 0.5);
+  color: var(--accent-hover);
+}
+
+/* ── Menu contextual de episodios ──────────────── */
 .episodeContextMenuBackdrop {
   position: fixed;
   z-index: 100;
@@ -334,266 +551,56 @@
   outline: none;
 }
 
-/* ── Episode Thumbnail ─────────────────────────── */
-.episodeThumbWrap {
-  position: relative;
-  flex-shrink: 0;
-  width: 160px;
-  height: 90px;
-  border-radius: var(--radius-sm);
-  overflow: hidden;
-}
-
-.episodeThumb {
-  width: 100%;
-  height: 100%;
-  object-fit: cover;
-  display: block;
-}
-
-.episodeThumbPlaceholder {
-  width: 100%;
-  height: 100%;
-  background: linear-gradient(135deg, var(--surface-variant), var(--surface));
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  color: var(--text-muted);
-  font-size: 11px;
-  font-weight: 700;
-  text-transform: uppercase;
-  letter-spacing: 0.5px;
-}
-
-.playOverlay {
-  position: absolute;
-  inset: 0;
-  background: rgba(0, 0, 0, 0.5);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  opacity: 0;
-  transition: opacity 0.2s ease;
-  color: white;
-}
-
-.episodeRow:hover .playOverlay {
-  opacity: 1;
-}
-
-/* ── Episode Info ──────────────────────────────── */
-.episodeInfo {
-  flex: 1;
-  min-width: 0;
-  display: flex;
-  flex-direction: column;
-  gap: 3px;
-}
-
-
-
-.episodeTitle {
-  color: var(--text-primary);
-  font-size: 14px;
-  font-weight: 700;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.episodeMeta {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  margin-top: 2px;
-  flex-wrap: wrap;
-}
-
-
-
-.episodeDuration {
-  color: var(--text-muted);
-  font-size: 11px;
-  font-weight: 500;
-}
-
-.episodeAirDate {
-  color: var(--text-muted);
-  font-size: 11px;
-  font-weight: 500;
-}
-
-.episodeDescription {
-  color: var(--text-muted);
-  font-size: 12px;
-  font-weight: 400;
-  line-height: 1.5;
-  margin-top: 2px;
-  display: -webkit-box;
-  -webkit-line-clamp: 2;
-  -webkit-box-orient: vertical;
-  overflow: hidden;
-}
-
-/* ── Episode Right Side ────────────────────────── */
-.episodeRight {
-  flex-shrink: 0;
-  display: flex;
-  flex-direction: column;
-  align-items: flex-end;
-  justify-content: center;
-  gap: 8px;
-  min-width: 120px;
-}
-
-.progressTrack {
-  width: 100px;
-  height: 4px;
-  background: var(--surface-variant);
-  border-radius: var(--radius-full);
-  overflow: hidden;
-}
-
-.progressFillRight {
-  height: 100%;
-  background: var(--success);
-  border-radius: var(--radius-full);
-}
-
-.episodeStatus {
-  display: flex;
-  align-items: center;
-  justify-content: flex-end;
-}
-
-.statusWatched {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  color: var(--success);
-  font-size: 12px;
-  font-weight: 600;
-}
-
-.statusBadge {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  width: 20px;
-  height: 20px;
-  background: var(--success-solid);
-  color: oklch(14% 0.03 155);
-  border-radius: var(--radius-full);
-  box-shadow: 0 2px 8px oklch(0% 0 0 / 0.5), 0 0 0 1px oklch(100% 0 0 / 0.08);
-  flex-shrink: 0;
-}
-
-.statusInProgress {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  color: var(--text-accent);
-  font-size: 12px;
-  font-weight: 600;
-}
-
-.statusLabel {
-  white-space: nowrap;
-}
-
-/* ── Source availability chips ─────────────────── */
-.sourceChipTorrent,
-.sourceChipIptv {
-  display: inline-flex;
-  align-items: center;
-  gap: 5px;
-  padding: 2px 8px;
-  border-radius: var(--radius-full);
-  font-size: 10px;
-  font-weight: 700;
-  letter-spacing: 0.02em;
-}
-
-.sourceChipTorrent {
-  background: oklch(66% 0.16 300 / 0.16);
-  color: oklch(66% 0.16 300);
-}
-
-.sourceChipIptv {
-  background: oklch(68% 0.14 210 / 0.16);
-  color: oklch(68% 0.14 210);
-}
-
-.sourceChipDot {
-  width: 5px;
-  height: 5px;
-  border-radius: 50%;
-  background: currentColor;
-}
-
-/* ── Fuentes button ──────────────────────────── */
-.sourceBtn {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  padding: 6px 12px;
-  border-radius: var(--radius-full);
-  border: 1px solid var(--surface-variant);
-  background: var(--surface);
-  color: var(--text-secondary);
-  font-size: 12px;
-  font-weight: 600;
-  font-family: var(--font-body);
-  cursor: pointer;
-  white-space: nowrap;
-  transition: background 0.14s ease, border-color 0.14s ease, color 0.14s ease;
-}
-
-.sourceBtn:hover {
-  background: var(--focus-bg);
-  border-color: oklch(63% 0.20 255 / 0.45);
-  color: var(--accent-hover);
-}
-
-/* ── Source picker modal ─────────────────────── */
+/* ── Hoja inferior de fuentes ──────────────────── */
 .sourceModalBackdrop {
   position: fixed;
   inset: 0;
   z-index: 200;
   display: flex;
-  align-items: center;
+  align-items: flex-end;
   justify-content: center;
-  padding: clamp(20px, 5vw, 72px);
-  background: oklch(6% 0.018 252 / 0.7);
-  backdrop-filter: blur(6px);
-  animation: sourceFade 0.16s ease;
+  background: oklch(6% 0.018 252 / 0.65);
+  animation: sheetFade 0.16s ease;
 }
 
-@keyframes sourceFade {
+@keyframes sheetFade {
   from { opacity: 0; }
   to { opacity: 1; }
 }
 
 .sourceModal {
-  width: min(680px, 100%);
-  max-height: 100%;
+  width: min(1080px, 100%);
+  max-height: 86vh;
   display: flex;
   flex-direction: column;
-  border: 1px solid oklch(100% 0 0 / 0.12);
-  border-radius: var(--radius-lg);
+  border: 1px solid oklch(100% 0 0 / 0.10);
+  border-bottom: none;
+  border-radius: var(--radius-xl) var(--radius-xl) 0 0;
   background: var(--surface-elevated);
   box-shadow: var(--shadow-lg);
   overflow: hidden;
-  animation: sourcePop 0.2s ease;
+  animation: sheetUp 0.22s ease-out;
 }
 
-@keyframes sourcePop {
-  from { opacity: 0; transform: translateY(12px) scale(0.98); }
-  to { opacity: 1; transform: translateY(0) scale(1); }
+@keyframes sheetUp {
+  from { transform: translateY(28px); opacity: 0.6; }
+  to { transform: translateY(0); opacity: 1; }
+}
+
+.sheetHandle {
+  width: 46px;
+  height: 5px;
+  border-radius: 5px;
+  background: oklch(93% 0.008 252 / 0.22);
+  margin: 12px auto 0;
+  flex-shrink: 0;
 }
 
 .sourceModalHead {
-  padding: 18px 20px 14px;
+  display: flex;
+  align-items: flex-start;
+  gap: 14px;
+  padding: 14px 24px;
   border-bottom: 1px solid var(--surface-variant);
   flex-shrink: 0;
 }
@@ -609,28 +616,57 @@
 
 .sourceModalTitle {
   color: var(--text-primary);
-  font-size: 17px;
-  font-weight: 700;
+  font-size: 19px;
+  font-weight: 800;
   line-height: 1.3;
 }
 
 .sourceModalSub {
   color: var(--text-muted);
-  font-size: 12px;
+  font-size: 12.5px;
   margin-top: 2px;
+}
+
+.sourceModalRec {
+  margin-left: auto;
+  flex-shrink: 0;
+  font-size: 12.5px;
+  font-weight: 700;
+  color: var(--success-solid);
+  background: oklch(62% 0.17 155 / 0.12);
+  padding: 7px 14px;
+  border-radius: var(--radius-full);
+  white-space: nowrap;
+}
+
+.sourceModalClose {
+  flex-shrink: 0;
+  width: 34px;
+  height: 34px;
+  border-radius: 50%;
+  background: var(--surface-variant);
+  border: none;
+  color: var(--text-secondary);
+  font-size: 14px;
+  cursor: pointer;
+  transition: color 0.14s ease;
+}
+
+.sourceModalClose:hover {
+  color: var(--text-primary);
 }
 
 .sourceModalBody {
   flex: 1;
   overflow-y: auto;
-  padding: 12px 12px 4px;
+  padding: 4px 14px 14px;
 }
 
 .sourceModalStatus {
   color: var(--text-secondary);
-  font-size: 13px;
+  font-size: 13.5px;
   text-align: center;
-  padding: 24px 12px;
+  padding: 28px 12px;
 }
 
 .sourceGroupLabel {
@@ -639,75 +675,58 @@
   gap: 8px;
   color: var(--text-muted);
   font-size: 11px;
-  font-weight: 700;
+  font-weight: 800;
   text-transform: uppercase;
-  letter-spacing: 0.07em;
-  margin: 12px 6px 8px;
-}
-
-.sourceGroupLabelIptv .sourceGroupBar {
-  background: oklch(68% 0.14 210);
-}
-
-.sourceGroupLabelTorrent .sourceGroupBar {
-  background: oklch(66% 0.16 300);
-}
-
-.sourceGroupBar {
-  width: 3px;
-  height: 12px;
-  border-radius: 3px;
+  letter-spacing: 0.08em;
+  padding: 14px 8px 8px;
 }
 
 .sourceRow {
   display: flex;
   align-items: center;
-  gap: 12px;
+  gap: 14px;
   width: 100%;
-  padding: 10px 12px;
-  margin-bottom: 6px;
+  min-height: 64px;
+  padding: 10px 14px;
   border-radius: var(--radius-md);
-  border: 1px solid var(--surface-variant);
-  background: var(--surface);
+  border: 1px solid transparent;
+  background: transparent;
   cursor: pointer;
   transition: background 0.14s ease, border-color 0.14s ease;
 }
 
 .sourceRow:hover {
-  background: var(--focus-bg);
-  border-color: oklch(32% 0.02 252);
+  background: oklch(93% 0.008 252 / 0.05);
 }
 
 .sourceRowSelected {
-  border-color: oklch(63% 0.20 255 / 0.55);
-  background: oklch(63% 0.20 255 / 0.1);
+  background: var(--accent-dim);
+  border-color: oklch(63% 0.20 255 / 0.5);
 }
 
-.sourceRowIcon {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  width: 30px;
-  height: 30px;
-  border-radius: 8px;
+.sourceRowQ {
   flex-shrink: 0;
+  min-width: 64px;
+  text-align: center;
+  font-size: 13px;
+  font-weight: 800;
+  background: var(--surface-variant);
+  border-radius: 10px;
+  padding: 8px 12px;
+  color: var(--text-primary);
+  white-space: nowrap;
 }
 
-.sourceRowIconTorrent {
-  background: oklch(66% 0.16 300 / 0.16);
-  color: oklch(66% 0.16 300);
-}
-
-.sourceRowIconIptv {
-  background: oklch(68% 0.14 210 / 0.16);
-  color: oklch(68% 0.14 210);
+.sourceRowSelected .sourceRowQ {
+  background: var(--accent);
+  color: oklch(10% 0.02 252);
 }
 
 .sourceRowTitle {
   flex: 1;
   min-width: 0;
   color: var(--text-primary);
-  font-size: 13px;
+  font-size: 14.5px;
   font-weight: 600;
   white-space: nowrap;
   overflow: hidden;
@@ -717,8 +736,10 @@
 .sourceRowMeta {
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: 12px;
   flex-shrink: 0;
+  font-size: 12.5px;
+  color: var(--text-muted);
 }
 
 .sourceLangTag {
@@ -727,29 +748,19 @@
   background: var(--surface-variant);
   color: var(--text-secondary);
   font-size: 11px;
-  font-weight: 600;
-}
-
-.sourceQualityBadge {
-  padding: 2px 8px;
-  border-radius: 6px;
-  background: var(--surface-variant);
-  color: var(--text-primary);
-  font-size: 11px;
-  font-weight: 800;
+  font-weight: 700;
 }
 
 .sourceSeeds {
-  color: var(--success);
-  font-size: 12px;
-  font-weight: 700;
-  min-width: 34px;
+  color: var(--success-solid);
+  font-size: 12.5px;
+  font-weight: 800;
+  white-space: nowrap;
 }
 
 .sourceSize {
-  color: var(--text-muted);
-  font-size: 12px;
   font-weight: 500;
+  white-space: nowrap;
 }
 
 .sourceLiveTag {
@@ -757,20 +768,21 @@
   border-radius: 6px;
   background: var(--live-dim);
   color: var(--live);
-  font-size: 10px;
-  font-weight: 700;
+  font-size: 10.5px;
+  font-weight: 800;
   letter-spacing: 0.03em;
+  white-space: nowrap;
 }
 
 .sourceRowPlay {
   display: flex;
   align-items: center;
   justify-content: center;
-  width: 28px;
-  height: 28px;
+  width: 46px;
+  height: 46px;
   border-radius: 50%;
   background: var(--surface-variant);
-  color: var(--text-secondary);
+  color: var(--text-primary);
   flex-shrink: 0;
   cursor: pointer;
   transition: background 0.14s ease, color 0.14s ease;
@@ -785,18 +797,17 @@
 .sourceModalFoot {
   display: flex;
   align-items: center;
-  justify-content: space-between;
-  gap: 12px;
-  padding: 14px 20px;
+  gap: 14px;
+  padding: 14px 24px 20px;
   border-top: 1px solid var(--surface-variant);
-  background: var(--surface);
   flex-shrink: 0;
 }
 
 .sourceModalNote {
   color: var(--text-muted);
-  font-size: 12px;
+  font-size: 12.5px;
   font-weight: 500;
+  flex: 1;
   min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -806,13 +817,13 @@
 .sourcePlayBtn {
   display: inline-flex;
   align-items: center;
-  gap: 8px;
-  padding: 10px 22px;
+  gap: 10px;
+  padding: 14px 40px;
   border-radius: var(--radius-full);
   border: none;
   background: var(--accent);
   color: oklch(10% 0.02 252);
-  font-size: 14px;
+  font-size: 15px;
   font-weight: 800;
   font-family: var(--font-body);
   cursor: pointer;
@@ -829,4 +840,19 @@
 .sourcePlayBtn:disabled {
   opacity: 0.45;
   cursor: default;
+}
+
+/* ── Desktop compacto ──────────────────────────── */
+@media (max-width: 1180px) {
+  .showTitle {
+    font-size: 40px;
+  }
+
+  .keysHint {
+    display: none;
+  }
+
+  .mastheadArt {
+    width: 45%;
+  }
 }

@@ -7,6 +7,7 @@ import { API_URL } from '../config'
 import { getUsername, getPassword } from '../credentials'
 import { getTorrentMaxMb } from '../settings'
 import { getPlaybackTrackPreference, getPreferredLanguage, playbackSubtitle, playbackTitle, updatePlaybackTrackPreference } from '../api/client'
+import { devLog } from '../utils/logger'
 
 type PlayerServiceEvent = 'state' | 'error' | 'trackschanged' | 'fullscreenchange' | 'pipchange' | 'ended'
 
@@ -251,7 +252,7 @@ export class PlayerService extends EventTarget {
     this._lastSubtitleTrackId = null
     this._isLive = item.kind === 'CHANNEL' || item.kind === 'EVENT'
 
-    console.log(
+    devLog(
       `[PlayerService] load() item=${item.stableId} kind=${item.kind} streamOptions=${streamOptions.length} startPosition=${startPosition ?? 'none'}`,
       streamOptions.map((o) => `"${o.label}" url="${o.url.substring(0, 80)}..."`),
     )
@@ -313,7 +314,7 @@ export class PlayerService extends EventTarget {
         }
 
         const url = await this._resolvePlaybackUrl(option)
-        console.log(`[PlayerService] Loading stream: label="${option.label}" url="${url}"`)
+        devLog(`[PlayerService] Loading stream: label="${option.label}" url="${url}"`)
 
         await Promise.all([
           invoke('mpv_set_property', { name: 'user-data/walactv/title', value: title }),
@@ -889,7 +890,7 @@ export class PlayerService extends EventTarget {
 
       case 'end-file': {
         const reason = payload.reason ?? 'unknown'
-        console.debug(`[PlayerService] end-file: reason="${reason}"`)
+        devLog(`[PlayerService] end-file: reason="${reason}"`)
         void this._clearLoadingOsd()
         if (reason === 'error') {
           this._streamSwitchInProgress = false
@@ -916,7 +917,7 @@ export class PlayerService extends EventTarget {
       }
 
       case 'file-loaded':
-        console.debug('[PlayerService] file-loaded: el archivo se cargo correctamente')
+        devLog('[PlayerService] file-loaded: el archivo se cargo correctamente')
         void this._clearLoadingOsd()
         // Sync point: a newly loaded file plays (unless the user paused
         // while it was loading — pause() already sent pause=true to mpv, so
@@ -948,7 +949,7 @@ export class PlayerService extends EventTarget {
         break
 
       case 'playback-restart':
-        console.debug('[PlayerService] playback-restart: la reproduccion se reanudo')
+        devLog('[PlayerService] playback-restart: la reproduccion se reanudo')
         break
 
       case 'error': {

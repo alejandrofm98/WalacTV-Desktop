@@ -5,6 +5,7 @@ import { MediaCard } from './MediaCard'
 import { SearchableSelect } from './SearchableSelect'
 import { SearchInput } from './SearchInput'
 import { useAppStore } from '../store/useAppStore'
+import { devWarn } from '../utils/logger'
 import styles from './DiscoverContent.module.css'
 
 const LANGUAGES = [
@@ -26,6 +27,7 @@ export function DiscoverContent() {
   const [loadError, setLoadError] = useState(false)
   const [query, setQuery] = useState('')
   const searchTimeout = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const requestIdRef = useRef(0)
   const watchedRef = useRef<WatchProgressItem[]>([])
   const openDetail = useAppStore((s) => s.openDetail)
   const detailOpen = useAppStore((s) => !!s.detailItem)
@@ -40,7 +42,7 @@ export function DiscoverContent() {
         watchedRef.current = w.items
         setItems((current) => applyWatchedToItems(current, w.items))
       })
-      .catch(() => {})
+      .catch((err) => devWarn('[Discover] getWatchedItems fallo:', err))
   }, [applyWatched])
 
   // Reload genres when country changes, reload items on any filter change
@@ -49,46 +51,56 @@ export function DiscoverContent() {
       setGenres([])
       return
     }
-    getGenres(type, country).then((r) => setGenres(r.genres ?? [])).catch(() => {})
+    getGenres(type, country)
+      .then((r) => setGenres(r.genres ?? []))
+      .catch((err) => devWarn('[Discover] getGenres fallo:', err))
   }, [type, country])
 
   useEffect(() => {
     if (searchTimeout.current) clearTimeout(searchTimeout.current)
+    const requestId = ++requestIdRef.current
     setLoading(true)
     setPage(1)
     setError(null)
 
     if (type === 'ufc') {
       getUfcReplays(1, query.trim() || undefined)
-        .then((r) => { setItems(applyWatched(r.items)); setHasNext(r.has_next) })
-        .catch((e) => setError(e.message ?? 'Error'))
-        .finally(() => setLoading(false))
+        .then((r) => {
+          if (requestIdRef.current !== requestId) return
+          setItems(applyWatched(r.items)); setHasNext(r.has_next)
+        })
+        .catch((e) => { if (requestIdRef.current === requestId) setError(e.message ?? 'Error') })
+        .finally(() => { if (requestIdRef.current === requestId) setLoading(false) })
       return
     }
 
     if (!query.trim()) {
       getCatalogPage({ content_type: type, country, genre, page: 1, page_size: 48 })
-        .then((r) => { setItems(applyWatched(r.items)); setHasNext(r.has_next) })
-        .catch((e) => setError(e.message ?? 'Error'))
-        .finally(() => setLoading(false))
+        .then((r) => {
+          if (requestIdRef.current !== requestId) return
+          setItems(applyWatched(r.items)); setHasNext(r.has_next)
+        })
+        .catch((e) => { if (requestIdRef.current === requestId) setError(e.message ?? 'Error') })
+        .finally(() => { if (requestIdRef.current === requestId) setLoading(false) })
       return
     }
 
     searchTimeout.current = setTimeout(() => {
       search(query.trim(), 1, { country, types: type, genre })
         .then((r) => {
+          if (requestIdRef.current !== requestId) return
           setItems(applyWatched(r.results))
           setHasNext(false)
           setPage(1)
         })
-        .catch((e) => setError(e.message ?? 'Error buscando'))
-        .finally(() => setLoading(false))
+        .catch((e) => { if (requestIdRef.current === requestId) setError(e.message ?? 'Error buscando') })
+        .finally(() => { if (requestIdRef.current === requestId) setLoading(false) })
     }, 350)
 
     return () => {
       if (searchTimeout.current) clearTimeout(searchTimeout.current)
     }
-  }, [type, country, genre, query])
+  }, [type, country, genre, query, applyWatched])
 
   const loadMore = useCallback(() => {
     if (loadingMore || !hasNext) return

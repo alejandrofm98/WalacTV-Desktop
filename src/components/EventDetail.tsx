@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import type { CatalogItem, StreamOption } from '../api/types'
 import { resolveReplayStreamUrl } from '../api/client'
 import { useAppStore } from '../store/useAppStore'
@@ -22,14 +22,27 @@ export function EventDetail({ item }: Props) {
   const [selectedStream, setSelectedStream] = useState(0)
   const [loadingStream, setLoadingStream] = useState(false)
 
+  // Reset/clamp de fuente al cambiar de evento.
+  useEffect(() => {
+    setSelectedStream(0)
+  }, [item.stableId])
+  useEffect(() => {
+    setSelectedStream((cur) => (cur >= item.streamOptions.length ? 0 : cur))
+  }, [item.streamOptions.length])
+
   const handlePlay = async () => {
+    const current = item.streamOptions[selectedStream]
+    if (!current) return
     setLoadingStream(true)
-    const url = await resolveReplayStreamUrl(item.streamOptions[selectedStream])
-    setLoadingStream(false)
-    openPlayer({
-      ...item,
-      streamOptions: item.streamOptions.map((option, index) => index === selectedStream ? { ...option, url } : option),
-    }, selectedStream)
+    try {
+      const url = await resolveReplayStreamUrl(current)
+      openPlayer({
+        ...item,
+        streamOptions: item.streamOptions.map((option, index) => index === selectedStream ? { ...option, url } : option),
+      }, selectedStream)
+    } finally {
+      setLoadingStream(false)
+    }
   }
 
   return (
@@ -66,7 +79,7 @@ export function EventDetail({ item }: Props) {
           )}
         </div>
 
-        <button onClick={handlePlay} className={styles.playBtn} disabled={loadingStream}>
+        <button onClick={handlePlay} className={styles.playBtn} disabled={loadingStream || item.streamOptions.length === 0}>
           <span className={styles.playIcon}>▶</span>
           {loadingStream ? 'Cargando...' : 'Reproducir'}
         </button>

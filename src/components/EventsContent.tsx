@@ -11,6 +11,12 @@ function todayStr() {
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
 }
 
+function shiftDate(dateStr: string, days: number): string {
+  const d = new Date(`${dateStr}T12:00:00`)
+  d.setDate(d.getDate() + days)
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
+}
+
 // ponytail: map calendar event to CatalogItem so MediaCard renders images
 function mapEventToItem(ev: CalendarEvent): CatalogItem {
   const img = normalizeRemoteImageUrl(ev.imagen_evento)
@@ -42,15 +48,20 @@ export function EventsContent() {
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [query, setQuery] = useState('')
+  const [date, setDate] = useState(todayStr)
+  const [retryNonce, setRetryNonce] = useState(0)
   const openDetail = useAppStore((s) => s.openDetail)
 
   useEffect(() => {
+    let cancelled = false
     setLoading(true)
-    getCalendarEvents(todayStr())
-      .then((r) => setEvents((r.eventos ?? []).map(mapEventToItem)))
-      .catch((e) => setError(e.message ?? 'Error cargando eventos'))
-      .finally(() => setLoading(false))
-  }, [])
+    setError(null)
+    getCalendarEvents(date)
+      .then((r) => { if (!cancelled) setEvents((r.eventos ?? []).map(mapEventToItem)) })
+      .catch((e) => { if (!cancelled) setError(e.message ?? 'Error cargando eventos') })
+      .finally(() => { if (!cancelled) setLoading(false) })
+    return () => { cancelled = true }
+  }, [date, retryNonce])
 
   const filteredEvents = query.trim()
     ? events.filter((ev) => {
@@ -68,17 +79,27 @@ export function EventsContent() {
   return (
     <div className={styles.container}>
       <div className={styles.header}>
-        <h2 className={styles.title}>Eventos de hoy</h2>
-        <span className={styles.date}>{todayStr()}</span>
+        <h2 className={styles.title}>Eventos</h2>
+        <div className={styles.dateNav}>
+          <button type="button" className={styles.dateBtn} onClick={() => setDate((d) => shiftDate(d, -1))} aria-label="Dia anterior">‹</button>
+          <span className={styles.date}>{date}</span>
+          <button type="button" className={styles.dateBtn} onClick={() => setDate((d) => shiftDate(d, 1))} aria-label="Dia siguiente">›</button>
+          {date !== todayStr() && (
+            <button type="button" className={styles.dateBtn} onClick={() => setDate(todayStr())}>Hoy</button>
+          )}
+        </div>
         <SearchInput placeholder="Buscar eventos..." value={query} onChange={setQuery} />
       </div>
 
       {loading ? (
         <div className={styles.center}>Cargando eventos...</div>
       ) : error ? (
-        <div className={styles.center}>{error}</div>
+        <div className={styles.center}>
+          {error}
+          <button type="button" className={styles.dateBtn} onClick={() => setRetryNonce((n) => n + 1)}>Reintentar</button>
+        </div>
       ) : events.length === 0 ? (
-        <div className={styles.center}>No hay eventos para hoy</div>
+        <div className={styles.center}>No hay eventos para este dia</div>
       ) : filteredEvents.length === 0 ? (
         <div className={styles.center}>Sin resultados</div>
       ) : (

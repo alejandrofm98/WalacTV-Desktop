@@ -3,6 +3,7 @@ import type { CatalogItem, WatchProgressItem, BrowseSection, StreamOption, Calen
 import { useAppStore } from '../store/useAppStore'
 import { getUsername, getPassword, saveCredentials } from '../credentials'
 import { BASE, API_URL } from '../config'
+import { devLog, devWarn } from '../utils/logger'
 
 interface RawStreamOption {
   label?: string | null
@@ -296,12 +297,21 @@ export function mapItem(raw: RawCatalogItem): CatalogItem {
   const stillPath = raw.still_path
     ? (isTmdbImagePath(raw.still_path) ? buildTmdbImageUrl(raw.still_path, 'w780') : normalizeRemoteImageUrl(raw.still_path))
     : null
+  // El backend envia tmdb_title: "" cuando la serie/pelicula no tiene match
+  // en TMDB. Normalizar "" a null y encadenar fallbacks para no perder el
+  // nombre del proveedor en la interfaz de home.
+  const cleanTitle = typeof raw.title === 'string' ? raw.title.trim() : ''
+  const cleanSeriesName = typeof raw.series_name === 'string' ? raw.series_name.trim() : ''
+  const cleanTmdbTitle = typeof raw.tmdb_title === 'string' ? raw.tmdb_title.trim() : ''
+  const tmdbTitle = cleanTmdbTitle !== '' ? raw.tmdb_title!.trim() : null
+  const title = cleanTitle !== '' ? raw.title!.trim() : cleanSeriesName !== '' ? raw.series_name!.trim() : tmdbTitle ?? ''
+  const seriesName = cleanSeriesName !== '' ? raw.series_name!.trim() : null
   return {
     stableId: String(raw.id ?? raw.provider_id ?? ''),
     catalogId: raw.id != null ? String(raw.id) : null,
     providerId: raw.provider_id != null ? String(raw.provider_id) : null,
-    title: raw.title ?? '',
-    subtitle: raw.subtitle ?? raw.series_name ?? '',
+    title,
+    subtitle: raw.subtitle ?? seriesName ?? '',
     description: raw.overview || raw.overview_es || raw.tmdb_overview || raw.tmdb_overview_es || raw.overview_en || raw.tmdb_overview_en || raw.description || raw.subtitle || '',
     imageUrl,
     kind,
@@ -311,7 +321,7 @@ export function mapItem(raw: RawCatalogItem): CatalogItem {
     languageLabel: raw.language_label ?? null,
     normalizedTitle: raw.normalized_title ?? null,
     normalizedGroup: raw.normalized_group ?? null,
-    seriesName: raw.series_name ?? null,
+    seriesName,
     seriesKey: raw.series_key ?? null,
     seriesProviderId: raw.series_provider_id != null ? String(raw.series_provider_id) : null,
     seasonNumber: raw.season_number ?? null,
@@ -327,7 +337,7 @@ export function mapItem(raw: RawCatalogItem): CatalogItem {
     tagline: raw.tagline ?? null,
     releaseDate: raw.release_date ?? null,
     year: raw.year ?? null,
-    tmdbTitle: raw.tmdb_title ?? null,
+    tmdbTitle,
     totalSeasons: raw.total_seasons ?? null,
     stillPath: stillPath || null,
     imdbId: raw.imdb_id ?? null,
@@ -358,17 +368,23 @@ function mapSection(raw: RawSection, contentType: string): BrowseSection {
 
 function mapWatchProgress(raw: RawCatalogItem): WatchProgressItem {
   const tmdbPosterUrlVal = buildTmdbImageUrl(raw.poster_path, 'w500')
+  const cleanTitle = typeof raw.title === 'string' ? raw.title.trim() : ''
+  const cleanSeriesName = typeof raw.series_name === 'string' ? raw.series_name.trim() : ''
+  const cleanTmdbTitle = typeof raw.tmdb_title === 'string' ? raw.tmdb_title.trim() : ''
+  const tmdbTitle = cleanTmdbTitle !== '' ? cleanTmdbTitle : null
+  const title = cleanTitle !== '' ? cleanTitle : cleanSeriesName !== '' ? cleanSeriesName : tmdbTitle ?? ''
+  const seriesName = cleanSeriesName !== '' ? cleanSeriesName : null
   return {
     contentId: String(raw.content_id ?? ''),
     contentType: raw.content_type ?? '',
     positionMs: raw.position_ms ?? 0,
     durationMs: raw.duration_ms ?? 0,
-    normalizedTitle: raw.normalized_title ?? raw.series_name ?? '',
-    title: raw.title ?? '',
+    normalizedTitle: raw.normalized_title ?? seriesName ?? '',
+    title,
     imageUrl: normalizeRemoteImageUrl(raw.image_url) || tmdbPosterUrlVal || '',
     tmdbPosterUrl: tmdbPosterUrlVal || null,
     backdropUrl: raw.backdrop_path ? buildTmdbImageUrl(raw.backdrop_path, 'w1280') : null,
-    seriesName: raw.series_name ?? null,
+    seriesName,
     seasonNumber: raw.season_number ?? null,
     episodeNumber: raw.episode_number ?? null,
     lastWatchedAt: raw.last_watched_at ?? '',
@@ -379,7 +395,7 @@ function mapWatchProgress(raw: RawCatalogItem): WatchProgressItem {
     runtimeMinutes: raw.runtime_minutes ?? null,
     genres: raw.genres ?? [],
     year: raw.year ?? null,
-    tmdbTitle: raw.tmdb_title ?? null,
+    tmdbTitle,
     totalSeasons: raw.total_seasons ?? null,
     tagline: raw.tagline ?? null,
     releaseDate: raw.release_date ?? null,
@@ -571,17 +587,17 @@ export async function removeFavorite(channelId: string) {
 export async function getContentById(contentType: string, contentId: string): Promise<CatalogItem | null> {
   try {
     const url = `/api/content/${contentType}/${contentId}`
-    console.log(`[getContentById] fetching: ${url}`)
+    devLog(`[getContentById] fetching: ${url}`)
     const raw = await get<RawCatalogItem>(url)
     if (!raw) {
-      console.warn(`[getContentById] empty response for: ${url}`)
+      devWarn(`[getContentById] empty response for: ${url}`)
       return null
     }
     const mapped = mapItem(raw)
-    console.log(`[getContentById] mapped item: id=${mapped.stableId} kind=${mapped.kind} streamOptions=${mapped.streamOptions.length}`)
+    devLog(`[getContentById] mapped item: id=${mapped.stableId} kind=${mapped.kind} streamOptions=${mapped.streamOptions.length}`)
     return mapped
   } catch (err) {
-    console.warn(`[getContentById] failed for ${contentType}/${contentId}:`, err)
+    devWarn(`[getContentById] failed for ${contentType}/${contentId}:`, err)
     return null
   }
 }
@@ -592,7 +608,9 @@ export async function getContentById(contentType: string, contentId: string): Pr
 
 const TORRENTIO_BASE_URL = (import.meta.env.VITE_TORRENTIO_BASE_URL as string | undefined)?.replace(/\/$/, '') || 'https://torrentio.strem.fun'
 const TORRENTIO_PROVIDERS = (import.meta.env.VITE_TORRENTIO_PROVIDERS as string | undefined) ?? 'wolfmax4k,comando,yts,eztv,rarbg,1337x,thepiratebay,kickasstorrents,torrentgalaxy,magnetdl,torrentproject,ibit,filelist'
-const TORRENTIO_LANGUAGES = (import.meta.env.VITE_TORRENTIO_LANGUAGES as string | undefined) ?? 'spanish,english'
+// Sin filtro de idioma en el servidor: se traen todos los torrents y se
+// ordenan en el cliente por el idioma preferido del usuario.
+const TORRENTIO_LANGUAGES = (import.meta.env.VITE_TORRENTIO_LANGUAGES as string | undefined) ?? ''
 const TORRENTIO_TIMEOUT_MS = 15_000
 const TORRENTIO_CACHE_TTL_MS = 60_000
 
@@ -725,12 +743,19 @@ async function fetchTorrentioStreams(contentType: 'movie' | 'series', contentId:
   }
 }
 
-// Solo torrents cuyo idioma declarado coincide con el preferido del usuario
-// (espejo del filtro filterByPreferredLanguage del cliente Android). Si no
-// hay ninguno, no se ofrece opcion torrent.
-function filterByPreferredLanguage(streams: StreamOption[]): StreamOption[] {
-  const target = getPreferredLanguage().toUpperCase()
-  return streams.filter((s) => s.language?.toUpperCase() === target)
+// Se muestran todos los torrents ordenados por el idioma preferido del
+// usuario (primero su idioma, luego el resto por calidad y seeds), en vez
+// de filtrar y ocultar los de otros idiomas.
+export function sortTorrentStreams(streams: StreamOption[], preferredLanguage?: string): StreamOption[] {
+  const target = (preferredLanguage ?? getPreferredLanguage()).toUpperCase()
+  return [...streams].sort((a, b) => {
+    const aLang = streamOptionMatchesLanguage(a, target) ? 1 : 0
+    const bLang = streamOptionMatchesLanguage(b, target) ? 1 : 0
+    if (aLang !== bLang) return bLang - aLang
+    const q = qualityRankOf(b) - qualityRankOf(a)
+    if (q !== 0) return q
+    return (b.seeders ?? 0) - (a.seeders ?? 0)
+  })
 }
 
 /** ¿La opción es del idioma indicado (ES/EN…)? Mira primero el campo
@@ -760,6 +785,12 @@ export function orderEpisodeStreams(
   return [...bucket(false, true), ...bucket(true, true), ...bucket(false, false), ...bucket(true, false)]
 }
 
+/** Titulo visible: prefiere TMDB pero tolera "" heredados del backend. */
+export function displayTitleOf(item: { tmdbTitle?: string | null; title: string }): string {
+  const tmdb = item.tmdbTitle?.trim() ?? ''
+  return tmdb !== '' ? tmdb : item.title
+}
+
 /** Título principal durante la reproducción: TMDB/IMDb antes que el proveedor.
  * En capítulos se usa el nombre TMDB de la serie (seriesTmdbTitle, inyectado al
  * reproducir); el tmdbTitle del item de un capítulo es el del capítulo, no el
@@ -767,11 +798,11 @@ export function orderEpisodeStreams(
 export function playbackTitle(item: CatalogItem): string {
   if (item.kind === 'SERIES') {
     if (item.seasonNumber != null && item.episodeNumber != null) {
-      return item.seriesTmdbTitle ?? item.seriesName ?? item.tmdbTitle ?? item.title
+      return item.seriesTmdbTitle?.trim() || item.seriesName?.trim() || item.tmdbTitle?.trim() || item.title
     }
-    return item.tmdbTitle ?? item.seriesTmdbTitle ?? item.seriesName ?? item.title
+    return item.tmdbTitle?.trim() || item.seriesTmdbTitle?.trim() || item.seriesName?.trim() || item.title
   }
-  return item.tmdbTitle ?? item.title
+  return item.tmdbTitle?.trim() || item.title
 }
 
 /** Subtítulo durante la reproducción: T/E más el nombre TMDB del capítulo.
@@ -779,7 +810,7 @@ export function playbackTitle(item: CatalogItem): string {
 export function playbackSubtitle(item: CatalogItem): string {
   if (item.kind === 'SERIES' && item.seasonNumber != null && item.episodeNumber != null) {
     const epTag = `T${item.seasonNumber}:E${item.episodeNumber}`
-    const epName = item.tmdbTitle ?? item.title
+    const epName = item.tmdbTitle?.trim() || item.title
     const title = playbackTitle(item)
     return epName && epName !== title ? `${epTag} · ${epName}` : epTag
   }
@@ -795,10 +826,10 @@ export function playbackSubtitle(item: CatalogItem): string {
 }
 
 export async function getTorrentioMovieStreams(movieId: string): Promise<StreamOption[]> {
-  console.log(`[Torrentio] movie lookup (direct): ${movieId}`)
+  devLog(`[Torrentio] movie lookup (direct): ${movieId}`)
   if (!_IMDB_RE.test(movieId)) throw new Error('La pelicula no tiene imdb_id para consultar Torrentio')
-  const streams = filterByPreferredLanguage(await fetchTorrentioStreams('movie', movieId))
-  console.log(`[Torrentio] movie streams: ${streams.length}`)
+  const streams = sortTorrentStreams(await fetchTorrentioStreams('movie', movieId))
+  devLog(`[Torrentio] movie streams: ${streams.length}`)
   return streams
 }
 
@@ -807,11 +838,11 @@ export async function getTorrentioEpisodeStreams(
   season: number,
   episode: number,
 ): Promise<StreamOption[]> {
-  console.log(`[Torrentio] episode lookup (direct): ${seriesId} S${season}E${episode}`)
+  devLog(`[Torrentio] episode lookup (direct): ${seriesId} S${season}E${episode}`)
   if (!_IMDB_RE.test(seriesId)) throw new Error('La serie no tiene imdb_id para consultar Torrentio')
   if (season < 0 || episode < 0) throw new Error('season y episode deben ser positivos')
-  const streams = filterByPreferredLanguage(await fetchTorrentioStreams('series', `${seriesId}:${season}:${episode}`))
-  console.log(`[Torrentio] episode streams: ${streams.length}`)
+  const streams = sortTorrentStreams(await fetchTorrentioStreams('series', `${seriesId}:${season}:${episode}`))
+  devLog(`[Torrentio] episode streams: ${streams.length}`)
   return streams
 }
 
@@ -1075,9 +1106,7 @@ export async function getGenres(contentType: string, country?: string) {
 }
 
 export async function getCalendarEvents(date: string) {
-  const params = new URLSearchParams({ client: 'android' })
-  const pwd = getPassword()
-  if (pwd) params.set('password', pwd)
+  const params = new URLSearchParams({ client: 'desktop' })
   return get<CalendarResponse>(`/api/calendar/${date}?${params}`)
 }
 

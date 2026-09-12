@@ -1,5 +1,5 @@
-import { useEffect, useRef } from 'react'
-import { saveWatchProgress } from '../api/client'
+import { useEffect, useRef, useCallback } from 'react'
+import { saveWatchProgress, displayTitleOf } from '../api/client'
 import type { WatchProgressUpsertBody } from '../api/client'
 import type { PlayerItem } from './types'
 
@@ -30,9 +30,17 @@ export function usePlayerProgress({
   const isPlayingRef = useRef(isPlaying)
   isPlayingRef.current = isPlaying
 
+  // Refs vivas para evitar closures obsoletos al hacer zapping/cambiar de item.
+  const itemRef = useRef(item)
+  itemRef.current = item
+  const getCurrentTimeRef = useRef(getCurrentTime)
+  getCurrentTimeRef.current = getCurrentTime
+  const getDurationRef = useRef(getDuration)
+  getDurationRef.current = getDuration
+
   // Build the progress body from the current item and position
-  const buildBody = useRef((posMs: number, durMs: number): WatchProgressUpsertBody | null => {
-    const cur = item
+  const buildBody = useCallback((posMs: number, durMs: number): WatchProgressUpsertBody | null => {
+    const cur = itemRef.current
     if (!cur || !cur.stableId) return null
     if (cur.kind !== 'MOVIE' && cur.kind !== 'SERIES') return null
     const rawDuration = durMs > 0 ? durMs : (cur.runtimeMinutes || 0) * 60000
@@ -43,10 +51,10 @@ export function usePlayerProgress({
       series_name: cur.seriesName ?? null,
       season_number: cur.seasonNumber ?? null,
       episode_number: cur.episodeNumber ?? null,
-      title: cur.tmdbTitle ?? cur.title,
+      title: displayTitleOf(cur),
       image_url: cur.imageUrl,
     }
-  }).current
+  }, [])
 
   // Periodic save while playing
   useEffect(() => {
@@ -87,14 +95,14 @@ export function usePlayerProgress({
   // Save on unmount (cleanup)
   useEffect(() => {
     return () => {
-      if (!item || !item.stableId) return
-      const posMs = Math.round(getCurrentTime() * 1000)
+      const cur = itemRef.current
+      if (!cur || !cur.stableId) return
+      const posMs = Math.round(getCurrentTimeRef.current() * 1000)
       if (posMs <= 0) return
-      const durMs = Math.round(getDuration() * 1000)
+      const durMs = Math.round(getDurationRef.current() * 1000)
       const body = buildBody(posMs, durMs)
       if (!body) return
-      saveWatchProgress(item.stableId, body).catch(() => {})
+      saveWatchProgress(cur.stableId, body).catch(() => {})
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [])
+  }, [buildBody])
 }

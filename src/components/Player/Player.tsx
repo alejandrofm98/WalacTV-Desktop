@@ -10,6 +10,7 @@ import { usePlayerControls } from '../../player/usePlayerControls'
 import { usePlayerStore } from '../../player/usePlayerStore'
 import { getVolume } from '../../settings'
 import { markWatched, getCatalogPage } from '../../api/client'
+import { devLog } from '../../utils/logger'
 import { PlayerOverlay } from './PlayerOverlay'
 import { PlayerChannelGuide } from './PlayerChannelGuide'
 import { PlayerEventSources } from './PlayerEventSources'
@@ -237,7 +238,7 @@ export function Player() {
           return
         }
 
-        console.log(
+        devLog(
           `[Player] Loading item: id=${playerItem.stableId} kind=${playerItem.kind} title="${playerItem.title}"`,
           `streamOptions=${streamOptions.length}:`,
           streamOptions.map((o) => `"${o.label}"`).join(', '),
@@ -291,20 +292,15 @@ export function Player() {
           useAppStore.setState({ guideChannels: r.items })
         }
       })
-      .catch(() => {})
+      .catch((err) => devLog('[Player] guide preload fallo:', err))
     return () => {
       cancelled = true
     }
   }, [isChannel, playerItem?.stableId])
 
-  // Channel guide: SOLO se abre con el boton de guia (manual). Al estar
-  // abierta en un canal, se auto-cierra a los ~3s de que el canal este
-  // reproduciendose (estilo TV); cambiar de canal reinicia el contador.
-  useEffect(() => {
-    if (!showGuide || !isPlaying) return
-    const id = setTimeout(() => useAppStore.setState({ guideOpen: false }), 3000)
-    return () => clearTimeout(id)
-  }, [showGuide, isPlaying, playerItem?.stableId])
+  // Channel guide: solo se abre/cierra manualmente con el boton de guia,
+  // la tecla Escape o al cerrar el reproductor. No se auto-cierra para
+  // permitir buscar y navegar por todo el catalogo desde la guia.
 
   // Close on Escape via window keydown (works when webview has focus).
   // When fullscreen or PiP is active, let the browser consume Escape to
@@ -371,6 +367,7 @@ export function Player() {
   // Retry the current item after a recoverable error
   // Re-attaches the player then reloads, because a failed attach() means
   // load() will skip (logs "load() called before attach() completed").
+  // Respeta la fuente elegida por el usuario igual que la carga inicial.
   const handleRetry = useCallback(async () => {
     if (!playerItem?.streamOptions?.length) return
     usePlayerStore.getState().clearError()
@@ -378,7 +375,13 @@ export function Player() {
     try {
       await service.attach()
       setNativeControls(service.getNativeControls())
-      await service.load(playerItem, playerItem.streamOptions)
+      const streamOptions = playerItem.streamOptions
+      const preferredIndex = useAppStore.getState().playerStreamIndex
+      const orderedStreams =
+        preferredIndex > 0 && preferredIndex < streamOptions.length
+          ? [...streamOptions.slice(preferredIndex), ...streamOptions.slice(0, preferredIndex)]
+          : streamOptions
+      await service.load(playerItem, orderedStreams)
     } catch (err) {
       console.error('[Player] retry load failed:', err)
     }

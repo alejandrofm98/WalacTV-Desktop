@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import { createPortal } from 'react-dom'
 import type { CatalogItem } from '../api/types'
+import { displayTitleOf } from '../api/client'
 import { useAppStore } from '../store/useAppStore'
 import styles from './MediaCard.module.css'
 
@@ -33,7 +34,7 @@ export function MediaCard({ item, width = CARD_W, height = CARD_H, showText = fa
   const isEvent = item.kind === 'EVENT'
   const isChannel = item.kind === 'CHANNEL'
   const isDimmed = playerOpening && playerItem?.stableId === item.stableId
-  const displayTitle = item.tmdbTitle ?? item.title
+  const displayTitle = displayTitleOf(item)
 
   const displayImage = item.tmdbPosterUrl || item.imageUrl || ''
   const imgFailed = imgError || !displayImage
@@ -56,7 +57,10 @@ export function MediaCard({ item, width = CARD_W, height = CARD_H, showText = fa
   useEffect(() => {
     if (!menuOpen) return
     const closeOnEscape = (event: KeyboardEvent) => {
-      if (event.key === 'Escape') setMenuOpen(false)
+      if (event.key === 'Escape') {
+        event.stopPropagation()
+        setMenuOpen(false)
+      }
     }
     document.addEventListener('keydown', closeOnEscape)
     return () => document.removeEventListener('keydown', closeOnEscape)

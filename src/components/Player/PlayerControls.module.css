@@ -177,6 +177,12 @@
   transform: scale(0.97);
 }
 
+.controlBtn:disabled {
+  opacity: 0.35;
+  cursor: default;
+  transform: none;
+}
+
 .controlBtnActive,
 .controlBtnActive:hover {
   background: var(--accent-dim);
@@ -190,6 +196,22 @@
 
 .spacer {
   flex: 1;
+}
+
+.channelGroup {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  margin-left: 4px;
+  padding-left: 4px;
+  border-left: 1px solid oklch(93% 0.008 252 / 0.18);
+}
+
+.zapGroup {
+  display: flex;
+  align-items: center;
+  gap: 0;
+  margin-left: 2px;
 }
 
 .rightCluster {

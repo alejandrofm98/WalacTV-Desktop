@@ -10,6 +10,7 @@ import {
   search,
   HARDCODED_COUNTRIES,
   countryLabelFor,
+  displayTitleOf,
 } from '../../api/client'
 import { useAppStore } from '../../store/useAppStore'
 import { SearchableSelect } from '../SearchableSelect'
@@ -43,6 +44,7 @@ export function PlayerChannelGuide({ currentId }: PlayerChannelGuideProps) {
   const [loading, setLoading] = useState(true)
   const [page, setPage] = useState(1)
   const [hasNext, setHasNext] = useState(false)
+  const [total, setTotal] = useState<number | null>(null)
   const [country, setCountry] = useState<string | undefined>()
   const [group, setGroup] = useState<string | undefined>()
   const [groups, setGroups] = useState<string[]>([])
@@ -89,6 +91,7 @@ export function PlayerChannelGuide({ currentId }: PlayerChannelGuideProps) {
         .then((r) => {
           setItems(r.items)
           setHasNext(r.has_next)
+          setTotal(r.total)
         })
         .catch((e) => setError(e.message ?? 'Error cargando'))
         .finally(() => setLoading(false))
@@ -101,6 +104,7 @@ export function PlayerChannelGuide({ currentId }: PlayerChannelGuideProps) {
         .then((r) => {
           setItems(r.results)
           setHasNext(false)
+          setTotal(r.total)
           setPage(1)
         })
         .catch((e) => setError(e.message ?? 'Error buscando'))
@@ -184,13 +188,32 @@ export function PlayerChannelGuide({ currentId }: PlayerChannelGuideProps) {
     ? (HARDCODED_COUNTRIES.find((c) => c.value === country)?.label ?? country)
     : null
 
+  // Hay filtros activos cuando se limita la lista (busqueda, pais, grupo
+  // o solo favoritos): con un clic se vuelve al catalogo completo.
+  const hasFilters = query.trim() !== '' || country != null || group != null || showFavs
+
+  function clearFilters() {
+    setQuery('')
+    setCountry(undefined)
+    setGroup(undefined)
+    setShowFavs(false)
+  }
+
+  const countLabel = loading
+    ? 'Cargando...'
+    : showFavs
+      ? `${displayed.length} favoritos`
+      : total != null
+        ? `${total} canales`
+        : `${displayed.length} canales`
+
   return (
     <aside className={styles.guide} aria-label="Guia de canales">
       <div className={styles.head}>
         <div className={styles.titleRow}>
           <h2 className={styles.title}>Guia</h2>
           <span className={styles.count}>
-            {loading ? 'Cargando...' : `${displayed.length} canales`}
+            {countLabel}
           </span>
           <button
             className={styles.closeBtn}
@@ -216,13 +239,25 @@ export function PlayerChannelGuide({ currentId }: PlayerChannelGuideProps) {
             onChange={setGroup}
           />
         </div>
-        <button
-          className={`${styles.favChip} ${showFavs ? styles.favChipActive : ''}`}
-          onClick={() => setShowFavs((v) => !v)}
-          aria-pressed={showFavs}
-        >
-          Solo favoritos
-        </button>
+        <div className={styles.chipsRow}>
+          <button
+            className={`${styles.favChip} ${showFavs ? styles.favChipActive : ''}`}
+            onClick={() => setShowFavs((v) => !v)}
+            aria-pressed={showFavs}
+          >
+            Solo favoritos
+          </button>
+          {hasFilters && (
+            <button
+              className={styles.clearChip}
+              onClick={clearFilters}
+              aria-label="Limpiar filtros y mostrar todos los canales"
+              title="Limpiar filtros y mostrar todos los canales"
+            >
+              Limpiar filtros
+            </button>
+          )}
+        </div>
       </div>
 
       <div className={styles.list} role="listbox" aria-label="Canales">
@@ -262,13 +297,13 @@ export function PlayerChannelGuide({ currentId }: PlayerChannelGuideProps) {
                     <img src={item.imageUrl} alt="" loading="lazy" />
                   ) : (
                     <span className={styles.thumbFallback} aria-hidden="true">
-                      {initialsOf(item.tmdbTitle ?? item.title)}
+                      {initialsOf(displayTitleOf(item))}
                     </span>
                   )}
                 </span>
                 <span className={styles.texts}>
-                  <span className={styles.name} title={item.tmdbTitle ?? item.title}>
-                    {item.tmdbTitle ?? item.title}
+                  <span className={styles.name} title={displayTitleOf(item)}>
+                    {displayTitleOf(item)}
                   </span>
                   {meta && (
                     <span className={styles.meta} title={meta}>{meta}</span>

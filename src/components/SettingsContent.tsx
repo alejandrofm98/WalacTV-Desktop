@@ -1,7 +1,8 @@
 import { useState, useEffect } from 'react'
 import { APP_VERSION, checkForUpdates, downloadAndInstall, type UpdateInfo } from '../updater'
 import { setPreferredLanguage } from '../api/client'
-import { getTorrentMaxMb, setTorrentMaxMb } from '../settings'
+import { getTorrentMaxMb, setTorrentMaxMb, loadSettings } from '../settings'
+import { devWarn } from '../utils/logger'
 import { API_URL } from '../config'
 import styles from './SettingsContent.module.css'
 
@@ -24,6 +25,13 @@ export function SettingsContent({ onSignOut }: Props) {
       .then(setUpdateInfo)
       .catch(() => setUpdateInfo({ available: false }))
       .finally(() => setChecking(false))
+  }, [])
+
+  // loadSettings() es async en main.tsx: re-lee al montar por si llego tarde.
+  useEffect(() => {
+    loadSettings()
+      .then(() => setTorrentLimitGb(getTorrentMaxMb() / 1024))
+      .catch((err) => devWarn('[Settings] loadSettings tardio fallo:', err))
   }, [])
 
   function handleLanguage(lang: string) {

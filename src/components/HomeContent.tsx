@@ -1,7 +1,8 @@
 import { useMemo, useCallback, useEffect, useRef, useState } from 'react'
 import { useAppStore } from '../store/useAppStore'
 import { SectionRow } from './SectionRow'
-import { getContentById, getSeriesEpisodes, cwGroupKey, markSeriesEpisodesWatched, markWatched, saveWatchProgress, getAllSeriesEpisodes, getHomeContinueWatching, getWatchedItems, applyWatchedState, removeWatchProgress, getTorrentioMovieStreams, getTorrentioEpisodeStreams, isPlayableOption, pickBestStreamIndex } from '../api/client'
+import { getContentById, getSeriesEpisodes, cwGroupKey, markSeriesEpisodesWatched, markWatched, saveWatchProgress, getAllSeriesEpisodes, getHomeContinueWatching, getWatchedItems, applyWatchedState, removeWatchProgress, getTorrentioMovieStreams, getTorrentioEpisodeStreams, isPlayableOption, pickBestStreamIndex, displayTitleOf } from '../api/client'
+import { devWarn } from '../utils/logger'
 import type { CatalogItem, BrowseSection, WatchProgressItem } from '../api/types'
 import { pickFirstUnwatched } from '../utils/series'
 import styles from './HomeContent.module.css'
@@ -13,10 +14,11 @@ export function HomeContent() {
   const hoverTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null)
 
   const defaultHero = useMemo(() => {
+    // Hero estable: primer VOD disponible (el aleatorio cambiaba al remarcar vistos).
     const allVod = homeSections
       .flatMap((s) => s.items)
       .filter((i) => i.kind === 'MOVIE' || i.kind === 'SERIES')
-    return allVod.length > 0 ? allVod[Math.floor(Math.random() * allVod.length)] : null
+    return allVod.length > 0 ? allVod[0] : null
   }, [homeSections])
 
   useEffect(() => {
@@ -89,7 +91,7 @@ export function HomeContent() {
               opts = [...opts.filter((o) => !o.infoHash), ...torrents]
             }
           } catch (err) {
-            console.warn('[Torrentio] continue-watching lookup failed:', err)
+            devWarn('[Torrentio] continue-watching lookup failed:', err)
           }
         }
         if (opts.length > 0) {
@@ -278,7 +280,7 @@ export function HomeContent() {
         {/* Hero text */}
         <div className={styles.heroText}>
           <h1 className={styles.heroTitle}>
-            {(displayHero?.tmdbTitle ?? displayHero?.title) || 'WalacTV'}
+            {displayHero ? displayTitleOf(displayHero) || 'WalacTV' : 'WalacTV'}
           </h1>
 
           {(displayHero?.voteAverage ?? 0) > 0 && (

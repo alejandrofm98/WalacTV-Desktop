@@ -2,6 +2,7 @@ import { AlertCircle, Download, RotateCcw, X } from 'lucide-react'
 import { useState } from 'react'
 import { invoke } from '@tauri-apps/api/core'
 import type { PlayerError } from '../../player/types'
+import { devLog } from '../../utils/logger'
 import styles from './PlayerErrorState.module.css'
 
 interface ErrorMessage {
@@ -59,7 +60,7 @@ export function PlayerErrorState({ error, onRetry, onClose, compact }: PlayerErr
     setInstallError(null)
     try {
       const path = await invoke<string>('ensure_libmpv_installed_command')
-      console.log('[PlayerErrorState] libmpv installed at:', path)
+      devLog('[PlayerErrorState] libmpv installed at:', path)
       // Retry automatically after successful install
       onRetry?.()
     } catch (err: unknown) {

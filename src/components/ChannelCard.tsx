@@ -1,5 +1,6 @@
 import { useState, useMemo, useCallback } from 'react'
 import type { CatalogItem } from '../api/types'
+import { displayTitleOf } from '../api/client'
 import styles from './ChannelCard.module.css'
 
 const GRADIENTS = [
@@ -54,6 +55,7 @@ export function ChannelCard({
     },
     [item, onToggleFavorite, toggling]
   )
+  const displayTitle = displayTitleOf(item)
 
   return (
     <div
@@ -75,7 +77,7 @@ export function ChannelCard({
         {hasImage ? (
           <img
             src={item.imageUrl}
-            alt={item.tmdbTitle ?? item.title}
+            alt={displayTitle}
             className={styles.logo}
             onError={() => setImageError(true)}
             loading="lazy"
@@ -103,8 +105,8 @@ export function ChannelCard({
       </div>
 
       <div className={styles.info}>
-        <div className={styles.name} title={item.tmdbTitle ?? item.title}>
-          {item.tmdbTitle ?? item.title}
+        <div className={styles.name} title={displayTitle}>
+          {displayTitle}
         </div>
         <div className={styles.group} title={item.group}>
           {item.group}

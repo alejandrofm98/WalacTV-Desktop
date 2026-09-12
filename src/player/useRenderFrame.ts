@@ -1,5 +1,6 @@
 import { useEffect, useRef, type RefObject } from 'react'
 import { invoke } from '@tauri-apps/api/core'
+import { devWarn } from '../utils/logger'
 
 
 
@@ -212,7 +213,7 @@ export function useRenderFrame(
       } catch (err) {
         // Silently continue — errors are expected when player is shutting down
         if (running) {
-          console.warn('[useRenderFrame] poll error:', err)
+          devWarn('[useRenderFrame] poll error:', err)
         }
       }
 

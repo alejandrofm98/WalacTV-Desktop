@@ -1,6 +1,7 @@
 import { useEffect, useState, useMemo, type ReactNode } from 'react'
 import type { CatalogItem, StreamOption, WatchProgressItem } from '../api/types'
-import { cwGroupKey, getTorrentioMovieStreams, isPlayableOption } from '../api/client'
+import { cwGroupKey, getTorrentioMovieStreams, isPlayableOption, displayTitleOf, sortTorrentStreams } from '../api/client'
+import { devWarn } from '../utils/logger'
 import { useAppStore } from '../store/useAppStore'
 import styles from './MovieDetail.module.css'
 
@@ -44,6 +45,11 @@ export function MovieDetail({ item }: Props) {
   const [torrentLoading, setTorrentLoading] = useState(false)
   const [torrentError, setTorrentError] = useState(false)
 
+  // Reset de fuente al cambiar de pelicula (evita indice fuera de rango).
+  useEffect(() => {
+    setSelectedStream(0)
+  }, [item.stableId])
+
   useEffect(() => {
     let active = true
     setTorrentStreams([])
@@ -58,7 +64,7 @@ export function MovieDetail({ item }: Props) {
     getTorrentioMovieStreams(imdb)
       .then((streams) => { if (active) setTorrentStreams(streams) })
       .catch((error) => {
-        console.warn('[Torrentio] movie lookup failed:', error)
+        devWarn('[Torrentio] movie lookup failed:', error)
         const isMissingImdb = String((error as Error)?.message ?? '').includes('imdb_id')
         if (active) { setTorrentStreams([]); setTorrentError(!isMissingImdb) }
       })
@@ -71,21 +77,20 @@ export function MovieDetail({ item }: Props) {
     [item.streamOptions],
   )
   const torrents = useMemo(
-    () => [...torrentStreams, ...item.streamOptions.filter((o) => !!o.infoHash)],
+    () => sortTorrentStreams([...torrentStreams, ...item.streamOptions.filter((o) => !!o.infoHash)]),
     [torrentStreams, item.streamOptions],
   )
 
   const allStreams = [...iptvStreams, ...torrents]
 
+  // Clamp por si la lista se acorta (torrents recargados, item distinto).
+  useEffect(() => {
+    setSelectedStream((cur) => (cur >= allStreams.length ? 0 : cur))
+  }, [allStreams.length])
+
   const bestTorrent = useMemo(() => {
-    if (torrents.length === 0) return null
-    const byQuality = (q: string) =>
-      q === '2160p' ? 4 : q === '1080p' ? 3 : q === '720p' ? 2 : 1
-    return [...torrents].sort(
-      (a, b) =>
-        byQuality(qualityOf(b)) - byQuality(qualityOf(a)) ||
-        (b.seeders ?? 0) - (a.seeders ?? 0),
-    )[0]
+    // torrents ya viene ordenado por idioma preferido, calidad y seeds.
+    return torrents.length > 0 ? torrents[0] : null
   }, [torrents])
 
   const bestIndex = useMemo(() => {
@@ -94,13 +99,12 @@ export function MovieDetail({ item }: Props) {
   }, [bestTorrent, allStreams, iptvStreams])
 
   const selectedOption = allStreams[selectedStream]
-  const selectedPlayable = Boolean(selectedOption?.url || selectedOption?.infoHash)
 
   const cwEntry = computeCwEntry(item, continueWatchingEntries)
   const isResume = cwEntry && !cwEntry.isWatched && cwEntry.positionMs > 0
   const resumePercent = isResume ? Math.round((cwEntry.positionMs * 100) / cwEntry.durationMs) : 0
 
-  const displayTitle = item.tmdbTitle ?? item.title
+  const displayTitle = displayTitleOf(item)
   const isTorrentStream = (o: StreamOption) => !!o.infoHash
 
   const metaPieces: ReactNode[] = []
@@ -332,7 +336,9 @@ function StreamRow({
         )}
       </span>
 
-      <span className={styles.rowPlay} onClick={(e) => { e.stopPropagation(); onPlay() }}>
+      <span className={styles.rowPlay} role="button" tabIndex={0} aria-label={`Reproducir ${opt.torrentTitle ?? opt.label ?? 'fuente'}`}
+        onClick={(e) => { e.stopPropagation(); onPlay() }}
+        onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); e.stopPropagation(); onPlay() } }}>
         <svg width="13" height="13" viewBox="0 0 24 24" fill="currentColor"><path d="M8 5v14l11-7z" /></svg>
       </span>
     </div>

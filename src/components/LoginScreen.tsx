@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react'
+import { Eye, EyeOff } from 'lucide-react'
 import styles from './LoginScreen.module.css'
 
 interface Props {
@@ -8,6 +9,7 @@ interface Props {
 export function LoginScreen({ onLogin }: Props) {
   const [user, setUser] = useState('')
   const [pass, setPass] = useState('')
+  const [showPass, setShowPass] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [busy, setBusy] = useState(false)
 
@@ -41,7 +43,19 @@ export function LoginScreen({ onLogin }: Props) {
         </div>
 
         <Field id="login-user" label="Usuario" value={user} onChange={setUser} />
-        <Field id="login-pass" label="Contrasena" value={pass} onChange={setPass} hidden />
+        <div className={styles.passWrap}>
+          <Field id="login-pass" label="Contrasena" value={pass} onChange={setPass} hidden={!showPass} />
+          <button
+            type="button"
+            className={styles.showBtn}
+            onClick={() => setShowPass((v) => !v)}
+            aria-pressed={showPass}
+            aria-label={showPass ? 'Ocultar contrasena' : 'Mostrar contrasena'}
+            title={showPass ? 'Ocultar contrasena' : 'Mostrar contrasena'}
+          >
+            {showPass ? <EyeOff size={18} /> : <Eye size={18} />}
+          </button>
+        </div>
 
         {error && <p className={styles.error}>{error}</p>}
 

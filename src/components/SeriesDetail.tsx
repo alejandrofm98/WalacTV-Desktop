@@ -1,8 +1,10 @@
 import { useState, useEffect, useRef, useCallback, useMemo } from 'react'
+import type { KeyboardEvent as ReactKeyboardEvent } from 'react'
 import { createPortal } from 'react-dom'
-import { Play, ArrowLeft } from 'lucide-react'
+import { Play, ArrowLeft, Check } from 'lucide-react'
 import type { CatalogItem, StreamOption, WatchProgressItem } from '../api/types'
-import { getAllSeriesEpisodes, getWatchProgress, markSeriesEpisodesWatched, cwGroupKey, getTorrentioEpisodeStreams, isPlayableOption, pickBestStreamIndex } from '../api/client'
+import { getAllSeriesEpisodes, getWatchProgress, markSeriesEpisodesWatched, cwGroupKey, getTorrentioEpisodeStreams, isPlayableOption, pickBestStreamIndex, displayTitleOf, sortTorrentStreams } from '../api/client'
+import { devWarn } from '../utils/logger'
 import { useAppStore } from '../store/useAppStore'
 import styles from './SeriesDetail.module.css'
 
@@ -14,12 +16,6 @@ function formatRuntime(minutes: number): string {
   const h = Math.floor(minutes / 60)
   const m = minutes % 60
   return h > 0 ? `${h}h ${m}min` : `${m}min`
-}
-
-function formatAirDate(raw: string): string {
-  const d = new Date(raw)
-  if (isNaN(d.getTime())) return raw
-  return d.toLocaleDateString('es-ES', { year: 'numeric', month: 'short', day: 'numeric' })
 }
 
 function formatSize(bytes: number): string {
@@ -37,10 +33,6 @@ function qualityOf(opt: StreamOption): string {
   if (hay.includes('1080')) return '1080p'
   if (hay.includes('720')) return '720p'
   return 'SD'
-}
-
-function qualityRank(q: string): number {
-  return q === '2160p' ? 4 : q === '1080p' ? 3 : q === '720p' ? 2 : 1
 }
 
 const isTorrentStream = (o: StreamOption) => !!o.infoHash
@@ -91,12 +83,15 @@ export function SeriesDetail({ item }: Props) {
   const [sourceError, setSourceError] = useState(false)
   const [selectedSource, setSelectedSource] = useState(0)
 
-  const seriesId = item.stableId || item.seriesName || item.normalizedTitle || item.title
+  // IDs estables primero: los tiles de Continuar viendo traen stableId='series:nombre'
+  // (group key, no sirve para la API) pero conservan catalogId/contentId real.
+  const seriesId = item.seriesKey ?? item.catalogId ?? item.seriesProviderId ?? item.providerId ?? item.stableId ?? item.seriesName ?? item.normalizedTitle ?? item.title
   // Nombre TMDB de la serie para el player (el del proveedor suele traer suciedad).
-  const seriesDisplayTitle = item.tmdbTitle ?? item.title
+  const seriesDisplayTitle = displayTitleOf(item)
   const preselectedRef = useRef(false)
   const wasPlayingRef = useRef(false)
   const episodeRefs = useRef<Map<string, HTMLElement>>(new Map())
+  const railRef = useRef<HTMLDivElement>(null)
   // imdb del serie: el tile de Continuar viendo llega sin imdb_id, se recupera
   // del primer episodio que lo traiga (el backend lo incluye por episodio).
   const [seriesImdb, setSeriesImdb] = useState<string | null>(
@@ -107,6 +102,10 @@ export function SeriesDetail({ item }: Props) {
     if (!seriesId) return
     setLoading(true)
     setError(null)
+    // Captura primitiva para no depender de la identidad del objeto item.
+    const itemStableId = item.stableId
+    const itemSeriesName = item.seriesName
+    const itemProviderId = item.providerId
     return getAllSeriesEpisodes(seriesId)
       .then((eps) => {
         setEpisodes(eps ?? [])
@@ -117,7 +116,10 @@ export function SeriesDetail({ item }: Props) {
         })
         if (!preselectedRef.current) {
           preselectedRef.current = true
-          const cw = computeCwEntry(item, useAppStore.getState().continueWatchingEntries)
+          const cw = computeCwEntry(
+            { stableId: itemStableId, seriesName: itemSeriesName, providerId: itemProviderId } as CatalogItem,
+            useAppStore.getState().continueWatchingEntries,
+          )
           const loaded = eps ?? []
           const seasonsArr = [...new Set(loaded.map((e) => e.seasonNumber).filter(Boolean))] as number[]
           if (cw?.seasonNumber != null && seasonsArr.includes(cw.seasonNumber)) {
@@ -127,7 +129,7 @@ export function SeriesDetail({ item }: Props) {
       })
       .catch(() => setError('No se pudieron cargar los episodios'))
       .finally(() => setLoading(false))
-  }, [item, seriesId])
+  }, [seriesId, item.stableId, item.seriesName, item.providerId])
 
   useEffect(() => {
     preselectedRef.current = false
@@ -171,7 +173,7 @@ export function SeriesDetail({ item }: Props) {
     const el = episodeRefs.current.get(key)
     if (el) {
       const raf = requestAnimationFrame(() => {
-        el.scrollIntoView({ block: 'center', behavior: 'smooth' })
+        el.scrollIntoView({ block: 'nearest', inline: 'center', behavior: 'smooth' })
         el.focus({ preventScroll: true })
       })
       return () => cancelAnimationFrame(raf)
@@ -249,7 +251,7 @@ export function SeriesDetail({ item }: Props) {
     setSourceError(false)
     setSourceLoading(true)
     const iptv = episode.streamOptions.filter((o) => isPlayableOption(o) && !isTorrentStream(o))
-    const base = [...iptv, ...episode.streamOptions.filter(isTorrentStream)]
+    const backendTorrents = episode.streamOptions.filter(isTorrentStream)
     if (episode.seasonNumber != null && episode.episodeNumber != null && seriesImdb) {
       try {
         const torrents = await getTorrentioEpisodeStreams(
@@ -257,14 +259,16 @@ export function SeriesDetail({ item }: Props) {
           episode.seasonNumber,
           episode.episodeNumber,
         )
-        setSourceStreams([...base, ...torrents])
+        // getTorrentio ya ordena por idioma preferido; se reordena el
+        // conjunto con los torrents que vengan del backend.
+        setSourceStreams([...iptv, ...sortTorrentStreams([...backendTorrents, ...torrents])])
       } catch (err) {
-        console.warn('[Torrentio] source modal lookup failed:', err)
-        setSourceStreams(base)
+        devWarn('[Torrentio] source modal lookup failed:', err)
+        setSourceStreams([...iptv, ...sortTorrentStreams(backendTorrents)])
         setSourceError(true)
       }
     } else {
-      setSourceStreams(base)
+      setSourceStreams([...iptv, ...sortTorrentStreams(backendTorrents)])
       setSourceError(false)
     }
     setSourceLoading(false)
@@ -315,12 +319,8 @@ export function SeriesDetail({ item }: Props) {
     if (sourceStreams.length === 0) return -1
     const torrents = sourceStreams.filter(isTorrentStream)
     if (torrents.length === 0) return -1
-    const best = [...torrents].sort(
-      (a, b) =>
-        qualityRank(qualityOf(b)) - qualityRank(qualityOf(a)) ||
-        (b.seeders ?? 0) - (a.seeders ?? 0),
-    )[0]
-    return sourceStreams.indexOf(best)
+    // sourceStreams ya ordena los torrents por idioma preferido primero.
+    return sourceStreams.indexOf(torrents[0])
   }, [sourceStreams])
 
   // Preselecciona la mejor fuente (calidad + seeds) cuando se abre el modal.
@@ -330,11 +330,14 @@ export function SeriesDetail({ item }: Props) {
     }
   }, [sourceLoading, sourceStreams, bestTorrentIndex, selectedSource])
 
-  // Cierra el modal con Escape
+  // Cierra el modal con Escape (stopPropagation para no cerrar tambien la ficha global).
   useEffect(() => {
     if (!sourceEpisode) return
     const onKey = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') setSourceEpisode(null)
+      if (e.key === 'Escape') {
+        e.stopPropagation()
+        setSourceEpisode(null)
+      }
     }
     document.addEventListener('keydown', onKey)
     return () => document.removeEventListener('keydown', onKey)
@@ -388,209 +391,236 @@ export function SeriesDetail({ item }: Props) {
     return () => document.removeEventListener('mousedown', close)
   }, [contextEpisode])
 
-  const heroLabel = firstUnwatched
-    ? `Reproducir T${firstUnwatched.seasonNumber ?? '?'} E${firstUnwatched.episodeNumber ?? '?'}`
+  const isResuming = !!(cwEntry && !cwEntry.isWatched)
+  const ctaLabel = firstUnwatched
+    ? `${isResuming ? 'Continuar' : 'Reproducir'} T${firstUnwatched.seasonNumber ?? '?'} E${firstUnwatched.episodeNumber ?? '?'}`
     : 'Reproducir'
+  const ctaMinutesLeft =
+    isResuming && continueProgress > 0 && firstUnwatched?.runtimeMinutes
+      ? Math.max(1, Math.round(firstUnwatched.runtimeMinutes * (1 - continueProgress / 100)))
+      : null
+  const ctaSub = firstUnwatched
+    ? [
+        displayTitleOf(firstUnwatched),
+        ctaMinutesLeft != null ? `quedan ${ctaMinutesLeft} min` : null,
+      ]
+        .filter((p): p is string => p != null)
+        .join(' · ')
+    : ''
+  const heroSourceCount =
+    firstUnwatched &&
+    sourceEpisode?.stableId === firstUnwatched.stableId &&
+    !sourceLoading &&
+    sourceStreams.length > 0
+      ? sourceStreams.length
+      : null
+
+  // 'F' abre el selector de fuentes del episodio en curso (lean-back).
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      const tag = (e.target as HTMLElement)?.tagName
+      if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT') return
+      if (e.key !== 'f' && e.key !== 'F') return
+      if (!firstUnwatched || sourceEpisode || contextEpisode) return
+      e.preventDefault()
+      void handleChooseSource(firstUnwatched)
+    }
+    document.addEventListener('keydown', onKey)
+    return () => document.removeEventListener('keydown', onKey)
+  }, [firstUnwatched, handleChooseSource, sourceEpisode, contextEpisode])
+
+  // Roaming con flechas dentro del rail de episodios.
+  const handleRailKeyDown = useCallback((e: ReactKeyboardEvent<HTMLDivElement>) => {
+    if (e.key !== 'ArrowRight' && e.key !== 'ArrowLeft') return
+    const rail = railRef.current
+    if (!rail) return
+    const cards = Array.from(rail.querySelectorAll<HTMLElement>('[data-ep-card]'))
+    const idx = cards.indexOf(document.activeElement as HTMLElement)
+    if (idx === -1) return
+    e.preventDefault()
+    const next = cards[idx + (e.key === 'ArrowRight' ? 1 : -1)]
+    if (next) {
+      next.focus()
+      next.scrollIntoView({ block: 'nearest', inline: 'center', behavior: 'smooth' })
+    }
+  }, [])
 
   return (
     <div className={styles.container}>
-      {/* Hero Section */}
-      <div className={styles.hero}>
-        {(item.backdropUrl || item.tmdbPosterUrl || item.imageUrl) ? (
-          <img src={item.backdropUrl || item.tmdbPosterUrl || item.imageUrl} alt="" className={styles.heroImage} />
-        ) : (
-          <div className={styles.heroFallback} />
+      {/* Masthead compacto: el arte no compite con la accion */}
+      <header className={styles.masthead}>
+        {(item.backdropUrl || item.tmdbPosterUrl || item.imageUrl) && (
+          <img
+            src={item.backdropUrl || item.tmdbPosterUrl || item.imageUrl}
+            alt=""
+            className={styles.mastheadArt}
+          />
         )}
-        <div className={styles.heroGradientLeft} />
-        <div className={styles.heroGradientBottom} />
-        <div className={styles.heroVignette} />
+        <div className={styles.mastheadShade} />
 
-        <button onClick={closeDetail} className={styles.backBtn}>
-          <ArrowLeft className={styles.backIcon} aria-hidden="true" size={20} /> 
-          Volver
-        </button>
+        <div className={styles.backRow}>
+          <button onClick={closeDetail} className={styles.backBtn}>
+            <ArrowLeft className={styles.backIcon} aria-hidden="true" size={18} />
+            Volver
+          </button>
+          <span className={styles.keysHint}>
+            <kbd>←</kbd><kbd>→</kbd> navegar &nbsp; <kbd>Enter</kbd> reproducir &nbsp; <kbd>F</kbd> fuentes
+          </span>
+        </div>
 
-        <div className={styles.heroInfo}>
-          <h1 className={styles.heroTitle}>{item.tmdbTitle ?? item.title}</h1>
+        <h1 className={styles.showTitle}>{displayTitleOf(item)}</h1>
 
-          <div className={styles.heroMetaRow}>
-            {(item.voteAverage ?? 0) > 0 && (
-              <span className={styles.ratingBadge}>
-                ★ {item.voteAverage!.toFixed(1)}
-              </span>
-            )}
-            {item.year && <span className={styles.metaItem}>{item.year}</span>}
-            {item.genres.length > 0 && (
-              <span className={styles.metaItem}>{item.genres.slice(0, 3).join(' \u2022 ')}</span>
-            )}
-            {item.totalSeasons != null && (
-              <span className={styles.metaItem}>
-                {item.totalSeasons === 1 ? '1 temporada' : `${item.totalSeasons} temporadas`}
-              </span>
-            )}
-          </div>
-
-          {item.description && (
-            <p className={styles.heroDescription}>{item.description}</p>
+        <div className={styles.showMeta}>
+          {(item.voteAverage ?? 0) > 0 && (
+            <span className={styles.star}>★ {item.voteAverage!.toFixed(1)}</span>
           )}
+          {item.year && <b>{item.year}</b>}
+          {seasons.length > 0 && (
+            <span>
+              {seasons.length === 1 ? '1 temporada' : `${seasons.length} temporadas`}
+              {' '}· {episodes.length} capitulos
+            </span>
+          )}
+          {item.genres.length > 0 && <span>{item.genres.slice(0, 3).join(' · ')}</span>}
+        </div>
 
-          <button onClick={handlePlayHero} className={styles.heroPlayBtn} disabled={!firstUnwatched}>
-            <Play className={styles.heroPlayIcon} aria-hidden="true" fill="currentColor" size={24} />
-            {heroLabel}
+        <div className={styles.ctaRow}>
+          <button onClick={handlePlayHero} className={styles.ctaPlay} disabled={!firstUnwatched}>
+            <Play size={26} fill="currentColor" aria-hidden="true" />
+            <span className={styles.ctaTxt}>
+              {ctaLabel}
+              {ctaSub && <small>{ctaSub}</small>}
+            </span>
+          </button>
+          <button
+            onClick={() => firstUnwatched && void handleChooseSource(firstUnwatched)}
+            className={styles.ctaSources}
+            disabled={!firstUnwatched}
+          >
+            Fuentes
+            {heroSourceCount != null && <span className={styles.ctaCount}>{heroSourceCount}</span>}
           </button>
         </div>
-      </div>
+      </header>
 
-      {/* Season Tabs + Episodes */}
-      <div className={styles.episodesSection}>
-        {seasons.length > 0 && (
-          <div className={styles.seasonTabs} role="tablist" aria-label="Temporadas">
-            <button
-              className={`${styles.seasonTab} ${selectedSeason === null ? styles.seasonTabActive : ''}`}
-              onClick={() => setSelectedSeason(null)}
-              role="tab"
-              aria-selected={selectedSeason === null}
-            >
-              Todas
-            </button>
-            {seasons.map((s) => {
-              const prog = watchedBySeason.get(s)
-              const suffix = prog ? ` ${prog.seen}/${prog.total}` : ''
-              return (
-                <button
-                  key={s}
-                  className={`${styles.seasonTab} ${selectedSeason === s ? styles.seasonTabActive : ''}`}
-                  onClick={() => setSelectedSeason(s)}
-                  role="tab"
-                  aria-selected={selectedSeason === s}
-                >
-                  T{s}{suffix}
-                </button>
-              )
-            })}
-          </div>
-        )}
-
-        <div className={styles.episodesScroll}>
-          {loading ? (
-            <div className={styles.statusMessage}>Cargando episodios...</div>
-          ) : error ? (
-            <div className={styles.statusMessage}>{error}</div>
-          ) : filteredEpisodes.length === 0 ? (
-            <div className={styles.statusMessage}>Sin episodios</div>
-          ) : (
-            <div className={styles.episodeList}>
-              {filteredEpisodes.map((ep, i) => {
-                const key = ep.stableId ?? `${ep.seasonNumber ?? '?'}-${i}`
-                const refKey = `${ep.seasonNumber ?? '?'}|${ep.episodeNumber ?? '?'}`
-                const isContinue =
-                  !!cwEntry &&
-                  cwEntry.seasonNumber === ep.seasonNumber &&
-                  cwEntry.episodeNumber === ep.episodeNumber &&
-                  !cwEntry.isWatched
-                const epProgress = isContinue ? continueProgress : 0
-                const status = getEpisodeStatus(ep, cwEntry)
+      {/* Rail horizontal de episodios */}
+      <section className={styles.railSection}>
+        <div className={styles.railHead}>
+          <h2 className={styles.railTitle}>
+            {selectedSeason != null ? `Temporada ${selectedSeason}` : 'Episodios'}
+          </h2>
+          {seasons.length > 0 && (
+            <div className={styles.bigTabs} role="tablist" aria-label="Temporadas">
+              <button
+                className={`${styles.bigTab} ${selectedSeason === null ? styles.bigTabActive : ''}`}
+                onClick={() => setSelectedSeason(null)}
+                role="tab"
+                aria-selected={selectedSeason === null}
+              >
+                Todas
+              </button>
+              {seasons.map((s) => {
+                const prog = watchedBySeason.get(s)
                 return (
-                  <div
-                    key={key}
-                    ref={(el) => registerEpisodeRef(refKey, el)}
-                    className={`${styles.episodeRow} ${isContinue ? styles.episodeRowActive : ''}`}
-                    role="button"
-                    tabIndex={0}
-                    onClick={() => { void handlePlayEpisode(ep) }}
-                    onContextMenu={(e) => { e.preventDefault(); setContextEpisode(ep) }}
-                      onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); void handlePlayEpisode(ep) } }}
-                    aria-label={`Reproducir T${ep.seasonNumber ?? '?'} E${ep.episodeNumber ?? '?'}: ${ep.tmdbTitle ?? ep.title}`}
+                  <button
+                    key={s}
+                    className={`${styles.bigTab} ${selectedSeason === s ? styles.bigTabActive : ''}`}
+                    onClick={() => setSelectedSeason(s)}
+                    role="tab"
+                    aria-selected={selectedSeason === s}
                   >
-                    <div className={styles.episodeNumberLeft}>{ep.episodeNumber ?? i + 1}</div>
-
-                    <div className={styles.episodeThumbWrap}>
-                      {(ep.stillPath || ep.imageUrl) ? (
-                        <img src={ep.stillPath || ep.imageUrl} alt="" className={styles.episodeThumb} />
-                      ) : (
-                        <div className={styles.episodeThumbPlaceholder}>TV</div>
-                      )}
-                      <div className={styles.playOverlay} aria-hidden="true">
-                        <Play size={24} fill="currentColor" />
-                      </div>
-                    </div>
-
-                    <div className={styles.episodeInfo}>
-                      <div className={styles.episodeTitle}>{ep.tmdbTitle ?? ep.title}</div>
-                      <div className={styles.episodeMeta}>
-                        {(ep.voteAverage ?? 0) > 0 && (
-                          <span className={styles.ratingBadge}>
-                            ★ {ep.voteAverage!.toFixed(1)}
-                          </span>
-                        )}
-                        {ep.runtimeMinutes != null && (
-                          <span className={styles.episodeDuration}>{formatRuntime(ep.runtimeMinutes)}</span>
-                        )}
-                        {(ep.airDate ?? ep.releaseDate) && (
-                          <span className={styles.episodeAirDate}>{formatAirDate(ep.airDate ?? ep.releaseDate!)}</span>
-                        )}
-                        {ep.hasTorrentSource && (
-                          <span className={styles.sourceChipTorrent}>
-                            <span className={styles.sourceChipDot} />Torrent
-                          </span>
-                        )}
-                        {ep.hasIptvSource && (
-                          <span className={styles.sourceChipIptv}>
-                            <span className={styles.sourceChipDot} />IPTV
-                          </span>
-                        )}
-                      </div>
-                      {ep.description && (
-                        <p className={styles.episodeDescription}>{ep.description}</p>
-                      )}
-                    </div>
-
-                    <div className={styles.episodeRight}>
-                      <button
-                        type="button"
-                        className={styles.sourceBtn}
-                        onClick={(e) => { e.stopPropagation(); void handleChooseSource(ep) }}
-                        aria-label={`Elegir fuente de T${ep.seasonNumber ?? '?'} E${ep.episodeNumber ?? '?'}`}
-                        title="Elegir fuente"
-                      >
-                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
-                          <path d="M5 12h14M13 6l6 6-6 6" />
-                        </svg>
-                        Fuentes
-                      </button>
-                      {isContinue && epProgress > 0 && (
-                        <div className={styles.progressTrack} aria-hidden="true">
-                          <div className={styles.progressFillRight} style={{ width: `${epProgress}%` }} />
-                        </div>
-                      )}
-                      
-                      <div className={styles.episodeStatus}>
-                        {status.variant === 'watched' && (
-                          <span className={styles.statusWatched}>
-                            <span className={styles.statusLabel}>Visto</span>
-                            <span className={styles.statusBadge} aria-hidden="true">
-                              <svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" strokeWidth="3.5" strokeLinecap="round" strokeLinejoin="round">
-                                <polyline points="20 6 9 17 4 12" />
-                              </svg>
-                            </span>
-                          </span>
-                        )}
-                        {status.variant === 'inProgress' && epProgress > 0 && (
-                          <span className={styles.statusInProgress}>
-                            <span className={styles.statusLabel}>
-                              {ep.runtimeMinutes ? `${Math.round(ep.runtimeMinutes * (1 - epProgress / 100))} min restantes` : 'En reproduccion'}
-                            </span>
-                          </span>
-                        )}
-                      </div>
-                    </div>
-                  </div>
+                    T{s}
+                    {prog && <span className={styles.bigTabFrac}>{prog.seen}/{prog.total}</span>}
+                  </button>
                 )
               })}
             </div>
           )}
         </div>
-      </div>
+
+        <div className={styles.rail} ref={railRef} onKeyDown={handleRailKeyDown}>
+          {loading ? (
+            Array.from({ length: 6 }, (_, i) => <div key={i} className={styles.cardSkeleton} aria-hidden="true" />)
+          ) : error ? (
+            <div className={styles.railStatus}>{error}</div>
+          ) : filteredEpisodes.length === 0 ? (
+            <div className={styles.railStatus}>Sin episodios</div>
+          ) : (
+            filteredEpisodes.map((ep, i) => {
+              const key = ep.stableId ?? `${ep.seasonNumber ?? '?'}-${i}`
+              const refKey = `${ep.seasonNumber ?? '?'}|${ep.episodeNumber ?? '?'}`
+              const isContinue =
+                !!cwEntry &&
+                cwEntry.seasonNumber === ep.seasonNumber &&
+                cwEntry.episodeNumber === ep.episodeNumber &&
+                !cwEntry.isWatched
+              const epProgress = isContinue ? continueProgress : 0
+              const status = getEpisodeStatus(ep, cwEntry)
+              const minutesLeft = epProgress > 0 && ep.runtimeMinutes
+                ? Math.max(1, Math.round(ep.runtimeMinutes * (1 - epProgress / 100)))
+                : null
+              return (
+                <div
+                  key={key}
+                  ref={(el) => registerEpisodeRef(refKey, el)}
+                  data-ep-card
+                  className={`${styles.card} ${isContinue ? styles.cardFocused : ''}`}
+                  role="button"
+                  tabIndex={0}
+                  onClick={() => { void handlePlayEpisode(ep) }}
+                  onContextMenu={(e) => { e.preventDefault(); setContextEpisode(ep) }}
+                  onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); void handlePlayEpisode(ep) } }}
+                  aria-label={`Reproducir T${ep.seasonNumber ?? '?'} E${ep.episodeNumber ?? '?'}: ${displayTitleOf(ep)}`}
+                >
+                  <div className={styles.cardStill}>
+                    {(ep.stillPath || ep.imageUrl) ? (
+                      <img src={ep.stillPath || ep.imageUrl} alt="" className={styles.cardStillImg} loading="lazy" />
+                    ) : (
+                      <span className={styles.cardStillFallback}>
+                        T{ep.seasonNumber ?? '?'} · E{ep.episodeNumber ?? '?'}
+                      </span>
+                    )}
+                    {status.variant === 'watched' && (
+                      <span className={styles.cardCheck} aria-label="Visto">
+                        <Check size={15} strokeWidth={3.5} />
+                      </span>
+                    )}
+                    {isContinue && epProgress > 0 && (
+                      <div className={styles.cardBar} aria-hidden="true"><i style={{ width: `${epProgress}%` }} /></div>
+                    )}
+                    <div className={styles.cardHover} aria-hidden="true">
+                      <span className={styles.cardHoverGo}><Play size={22} fill="currentColor" /></span>
+                    </div>
+                  </div>
+                  <div className={styles.cardBody}>
+                    <span className={styles.cardNum}>{ep.episodeNumber ?? i + 1}</span>
+                    <span className={styles.cardTexts}>
+                      <span className={styles.cardTitle}>{displayTitleOf(ep)}</span>
+                      <span className={styles.cardMeta}>
+                        {ep.runtimeMinutes != null && <span>{formatRuntime(ep.runtimeMinutes)}</span>}
+                        {ep.hasIptvSource && <span className={styles.srcDotIptv} title="Disponible en IPTV" />}
+                        {ep.hasTorrentSource && <span className={styles.srcDotTorrent} title="Disponible en Torrent" />}
+                      </span>
+                      {isContinue && minutesLeft != null && (
+                        <span className={styles.cardLeft}>Visto al {Math.round(epProgress)} % · quedan {minutesLeft} min</span>
+                      )}
+                    </span>
+                    <button
+                      type="button"
+                      className={styles.cardSourcesBtn}
+                      onClick={(e) => { e.stopPropagation(); void handleChooseSource(ep) }}
+                      aria-label={`Elegir fuente de T${ep.seasonNumber ?? '?'} E${ep.episodeNumber ?? '?'}`}
+                      title="Elegir fuente"
+                    >
+                      Fuentes
+                    </button>
+                  </div>
+                </div>
+              )
+            })
+          )}
+        </div>
+      </section>
       {contextEpisode && createPortal(
         <div className={styles.episodeContextMenuBackdrop} onMouseDown={() => setContextEpisode(null)}>
           <div className={styles.episodeContextMenu} role="menu" onMouseDown={(e) => e.stopPropagation()}>
@@ -619,18 +649,36 @@ export function SeriesDetail({ item }: Props) {
             aria-label={`Fuentes de T${sourceEpisode.seasonNumber ?? '?'} E${sourceEpisode.episodeNumber ?? '?'}`}
             onMouseDown={(e) => e.stopPropagation()}
           >
+            <div className={styles.sheetHandle} aria-hidden="true" />
             <div className={styles.sourceModalHead}>
-              <div className={styles.sourceModalEyebrow}>
-                Temporada {sourceEpisode.seasonNumber ?? '?'} · Episodio {sourceEpisode.episodeNumber ?? '?'}
+              <div>
+                <div className={styles.sourceModalEyebrow}>
+                  Temporada {sourceEpisode.seasonNumber ?? '?'} · Episodio {sourceEpisode.episodeNumber ?? '?'}
+                </div>
+                <div className={styles.sourceModalTitle}>{displayTitleOf(sourceEpisode)}</div>
+                <div className={styles.sourceModalSub}>
+                  {sourceLoading
+                    ? 'Buscando fuentes en Torrentio...'
+                    : sourceError && sourceStreams.length === 0
+                      ? 'Solo hay fuentes IPTV disponibles'
+                      : `${sourceStreams.length} fuentes disponibles`}
+                </div>
               </div>
-              <div className={styles.sourceModalTitle}>{sourceEpisode.tmdbTitle ?? sourceEpisode.title}</div>
-              <div className={styles.sourceModalSub}>
-                {sourceLoading
-                  ? 'Buscando fuentes en Torrentio...'
-                  : sourceError && sourceStreams.length === 0
-                    ? 'Solo hay fuentes IPTV disponibles'
-                    : `${sourceStreams.length} fuentes disponibles`}
-              </div>
+              {bestTorrentIndex >= 0 && !sourceLoading && sourceStreams[bestTorrentIndex] && (
+                <span className={styles.sourceModalRec}>
+                  Recomendada: {qualityOf(sourceStreams[bestTorrentIndex]).toUpperCase()}
+                  {sourceStreams[bestTorrentIndex].seeders != null &&
+                    ` · ${sourceStreams[bestTorrentIndex].seeders} seeds`}
+                </span>
+              )}
+              <button
+                type="button"
+                className={styles.sourceModalClose}
+                onClick={() => setSourceEpisode(null)}
+                aria-label="Cerrar"
+              >
+                ✕
+              </button>
             </div>
 
             <div className={styles.sourceModalBody}>
@@ -651,45 +699,35 @@ export function SeriesDetail({ item }: Props) {
                 return (
                   <>
                     {iptvCount > 0 && (
-                      <>
-                        <div className={`${styles.sourceGroupLabel} ${styles.sourceGroupLabelIptv}`}>
-                          <span className={styles.sourceGroupBar} />
-                          Directo IPTV
-                        </div>
-                        {sourceStreams.map((opt, i) => (
-                          !isTorrentStream(opt) && (
-                            <SourceRow
-                              key={`iptv-${i}`}
-                              opt={opt}
-                              variant="iptv"
-                              selected={selectedSource === i}
-                              onSelect={() => setSelectedSource(i)}
-                              onPlay={() => handlePlayFromSource(i)}
-                            />
-                          )
-                        ))}
-                      </>
+                      <div className={styles.sourceGroupLabel}>Directo IPTV · {iptvCount}</div>
                     )}
+                    {sourceStreams.map((opt, i) => (
+                      !isTorrentStream(opt) && (
+                        <SourceRow
+                          key={`iptv-${i}`}
+                          opt={opt}
+                          variant="iptv"
+                          selected={selectedSource === i}
+                          onSelect={() => setSelectedSource(i)}
+                          onPlay={() => handlePlayFromSource(i)}
+                        />
+                      )
+                    ))}
                     {sourceStreams.length - iptvCount > 0 && (
-                      <>
-                        <div className={`${styles.sourceGroupLabel} ${styles.sourceGroupLabelTorrent}`}>
-                          <span className={styles.sourceGroupBar} />
-                          Torrent
-                        </div>
-                        {sourceStreams.map((opt, i) => (
-                          isTorrentStream(opt) && (
-                            <SourceRow
-                              key={`tor-${i}`}
-                              opt={opt}
-                              variant="torrent"
-                              selected={selectedSource === i}
-                              onSelect={() => setSelectedSource(i)}
-                              onPlay={() => handlePlayFromSource(i)}
-                            />
-                          )
-                        ))}
-                      </>
+                      <div className={styles.sourceGroupLabel}>Torrent · {sourceStreams.length - iptvCount}</div>
                     )}
+                    {sourceStreams.map((opt, i) => (
+                      isTorrentStream(opt) && (
+                        <SourceRow
+                          key={`tor-${i}`}
+                          opt={opt}
+                          variant="torrent"
+                          selected={selectedSource === i}
+                          onSelect={() => setSelectedSource(i)}
+                          onPlay={() => handlePlayFromSource(i)}
+                        />
+                      )
+                    ))}
                   </>
                 )
               })()}
@@ -733,6 +771,9 @@ function SourceRow({
   onPlay: () => void
 }) {
   const isTorrent = variant === 'torrent'
+  const badge = isTorrent
+    ? qualityOf(opt).toUpperCase()
+    : (opt.language ?? 'ES').toUpperCase()
   return (
     <div
       className={`${styles.sourceRow} ${selected ? styles.sourceRowSelected : ''}`}
@@ -744,39 +785,32 @@ function SourceRow({
         if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); onPlay() }
       }}
     >
-      <span className={`${styles.sourceRowIcon} ${isTorrent ? styles.sourceRowIconTorrent : styles.sourceRowIconIptv}`}>
-        {isTorrent ? (
-          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2Z" /></svg>
-        ) : (
-          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><rect x="2" y="5" width="20" height="14" rx="2" /><path d="M16 3v4M8 3v4" /></svg>
-        )}
-      </span>
+      <span className={styles.sourceRowQ}>{badge}</span>
 
       <span className={styles.sourceRowTitle}>{opt.torrentTitle ?? opt.label ?? 'Directo'}</span>
 
       <span className={styles.sourceRowMeta}>
-        {!isTorrent && opt.language && (
-          <span className={styles.sourceLangTag}>{opt.language}</span>
-        )}
-        {qualityOf(opt) !== 'SD' && (
-          <span className={styles.sourceQualityBadge}>{qualityOf(opt)}</span>
-        )}
         {opt.seeders != null && (
-          <span className={styles.sourceSeeds}>{opt.seeders}</span>
+          <span className={styles.sourceSeeds}>{opt.seeders} seeds</span>
         )}
         {opt.sizeBytes != null && (
           <span className={styles.sourceSize}>{formatSize(opt.sizeBytes)}</span>
+        )}
+        {isTorrent && opt.language && (
+          <span className={styles.sourceLangTag}>{opt.language}</span>
         )}
         {!isTorrent && (
           <span className={styles.sourceLiveTag}>EN DIRECTO</span>
         )}
       </span>
 
-      <span className={styles.sourceRowPlay} onClick={(e) => { e.stopPropagation(); onPlay() }}>
+      <span className={styles.sourceRowPlay} role="button" tabIndex={0} aria-label={`Reproducir ${opt.torrentTitle ?? opt.label ?? 'fuente'}`}
+        onClick={(e) => { e.stopPropagation(); onPlay() }}
+        onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); e.stopPropagation(); onPlay() } }}>
         {selected ? (
-          <svg width="13" height="13" viewBox="0 0 24 24" fill="currentColor"><path d="M8 5v14l11-7z" /></svg>
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="currentColor"><path d="M8 5v14l11-7z" /></svg>
         ) : (
-          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2"><path d="M5 12h14M13 6l6 6-6 6" /></svg>
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2"><path d="M5 12h14M13 6l6 6-6 6" /></svg>
         )}
       </span>
     </div>

@@ -129,6 +129,10 @@
   transition: border-color 0.15s ease, box-shadow 0.15s ease;
 }
 
+.passWrap .fieldInput {
+  padding-right: 44px;
+}
+
 .fieldInput:focus {
   border-color: var(--accent);
   box-shadow: 0 0 0 3px oklch(63% 0.20 255 / 0.18);
@@ -136,4 +140,29 @@
 
 .fieldInput::placeholder {
   color: var(--text-muted);
+}
+
+.passWrap {
+  position: relative;
+}
+
+.showBtn {
+  position: absolute;
+  right: 8px;
+  bottom: 7px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  background: none;
+  border: none;
+  border-radius: var(--radius-sm);
+  color: var(--text-muted);
+  cursor: pointer;
+  padding: 0;
+}
+
+.showBtn:hover {
+  color: var(--text-primary);
 }

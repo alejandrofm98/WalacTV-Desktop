@@ -10,6 +10,7 @@ export function SearchContent() {
   const [results, setResults] = useState<CatalogItem[]>([])
   const [loading, setLoading] = useState(false)
   const inputRef = useRef<HTMLInputElement>(null)
+  const requestIdRef = useRef(0)
   const openDetail = useAppStore((s) => s.openDetail)
   const openPlayer = useAppStore((s) => s.openPlayer)
 
@@ -20,12 +21,13 @@ export function SearchContent() {
   useEffect(() => {
     if (!query.trim()) { setResults([]); return }
     let cancelled = false
+    const requestId = ++requestIdRef.current
     const timer = setTimeout(() => {
       setLoading(true)
       apiSearch(query)
-        .then((r) => { if (!cancelled) setResults(r.results ?? []) })
-        .catch(() => { if (!cancelled) setResults([]) })
-        .finally(() => { if (!cancelled) setLoading(false) })
+        .then((r) => { if (requestIdRef.current === requestId && !cancelled) setResults(r.results ?? []) })
+        .catch(() => { if (requestIdRef.current === requestId && !cancelled) setResults([]) })
+        .finally(() => { if (requestIdRef.current === requestId && !cancelled) setLoading(false) })
     }, 300)
     return () => { clearTimeout(timer); cancelled = true }
   }, [query])

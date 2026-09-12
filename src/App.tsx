@@ -1,7 +1,9 @@
-import { useEffect, useRef } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { invoke } from '@tauri-apps/api/core'
 import { useAppStore } from './store/useAppStore'
 import { login as apiLogin, setToken, getToken, getHomeCatalog, getHomeContinueWatching, getWatchedItems, applyWatchedState, getPreferredLanguage, cwGroupKey } from './api/client'
+import { API_MISSING_MESSAGE, isApiConfigured } from './config'
+import { devWarn } from './utils/logger'
 import { loadCredentials } from './credentials'
 import { checkForUpdates } from './updater'
 import { LoginScreen } from './components/LoginScreen'
@@ -29,6 +31,8 @@ export default function App() {
     setSelectedHero, setError, setRailExpanded,
   } = useAppStore()
 
+  const [initializing, setInitializing] = useState(true)
+
   // Fetch monitor scale info and apply CSS variable
   useEffect(() => {
     invoke<{ scale_factor: number }>('get_scale_info')
@@ -40,9 +44,14 @@ export default function App() {
 
   // Initialize token from secure store
   useEffect(() => {
+    if (!isApiConfigured) {
+      setInitializing(false)
+      return
+    }
     const saved = localStorage.getItem('walactv_token')
     const savedUser = localStorage.getItem('walactv_username')
     if (saved && savedUser) {
+      useAppStore.setState({ loading: true })
       setToken(saved)
       loadCredentials()
         .then((creds) => {
@@ -59,6 +68,9 @@ export default function App() {
           return loadData()
         })
         .catch(() => useAppStore.getState().signOut())
+        .finally(() => setInitializing(false))
+    } else {
+      setInitializing(false)
     }
   }, [])
 
@@ -84,13 +96,26 @@ export default function App() {
   }
 
   async function loadData() {
+    if (!isApiConfigured) {
+      setError(API_MISSING_MESSAGE)
+      return
+    }
     useAppStore.setState({ loading: true, error: null })
     try {
       const lang = getPreferredLanguage()
       const [home, cw, watched] = await Promise.all([
-        getHomeCatalog(lang).catch(() => null),
-        getHomeContinueWatching(20).catch(() => ({ items: [] })),
-        getWatchedItems(500).catch(() => ({ items: [] })),
+        getHomeCatalog(lang).catch((err) => {
+          devWarn('[App] getHomeCatalog fallo:', err)
+          return null
+        }),
+        getHomeContinueWatching(20).catch((err) => {
+          devWarn('[App] getHomeContinueWatching fallo:', err)
+          return { items: [] }
+        }),
+        getWatchedItems(500).catch((err) => {
+          devWarn('[App] getWatchedItems fallo:', err)
+          return { items: [] }
+        }),
       ])
 
       let hero: CatalogItem | null = null
@@ -146,6 +171,11 @@ export default function App() {
   }
 
   async function handleLogin(u: string, p: string) {
+    if (!isApiConfigured) {
+      const message = API_MISSING_MESSAGE
+      useAppStore.setState({ authError: message })
+      throw new Error(message)
+    }
     useAppStore.setState({ signingIn: true, authError: null })
     try {
       await apiLogin(u, p)
@@ -188,7 +218,11 @@ export default function App() {
     return () => document.documentElement.classList.remove('player-active')
   }, [playerItem])
 
-  if (!signedIn) return <LoginScreen onLogin={handleLogin} />
+  if (!isApiConfigured) return <ErrorScreen message={API_MISSING_MESSAGE} onRetry={() => window.location.reload()} />
+  if (initializing || !signedIn) {
+    if (initializing) return <LoadingScreen />
+    return <LoginScreen onLogin={handleLogin} />
+  }
   if (loading) return <LoadingScreen />
   if (error) return <ErrorScreen message={error} onRetry={loadData} />
   if (playerItem) return <Player />
@@ -199,7 +233,7 @@ export default function App() {
       <div className={styles.root}>
         <SideRail
           mode={mode}
-          onModeChange={(m) => { setMode(m); setRailExpanded(false) }}
+          onModeChange={(m) => { setMode(m) }}
           expanded={railExpanded}
           onSetExpanded={setRailExpanded}
         />

@@ -5,6 +5,7 @@ import { ChannelCard } from './ChannelCard'
 import { SearchableSelect } from './SearchableSelect'
 import { SearchInput } from './SearchInput'
 import { useAppStore } from '../store/useAppStore'
+import { devWarn } from '../utils/logger'
 import styles from './TVGuide.module.css'
 
 interface Props {
@@ -28,6 +29,7 @@ export function TVGuide({ contentType }: Props) {
   const [query, setQuery] = useState('')
   const [searching, setSearching] = useState(false)
   const searchTimeout = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const requestIdRef = useRef(0)
   const observerTarget = useRef<HTMLDivElement>(null)
   const openPlayer = useAppStore((s) => s.openPlayer)
 
@@ -38,19 +40,22 @@ export function TVGuide({ contentType }: Props) {
     if (contentType === 'CHANNEL') {
       getFavorites().then((r) => {
         setFavorites(new Set((r ?? []).map((f) => f.stableId)))
-      }).catch(() => {})
+      }).catch((err) => devWarn('[TVGuide] getFavorites fallo:', err))
     }
   }, [apiType, contentType])
 
   // Reload groups when country changes
   useEffect(() => {
     setGroup(undefined)
-    getGroups(apiType, country).then((r) => setGroups(r.groups ?? [])).catch(() => {})
+    getGroups(apiType, country)
+      .then((r) => setGroups(r.groups ?? []))
+      .catch((err) => devWarn('[TVGuide] getGroups fallo:', err))
   }, [apiType, country])
 
-  // Load items or search
+  // Load items or search (con generacion para descartar respuestas obsoletas)
   useEffect(() => {
     if (searchTimeout.current) clearTimeout(searchTimeout.current)
+    const requestId = ++requestIdRef.current
     setLoading(true)
     setPage(1)
     setError(null)
@@ -58,24 +63,36 @@ export function TVGuide({ contentType }: Props) {
     if (!query.trim()) {
       getCatalogPage({ content_type: apiType, country, group, page: 1, page_size: 48 })
         .then((r) => {
+          if (requestIdRef.current !== requestId) return
           setItems(r.items)
           setHasNext(r.has_next)
         })
-        .catch((e) => setError(e.message ?? 'Error cargando'))
-        .finally(() => setLoading(false))
+        .catch((e) => {
+          if (requestIdRef.current !== requestId) return
+          setError(e.message ?? 'Error cargando')
+        })
+        .finally(() => {
+          if (requestIdRef.current !== requestId) return
+          setLoading(false)
+        })
       return
     }
 
     setSearching(true)
     searchTimeout.current = setTimeout(() => {
-      search(query.trim(), 1, { country, group, types: 'channels' })
+      search(query.trim(), 1, { country, group, types: apiType })
         .then((r) => {
+          if (requestIdRef.current !== requestId) return
           setItems(r.results)
           setHasNext(false)
           setPage(1)
         })
-        .catch((e) => setError(e.message ?? 'Error buscando'))
+        .catch((e) => {
+          if (requestIdRef.current !== requestId) return
+          setError(e.message ?? 'Error buscando')
+        })
         .finally(() => {
+          if (requestIdRef.current !== requestId) return
           setSearching(false)
           setLoading(false)
         })
@@ -153,11 +170,15 @@ export function TVGuide({ contentType }: Props) {
           <button
             onClick={() => setShowFavs(!showFavs)}
             className={`${styles.favBtn} ${showFavs ? styles.favBtnActive : styles.favBtnDefault}`}
+            aria-pressed={showFavs}
           >
-            ⭐ Favoritos
+            <svg width="14" height="14" viewBox="0 0 24 24" fill={showFavs ? 'currentColor' : 'none'} stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+              <polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2" />
+            </svg>
+            Favoritos
           </button>
         )}
-        <SearchInput placeholder="Buscar canales..." value={query} onChange={setQuery} />
+        <SearchInput placeholder={contentType === 'CHANNEL' ? 'Buscar canales...' : 'Buscar eventos...'} value={query} onChange={setQuery} />
       </div>
 
       {/* Grid */}

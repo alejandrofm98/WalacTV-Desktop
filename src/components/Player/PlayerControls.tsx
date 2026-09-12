@@ -412,18 +412,6 @@ export function PlayerControls({ item, activePanel, onPanelChange }: PlayerContr
       )}
 
       <div className={styles.buttonsRow}>
-        {isLive && (
-          <button
-            className={styles.controlBtn}
-            onClick={() => zap(-1)}
-            disabled={!canZap}
-            aria-label={isChannel ? 'Canal anterior' : 'Fuente anterior'}
-            title={isChannel ? 'Canal anterior' : 'Fuente anterior'}
-          >
-            <ChevronUp size={20} />
-          </button>
-        )}
-
         <button
           className={`${styles.controlBtn} ${styles.playBtn}`}
           onClick={() => service.togglePlay()}
@@ -438,15 +426,26 @@ export function PlayerControls({ item, activePanel, onPanelChange }: PlayerContr
         </button>
 
         {isLive && (
-          <button
-            className={styles.controlBtn}
-            onClick={() => zap(1)}
-            disabled={!canZap}
-            aria-label={isChannel ? 'Canal siguiente' : 'Fuente siguiente'}
-            title={isChannel ? 'Canal siguiente' : 'Fuente siguiente'}
-          >
-            <ChevronDown size={20} />
-          </button>
+          <div className={styles.zapGroup}>
+            <button
+              className={styles.controlBtn}
+              onClick={() => zap(-1)}
+              disabled={!canZap}
+              aria-label={isChannel ? 'Canal anterior' : 'Fuente anterior'}
+              title={isChannel ? 'Canal anterior' : 'Fuente anterior'}
+            >
+              <ChevronUp size={20} />
+            </button>
+            <button
+              className={styles.controlBtn}
+              onClick={() => zap(1)}
+              disabled={!canZap}
+              aria-label={isChannel ? 'Canal siguiente' : 'Fuente siguiente'}
+              title={isChannel ? 'Canal siguiente' : 'Fuente siguiente'}
+            >
+              <ChevronDown size={20} />
+            </button>
+          </div>
         )}
 
         {isSeriesEpisode && (
