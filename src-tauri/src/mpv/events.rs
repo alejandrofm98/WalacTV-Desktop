@@ -37,6 +37,7 @@ const FULLSCREEN_ID: u64 = 13;
 const AUDIO_TRACK_ID: u64 = 14;
 const SUBTITLE_TRACK_ID: u64 = 15;
 const EST_FPS_ID: u64 = 16;
+const MUTE_ID: u64 = 17;
 
 // ---------------------------------------------------------------------------
 // Payload structs for Tauri events
@@ -212,6 +213,13 @@ pub unsafe fn mpv_event_loop(
         VOLUME_ID,
         "volume",
         mpv_format::MPV_FORMAT_DOUBLE,
+    );
+    observe(
+        &api,
+        event_client,
+        MUTE_ID,
+        "mute",
+        mpv_format::MPV_FORMAT_FLAG,
     );
     observe(
         &api,
@@ -482,6 +490,14 @@ pub unsafe fn mpv_event_loop(
                         }
                     }
 
+                    MUTE_ID if prop.format == mpv_format::MPV_FORMAT_FLAG
+                        && !value_ptr.is_null() =>
+                    {
+                        let muted = unsafe { *(value_ptr as *mut c_int) != 0 };
+                        let _ = app_handle.emit("mpv://mute", muted);
+                        emit_unified_event(&app_handle, "mute", Some(json!({ "muted": muted })));
+                    }
+
                     SPEED_ID => {
                         if prop.format == mpv_format::MPV_FORMAT_DOUBLE && !value_ptr.is_null() {
                             let speed = unsafe { *(value_ptr as *mut f64) };
@@ -500,12 +516,12 @@ pub unsafe fn mpv_event_loop(
                         // Could emit video-resolution if desired
                     }
 
-                    EST_FPS_ID => {
-                        if prop.format == mpv_format::MPV_FORMAT_DOUBLE && !value_ptr.is_null() {
-                            let fps = unsafe { *(value_ptr as *mut f64) };
-                            if fps.is_finite() && fps > 0.0 {
-                                last_est_fps = fps;
-                            }
+                    EST_FPS_ID if prop.format == mpv_format::MPV_FORMAT_DOUBLE
+                        && !value_ptr.is_null() =>
+                    {
+                        let fps = unsafe { *(value_ptr as *mut f64) };
+                        if fps.is_finite() && fps > 0.0 {
+                            last_est_fps = fps;
                         }
                     }
 

@@ -81,6 +81,13 @@ html.player-active #root {
   background: transparent;
 }
 
+/* Webview overlay (Windows wid nativo): fondo transparente siempre. */
+html.overlay-surface,
+html.overlay-surface body,
+html.overlay-surface #root {
+  background: transparent;
+}
+
 /* ── Scrollbar ───────────────────────────────────── */
 ::-webkit-scrollbar {
   width: 5px;

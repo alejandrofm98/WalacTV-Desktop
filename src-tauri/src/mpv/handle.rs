@@ -133,12 +133,13 @@ fn initial_options(
 
     #[cfg(target_os = "windows")]
     {
-        // Windows without uosc: native OSC with full input enabled.
-        opts.push(("osc", "yes"));
-        opts.push(("input-default-bindings", "yes"));
-        opts.push(("input-vo-keyboard", "yes"));
-        opts.push(("input-cursor", "yes"));
-        opts.push(("cursor-autohide", "3000"));
+        // Windows wid sin uosc = modo integrado overlay: el video es una
+        // superficie nativa TOP y los controles son HTML en la ventana
+        // overlay transparente. mpv no debe competir por input (ni OSC ni
+        // bindings): todo raton/teclado va a la webview overlay.
+        opts.push(("osc", "no"));
+        opts.push(("input-default-bindings", "no"));
+        opts.push(("input-vo-keyboard", "no"));
     }
 
     #[cfg(target_os = "macos")]

@@ -24,7 +24,7 @@
 use parking_lot::Mutex;
 use serde::Serialize;
 use std::net::{SocketAddr, TcpStream};
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::process::{Child, Command, Stdio};
 use std::time::{Duration, Instant};
 use tauri::Manager;
@@ -130,7 +130,7 @@ fn status_of(state: &AcestreamEngineState) -> EngineStatus {
 fn engine_candidates() -> Vec<(PathBuf, Vec<String>)> {
     #[cfg(target_os = "linux")]
     {
-        return vec![
+        vec![
             (
                 PathBuf::from("acestreamplayer.engine"),
                 vec!["--client-console".to_string()],
@@ -143,7 +143,7 @@ fn engine_candidates() -> Vec<(PathBuf, Vec<String>)> {
                 PathBuf::from("/usr/bin/acestreamengine"),
                 vec!["--client-console".to_string()],
             ),
-        ];
+        ]
     }
     #[cfg(target_os = "windows")]
     {
@@ -170,20 +170,20 @@ fn engine_candidates() -> Vec<(PathBuf, Vec<String>)> {
                 vec!["--client-console".to_string()],
             ));
         }
-        return out;
+        out
     }
     #[cfg(not(any(target_os = "linux", target_os = "windows")))]
     {
-        return Vec::new();
+        Vec::new()
     }
 }
 
-fn candidate_exists(bin: &PathBuf) -> bool {
+fn candidate_exists(bin: &Path) -> bool {
     if bin.is_absolute() {
         return bin.is_file();
     }
     // PATH lookup for bare names (e.g. acestreamplayer.engine from snap bin).
-    std::env::var_os("PATH").map_or(false, |paths| {
+    std::env::var_os("PATH").is_some_and(|paths| {
         std::env::split_paths(&paths).any(|dir| dir.join(bin).is_file())
     })
 }
@@ -196,7 +196,7 @@ fn bundled_dir(app: &tauri::AppHandle) -> Option<PathBuf> {
 
 /// Bundle valido: binario + python portable + pylibs + marcador de version.
 #[cfg(target_os = "linux")]
-fn bundled_valid(dir: &PathBuf) -> bool {
+fn bundled_valid(dir: &Path) -> bool {
     if !dir.join("acestreamengine").is_file() { return false; }
     if !dir.join("python/bin/python3").exists() { return false; }
     if !dir.join("pylibs").is_dir() { return false; }
@@ -217,7 +217,7 @@ fn bundled_state_dir(app: &tauri::AppHandle) -> Option<PathBuf> {
 /// pasa por CloseRequested). Solo toca procesos con NUESTRO state-dir en su
 /// cmdline, nunca el engine del usuario. Sin dependencias (lee /proc).
 #[cfg(target_os = "linux")]
-fn kill_stale_bundled(state_dir: &PathBuf) {
+fn kill_stale_bundled(state_dir: &Path) {
     let marker = state_dir.display().to_string();
     let own_pid = std::process::id();
     let procs = std::fs::read_dir("/proc").map(|rd| {

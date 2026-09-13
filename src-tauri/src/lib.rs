@@ -96,16 +96,21 @@ fn sync_overlay_to_main(app: &tauri::AppHandle) {
     }
 }
 
-/// Two-window architecture (OpenPlayer/Stremio-style):
-/// - `main`: opaque window hosting the app UI and the native libmpv video
-///   surface (Windows GPU surface; the webview canvas on Linux).
-/// - `overlay`: a transparent always-on-top window, aligned over `main`, that
-///   hosts the HTML player controls (built from `?surface=overlay`).
-///
-/// On Linux this is a single window: mpv renders offscreen (EGL + CPU
-/// readback) and the frontend draws frames on a `<canvas>` in the webview.
-#[cfg(not(target_os = "linux"))]
-fn create_main_window(app: &tauri::App) -> Result<(), Box<dyn std::error::Error>> {
+    // Two-window architecture (OpenPlayer/Stremio-style):
+    /// - `main`: opaque window hosting the app UI and the native libmpv video
+    ///   surface (Windows GPU surface; the webview canvas on Linux).
+    /// - `overlay`: a transparent always-on-top window, aligned over `main`, that
+    ///   hosts the HTML player controls (built from `?surface=overlay`).
+    ///
+    /// On Windows the overlay is created visible from the start (a transparent
+    /// WebView2 window built hidden and shown later stays blank, measured in
+    /// lukr54/airspace) but click-through and contentless, so it is invisible
+    /// and inert until the native player activates it (mpv_init).
+    ///
+    /// On Linux this is a single window: mpv renders offscreen (EGL + CPU
+    /// readback) and the frontend draws frames on a `<canvas>` in the webview.
+    #[cfg(not(target_os = "linux"))]
+    fn create_main_window(app: &tauri::App) -> Result<(), Box<dyn std::error::Error>> {
     // NOTE: the main window stays opaque on purpose. On Windows mpv renders
     // offscreen (WGL FBO + CPU readback, like Linux) and the frontend draws
     // the frames on a `<canvas>` — no native video window is ever shown, so
@@ -138,10 +143,28 @@ fn create_main_window(app: &tauri::App) -> Result<(), Box<dyn std::error::Error>
     .resizable(false)
     .always_on_top(true)
     .background_color(tauri::utils::config::Color(0, 0, 0, 0))
-    .visible(false)
+    .visible(true)
     .build()
     {
         let _ = overlay.set_background_color(Some(tauri::utils::config::Color(0, 0, 0, 0)));
+
+        #[cfg(target_os = "windows")]
+        {
+            // Owned por main: desaparece del alt-tab y se cierra con ella.
+            if let Err(e) =
+                crate::mpv::platform::windows::set_window_owner(&overlay, &main)
+            {
+                eprintln!("set_window_owner fallo: {e}");
+            }
+            // Click-through y sin contenido hasta que el player (wid nativo)
+            // la active en mpv_init. Creada visible desde el inicio: una
+            // WebView2 transparente construida oculta y mostrada despues
+            // se queda en blanco (medido en lukr54/airspace).
+            if let Err(e) = overlay.set_ignore_cursor_events(true) {
+                eprintln!("overlay ignore_cursor_events fallo: {e}");
+            }
+        }
+
         sync_overlay_to_main(&app.handle());
     }
 

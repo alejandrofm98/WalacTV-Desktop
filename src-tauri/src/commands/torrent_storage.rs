@@ -347,7 +347,7 @@ impl TorrentStorage for BudgetStorage {
                     break;
                 }
             }
-            if g.evicted_pieces > 0 && g.evicted_pieces % 32 == 0 {
+            if g.evicted_pieces > 0 && g.evicted_pieces.is_multiple_of(32) {
                 eprintln!(
                     "[torrent-storage] piezas en spill={} piezas_ram={} ram_aprox={}MB budget={}MB",
                     g.evicted_pieces,

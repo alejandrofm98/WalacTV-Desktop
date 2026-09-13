@@ -90,6 +90,17 @@ export interface MpvTracksChanged {
   type: 'tracks-changed'
 }
 
+export interface MpvVolume {
+  type: 'volume'
+  /** Normalizado 0..1. */
+  volume: number
+}
+
+export interface MpvMute {
+  type: 'mute'
+  muted: boolean
+}
+
 export interface MpvEndFile {
   type: 'end-file'
   reason?: string
@@ -109,7 +120,7 @@ export interface MpvErrorEvent {
   message: string
 }
 
-export type MpvEvent = MpvTimeUpdate | MpvStateChange | MpvTracksChanged | MpvEndFile | MpvFileLoaded | MpvPlaybackRestart | MpvErrorEvent
+export type MpvEvent = MpvTimeUpdate | MpvStateChange | MpvTracksChanged | MpvEndFile | MpvFileLoaded | MpvPlaybackRestart | MpvVolume | MpvMute | MpvErrorEvent
 
 // ── Acestream (salud del canal P2P, spike) ──────────────────────────
 

@@ -54,6 +54,30 @@ impl Default for NativeVideoMode {
     }
 }
 
+/// Overlay window input policy (Windows wid nativo): con el player activo la
+/// ventana overlay transparente recibe el raton (controles HTML); fuera de
+/// el es click-through para no bloquear la app.
+#[cfg(target_os = "windows")]
+fn set_overlay_input(app: &AppHandle, enabled: bool) {
+    use tauri::Manager;
+    if let Some(overlay) = app.get_window("overlay") {
+        if let Err(e) = overlay.set_ignore_cursor_events(!enabled) {
+            log::warn!("set_ignore_cursor_events({enabled}) fallo: {e}");
+        }
+    }
+}
+
+/// Limpia la overlay al cerrar el player: quita input y avisa a su UI de que
+/// borre los controles (por si perdio el ultimo overlay://state).
+#[cfg(target_os = "windows")]
+fn reset_overlay(app: &AppHandle) {
+    set_overlay_input(app, false);
+    let _ = app.emit(OVERLAY_STATE_EVENT, serde_json::json!({ "item": null }));
+}
+
+#[cfg(target_os = "windows")]
+const OVERLAY_STATE_EVENT: &str = "overlay://state";
+
 // ---------------------------------------------------------------------------
 // Helper — run a closure with the locked player instance
 // ---------------------------------------------------------------------------
@@ -190,6 +214,11 @@ pub async fn mpv_init(
     // Serialize the complete player lifecycle. React may request another init
     // before the previous instance has been torn down.
     let mut player_guard = state.inner.lock();
+
+    // Overlay window: while the native wid player is active it must receive
+    // mouse input (HTML controls); the rest of the time it stays click-through.
+    #[cfg(target_os = "windows")]
+    set_overlay_input(&app, native_wid);
 
     // Keep the Windows mpv context alive for the lifetime of the app. Reuse
     // only when the backend mode matches (render vs native wid); on a mode
@@ -410,6 +439,7 @@ pub async fn mpv_destroy(app: AppHandle, state: State<'_, PlayerState>) -> Resul
     if let Some(surface) = app.try_state::<Arc<crate::mpv::gpu_surface::GpuVideoSurface>>() {
         let _ = surface.hide();
     }
+    reset_overlay(&app);
     log::info!("mpv_destroy: Windows player stopped and hidden");
     Ok(())
 }

@@ -42,6 +42,32 @@ fn diagnostic_path() -> std::path::PathBuf {
     std::env::temp_dir().join("walactv-player.log")
 }
 
+/// Marca `child` como ventana owned por `owner` (GWLP_HWNDPARENT): sale del
+/// alt-tab, se minimiza/cierra con el owner y respeta su z-order base.
+pub fn set_window_owner(
+    child: &impl raw_window_handle::HasWindowHandle,
+    owner: &impl raw_window_handle::HasWindowHandle,
+) -> Result<(), String> {
+    use raw_window_handle::{HasWindowHandle, RawWindowHandle};
+    use windows_sys::Win32::UI::WindowsAndMessaging::{SetWindowLongPtrW, GWLP_HWNDPARENT};
+
+    fn hwnd_of(w: &impl HasWindowHandle) -> Result<isize, String> {
+        match w.window_handle().map_err(|e| e.to_string())?.as_raw() {
+            RawWindowHandle::Win32(h) => Ok(h.hwnd.get() as isize),
+            _ => Err("Se requiere un handle Win32".to_string()),
+        }
+    }
+
+    let child_hwnd = hwnd_of(child)?;
+    let owner_hwnd = hwnd_of(owner)?;
+    // SAFETY: ambos HWND son validos (acabamos de resolverlos) y la llamada
+    // solo toca el campo owner de la ventana hija.
+    unsafe {
+        SetWindowLongPtrW(child_hwnd as _, GWLP_HWNDPARENT, owner_hwnd);
+    }
+    Ok(())
+}
+
 pub fn diagnostic_log(message: impl AsRef<str>) {
     let timestamp = std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)

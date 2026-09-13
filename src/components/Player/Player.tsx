@@ -19,6 +19,7 @@ import { PlayerErrorState } from './PlayerErrorState'
 import { PlayerLoadingState } from './PlayerLoadingState'
 import { TorrentLoadingOverlay } from './TorrentLoadingOverlay'
 import { acestreamHealth, formatAcestreamSpeed } from '../../acestream/acestream'
+import { emitOverlayState, useOverlayCtlBridge } from '../../player/overlayBridge'
 import styles from './Player.module.css'
 
 /**
@@ -76,6 +77,23 @@ export function Player() {
   // resolved value — prevents a brief flash of HTML controls on Linux where
   // the native mpv/uosc child window appears ~1s after mount.
   const [nativeControls, setNativeControls] = useState<boolean | null>(null)
+
+  // Puente con la webview overlay (Windows wid nativo): acciones de sus
+  // controles HTML ejecutan aqui; el transporte fino va por invoke directo.
+  useOverlayCtlBridge()
+
+  // Snapshot del item para la overlay: se re-publica al cambiar item/fuente
+  // y periodicamente (cubre carreras si la overlay webview tarda en cargar).
+  const streamLabel = usePlayerStore((s) => s.streamLabel)
+  useEffect(() => {
+    if (!isWidMode) return
+    emitOverlayState(playerItem ?? null, streamLabel)
+    const id = setInterval(
+      () => emitOverlayState(playerItem ?? null, streamLabel),
+      3000,
+    )
+    return () => clearInterval(id)
+  }, [isWidMode, playerItem, streamLabel])
 
   const getCurrentTime = useCallback(() => service.getCurrentTime(), [service])
   const getDuration = useCallback(() => service.getDuration(), [service])

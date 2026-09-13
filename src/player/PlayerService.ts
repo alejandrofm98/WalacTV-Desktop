@@ -982,6 +982,14 @@ export class PlayerService extends EventTarget {
         this._emit('trackschanged')
         break
 
+      case 'volume':
+        usePlayerStore.getState().setVolume(Math.min(1, Math.max(0, payload.volume)))
+        break
+
+      case 'mute':
+        usePlayerStore.getState().setMuted(payload.muted)
+        break
+
       case 'end-file': {
         const reason = payload.reason ?? 'unknown'
         devLog(`[PlayerService] end-file: reason="${reason}"`)
