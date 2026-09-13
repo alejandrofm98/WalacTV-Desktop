@@ -1,23 +1,23 @@
 //! Managed Acestream engine sidecar (spike).
 //!
-//! UX goal: the engine runs while the app runs, with no manual install step
-//! and no bundled binaries. Deliberately NO downloads and NO redistribution
-//! (closed-source engine, plus a python-version matrix that makes user-space
-//! bundles fragile: only a 22.04/py3.10 tarball exists upstream).
+//! UX goal: the engine runs while the app runs, with no manual install step.
+//! No downloads at runtime. Windows bundles the official engine subtree
+//! (ace_console.exe, via scripts/fetch-acestream-windows.sh in CI); Linux
+//! reuses a system engine (no upstream 24.04/py3.12 tarball exists).
 //!
 //! Strategy:
 //! - If 127.0.0.1:6878 answers, use the external engine (user's own).
-//! - Otherwise launch a known system engine headless as our child process
+//! - Otherwise launch a known engine headless as our child process
 //!   and kill it on app close (only if we started it).
+//!
+//! Windows candidates (bundled first, then system):
+//! - `<resource_dir>/acestream/ace_console.exe` (bundle propio)
+//! - `%APPDATA%/ACEStream/engine/ace_engine.exe`, `%LOCALAPPDATA%`, ... (sistema)
 //!
 //! Linux candidates (first existing binary wins):
 //! - `acestreamplayer.engine --client-console` (snap, includes its runtime)
 //! - `/opt/acestream/start-engine --client-console` (manual tarball install)
 //! - `/usr/bin/acestreamengine --client-console`
-//!
-//! Windows candidates (best effort, NOT tested on this machine):
-//! - `%APPDATA%/ACEStream/engine/ace_engine.exe --client-console`
-//! - `C:/Program Files/ACE Stream/engine/ace_engine.exe --client-console`
 //!
 //! macOS: no official engine build exists; ensure() returns a guidance error.
 
@@ -179,6 +179,7 @@ fn candidate_exists(bin: &PathBuf) -> bool {
 /// Blocking command (up to STARTUP_TIMEOUT) so Tauri runs it off-thread.
 #[tauri::command]
 pub fn acestream_engine_ensure(
+    app: tauri::AppHandle,
     state: tauri::State<'_, AcestreamEngineState>,
 ) -> Result<EngineStatus, String> {
     if port_open(ENGINE_PORT) {
@@ -189,8 +190,28 @@ pub fn acestream_engine_ensure(
         return Ok(status_of(&state));
     }
 
+    #[cfg(target_os = "windows")]
+    let mut candidates = engine_candidates();
+    #[cfg(not(target_os = "windows"))]
+    let candidates = engine_candidates();
+    // Windows: el engine empaquetado con la app va primero (no requiere
+    // instalacion aparte). En dev o Linux sin bundle se omita en silencio.
+    #[cfg(target_os = "windows")]
+    if let Ok(res_dir) = app.path().resource_dir() {
+        let bundled = res_dir.join("acestream").join("ace_console.exe");
+        if bundled.is_file() {
+            log::info!("acestream-sidecar: usando bundle propio");
+            candidates.insert(
+                0,
+                (bundled, vec!["--client-console".to_string()]),
+            );
+        }
+    }
+    #[cfg(not(target_os = "windows"))]
+    let _ = &app;
+
     let mut tried: Vec<String> = Vec::new();
-    for (bin, args) in engine_candidates() {
+    for (bin, args) in candidates {
         if !candidate_exists(&bin) {
             continue;
         }

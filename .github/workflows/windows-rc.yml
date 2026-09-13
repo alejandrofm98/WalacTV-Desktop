@@ -30,6 +30,10 @@ jobs:
         shell: bash
         run: bash scripts/fetch-libmpv-windows.sh
 
+      - name: Download Acestream engine for bundling
+        shell: bash
+        run: bash scripts/fetch-acestream-windows.sh
+
       - name: Build Tauri app
         run: pnpm tauri build --bundles nsis --ci
         env:

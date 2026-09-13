@@ -48,6 +48,10 @@ squashfs-root/
 src-tauri/resources/libmpv/*
 !src-tauri/resources/libmpv/LICENSE.libmpv.txt
 
+# Acestream engine bundle (downloaded by CI on Windows only, ~325 MB)
+src-tauri/resources/acestream/*
+!src-tauri/resources/acestream/PROVENANCE.txt
+
 # Configuracion local de agentes
 .commandcode/
 mockups/
