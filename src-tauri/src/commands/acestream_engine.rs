@@ -214,6 +214,49 @@ fn bundled_state_dir(app: &tauri::AppHandle) -> Option<PathBuf> {
         .map(|d| d.join("acestream-state"))
 }
 
+/// Mata restos huerfanos de nuestro engine (p. ej. SIGKILL de la app, que no
+/// pasa por CloseRequested). Solo toca procesos con NUESTRO state-dir en su
+/// cmdline, nunca el engine del usuario. Sin dependencias (lee /proc).
+#[cfg(target_os = "linux")]
+fn kill_stale_bundled(state_dir: &PathBuf) {
+    let marker = state_dir.display().to_string();
+    let own_pid = std::process::id();
+    let procs = std::fs::read_dir("/proc").map(|rd| {
+        rd.filter_map(|entry| {
+            let entry = entry.ok()?;
+            let pid: u32 = entry.file_name().to_str()?.parse().ok()?;
+            Some((pid, entry.path().join("cmdline")))
+        })
+        .collect::<Vec<_>>()
+    });
+    let procs = match procs {
+        Ok(p) => p,
+        Err(_) => return,
+    };
+    for (pid, cmdline_path) in procs {
+        if pid == own_pid {
+            continue;
+        }
+        let cmdline = std::fs::read(&cmdline_path).unwrap_or_default();
+        // cmdline va separada por NULs; basta con buscar el state-dir dentro.
+        if cmdline.windows(marker.len()).any(|w| w == marker.as_bytes()) {
+            log::info!("acestream-sidecar: limpiando huerfano pid={pid}");
+            // SIGTERM primero; el engine suele salir limpio.
+            unsafe {
+                libc::kill(pid as i32, libc::SIGTERM);
+            }
+        }
+    }
+    // Espera breve a que liberen el puerto antes de spawnear.
+    let deadline = Instant::now() + Duration::from_secs(5);
+    while Instant::now() < deadline {
+        if !port_open(ENGINE_PORT) {
+            break;
+        }
+        std::thread::sleep(Duration::from_millis(300));
+    }
+}
+
 /// Lanza un binario con env propio y espera a que abra el puerto.
 fn launch_and_wait(
     bin: &PathBuf,
@@ -302,6 +345,9 @@ pub fn acestream_engine_ensure(
     #[cfg(target_os = "linux")]
     if let Some(dir) = bundled_dir(&app) {
         if bundled_valid(&dir) {
+            if let Some(state_path) = bundled_state_dir(&app) {
+                kill_stale_bundled(&state_path);
+            }
             let state_dir = bundled_state_dir(&app)
                 .map(|d| d.display().to_string())
                 .unwrap_or_default();

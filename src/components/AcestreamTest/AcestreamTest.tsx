@@ -20,6 +20,11 @@ const AUTO_PLAY_ID =
 // desmonta/remonta y sin esto el auto-play se redispararia en bucle.
 let autoPlayedThisSession = false
 
+// Auto-install de test (VITE_ACESTREAM_TEST_INSTALL=1): una vez por sesion.
+const AUTO_INSTALL_ENGINE =
+  (import.meta.env.VITE_ACESTREAM_TEST_INSTALL as string | undefined) === '1'
+let autoInstallTried = false
+
 function buildTestItem(raw: string): CatalogItem | null {
   const ref = parseAcestreamInput(raw)
   if (!ref) return null
@@ -139,7 +144,18 @@ export function AcestreamTest() {
     }
   }
 
-  // Auto-play para pruebas automatizadas (VITE_ACESTREAM_TEST_ID).
+  // Auto-install de test: si no hay engine pero se puede instalar.
+  useEffect(() => {
+    if (!AUTO_INSTALL_ENGINE || autoInstallTried) return
+    autoInstallTried = true
+    getAcestreamEngineStatus()
+      .then((status) => {
+        if (status.mode === 'off' && status.canInstall) {
+          void handleInstallEngine()
+        }
+      })
+      .catch(() => {})
+  }, [])
   useEffect(() => {
     if (!AUTO_PLAY_ID || !engineOk || autoPlayedThisSession) return
     autoPlayedThisSession = true
