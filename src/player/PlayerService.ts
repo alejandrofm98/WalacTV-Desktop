@@ -65,13 +65,6 @@ function parseAcestreamOption(option: StreamOption): AcestreamRef | null {
 }
 
 /**
- * Ms en buffering en directo antes de intentar un salto hacia delante.
- * Estilo VLC: parones cortos se quedan cargando; solo ante hueco largo se
- * salta al borde. Nunca hacia atras (ver _reloadLiveForward).
- */
-const LIVE_STALL_MS = 12000
-
-/**
  * Singleton service that wraps libmpv via Tauri commands.
  * All playback interactions go through this class.
  */
@@ -92,11 +85,6 @@ export class PlayerService extends EventTarget {
   private _activeAcestreamCommandUrl: string | null = null
   private _activeAcestreamStatUrl: string | null = null
   private _acestreamStatsTimer: ReturnType<typeof setInterval> | null = null
-  /** Watchdog de paron en directo (salto solo-hacia-delante). Spike. */
-  private _stallTimer: ReturnType<typeof setTimeout> | null = null
-  private _hasPlayedOnce = false
-  /** Posicion en la ultima recarga por paron; sin avance no se reintenta. */
-  private _stallReloadPos: number | null = null
   private _alternativeAudioLoadedForUrl: string | null = null
   private _streamSwitchInProgress = false
   private _pendingExternalAudioTrack: AudioTrack | null = null
@@ -285,9 +273,6 @@ export class PlayerService extends EventTarget {
     this._pendingExternalAudioTrack = null
     this._trackStateInitialized = false
     this._trackPreferenceLoading = false
-    this._hasPlayedOnce = false
-    this._stallReloadPos = null
-    this._clearStallWatchdog()
     this._lastAudioTrackId = null
     this._lastSubtitleTrackId = null
     this._isLive = item.kind === 'CHANNEL' || item.kind === 'EVENT'
@@ -442,9 +427,6 @@ export class PlayerService extends EventTarget {
     this._clearLoadingOsd()
     await this._stopActiveTorrent()
     await this._stopActiveAcestream()
-    this._hasPlayedOnce = false
-    this._stallReloadPos = null
-    this._clearStallWatchdog()
     this._alternativeAudioLoadedForUrl = null
     this._streamSwitchInProgress = false
     this._pendingExternalAudioTrack = null
@@ -832,46 +814,6 @@ export class PlayerService extends EventTarget {
   }
 
   /**
-   * Salto solo-hacia-delante ante paron largo en directo (estilo VLC).
-   * Parones cortos: mpv se queda en buffering y reanuda en el punto.
-   * Si el buffering pasa de LIVE_STALL_MS, se recarga la MISMA url de la
-   * sesion viva (sin matarla): ffmpeg relee el playlist actual y arranca en
-   * el borde. Nunca se re-resuelve (sesion nueva y fria arrancaria por
-   * detras = rebobinado). Si tras recargar no hay avance, no se reintenta:
-   * se queda cargando hasta que lleguen datos.
-   */
-  private _syncStallWatchdog(paused: boolean, buffering: boolean): void {
-    this._clearStallWatchdog()
-    if (paused || !buffering) {
-      this._stallReloadPos = null
-      return
-    }
-    if (!this._isLive || !this._hasPlayedOnce || this._userPaused) return
-    if (!this._currentStreamUrl) return
-    this._stallTimer = setTimeout(() => {
-      this._stallTimer = null
-      const state = usePlayerStore.getState()
-      if (!this._isLive || this._userPaused || !state.isBuffering) return
-      if (!this._currentStreamUrl) return
-      const pos = this._currentTime
-      if (this._stallReloadPos != null && pos <= this._stallReloadPos + 1) {
-        // Sin avance desde la ultima recarga: quedarse cargando (VLC).
-        return
-      }
-      this._stallReloadPos = pos
-      devLog('[PlayerService] paron largo en directo: recargando al borde')
-      invoke('mpv_loadfile', { url: this._currentStreamUrl, startPosition: null }).catch(() => {})
-    }, LIVE_STALL_MS)
-  }
-
-  private _clearStallWatchdog(): void {
-    if (this._stallTimer) {
-      clearTimeout(this._stallTimer)
-      this._stallTimer = null
-    }
-  }
-
-  /**
    * Show an animated loading spinner through mpv's OSD. The native mpv
    * window is stacked above the webview on Linux/Windows, so HTML loading
    * overlays are invisible while a stream resolves/buffers; the OSD renders
@@ -1020,10 +962,8 @@ export class PlayerService extends EventTarget {
         } else {
           // Video is actually rendering: the torrent overlay's job is done.
           this._clearTorrentOverlay()
-          this._hasPlayedOnce = true
           this._setState('playing')
         }
-        this._syncStallWatchdog(payload.pause, payload.buffering)
         break
 
       case 'tracks-changed':
@@ -1280,9 +1220,6 @@ export class PlayerService extends EventTarget {
     this._currentStreamUrl = null
     void this._stopActiveTorrent()
     void this._stopActiveAcestream()
-    this._hasPlayedOnce = false
-    this._stallReloadPos = null
-    this._clearStallWatchdog()
     this._alternativeAudioLoadedForUrl = null
     this._streamSwitchInProgress = false
     this._pendingExternalAudioTrack = null
