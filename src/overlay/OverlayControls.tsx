@@ -182,10 +182,7 @@ export function OverlayControls({ state }: OverlayControlsProps) {
   const VolIcon = effectiveVolume === 0 ? VolumeX : effectiveVolume < 0.5 ? Volume1 : Volume2
 
   return (
-    <div
-      className={`${styles.root} ${visible ? '' : styles.hidden}`}
-      onDoubleClick={() => sendOverlayCtl({ action: 'fullscreen' })}
-    >
+    <div className={`${styles.root} ${visible ? '' : styles.hidden}`}>
       <div className={styles.topBar}>
         <div className={styles.titles}>
           <div className={styles.title}>{item?.title ?? ''}</div>

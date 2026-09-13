@@ -4,7 +4,9 @@ import type { CatalogItem } from '../api/types'
 import {
   displayTitleOf,
   getCatalogPage,
+  getToken,
   search,
+  setToken,
 } from '../api/client'
 import { sendOverlayCtl } from './useOverlayState'
 import type { OverlayItemSnapshot } from '../player/overlayBridge'
@@ -12,6 +14,17 @@ import styles from './OverlayApp.module.css'
 
 const PAGE_SIZE = 60
 const SEARCH_DEBOUNCE_MS = 350
+
+/**
+ * Siembra el token API en esta webview: localStorage es compartido entre
+ * webviews de la misma origen, pero el token en memoria del cliente API
+ * (_token) es por-runtime y aqui nadie hizo login. Sin esto toda peticion
+ * sale sin Authorization y la guia recibe 401.
+ */
+function seedApiToken(): void {
+  if (getToken()) return
+  setToken(localStorage.getItem('walactv_token') ?? '')
+}
 
 interface OverlayGuideProps {
   snapshot: OverlayItemSnapshot
@@ -39,6 +52,7 @@ export function OverlayGuide({ snapshot, onClose }: OverlayGuideProps) {
   // Carga de catalogo o busqueda (solo canales; eventos usan snapshot.sources)
   useEffect(() => {
     if (!isChannel) return
+    seedApiToken()
     if (searchTimeout.current) clearTimeout(searchTimeout.current)
     const q = query.trim()
     setError(null)
