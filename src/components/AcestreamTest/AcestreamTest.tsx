@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react'
 import { useAppStore } from '../../store/useAppStore'
 import { playerService } from '../../player/PlayerService'
 import { checkAcestreamEngine, parseAcestreamInput } from '../../acestream/acestream'
-import { getAcestreamEngineStatus } from '../../acestream/sidecar'
+import { ensureAcestreamEngine, getAcestreamEngineStatus, installAcestreamEngine } from '../../acestream/sidecar'
 import type { CatalogItem } from '../../api/types'
 import styles from './AcestreamTest.module.css'
 
@@ -50,6 +50,8 @@ export function AcestreamTest() {
   const [engine, setEngine] = useState<string>('Comprobando engine...')
   const [engineOk, setEngineOk] = useState(false)
   const [engineMode, setEngineMode] = useState<string>('sidecar: ...')
+  const [canInstallEngine, setCanInstallEngine] = useState(false)
+  const [installingEngine, setInstallingEngine] = useState(false)
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [collapsed, setCollapsed] = useState(false)
@@ -79,6 +81,10 @@ export function AcestreamTest() {
   }, [])
 
   useEffect(() => {
+    refreshEngineStatus()
+  }, [])
+
+  function refreshEngineStatus() {
     getAcestreamEngineStatus()
       .then((status) => {
         setEngineMode(
@@ -88,9 +94,33 @@ export function AcestreamTest() {
               ? 'sidecar: engine externo en uso'
               : 'sidecar: engine apagado',
         )
+        setCanInstallEngine(status.mode === 'off' && status.canInstall)
       })
       .catch(() => setEngineMode('sidecar: sin estado'))
-  }, [])
+  }
+
+  async function handleInstallEngine() {
+    setInstallingEngine(true)
+    setError(null)
+    try {
+      await installAcestreamEngine()
+      // Reintenta el arranque gestionado tras instalar.
+      await ensureAcestreamEngine()
+      refreshEngineStatus()
+      // Revalida el check HTTP del panel.
+      const result = await checkAcestreamEngine()
+      setEngineOk(result.running)
+      setEngine(
+        result.running
+          ? `Engine OK${result.version ? ` (v${result.version})` : ''}`
+          : `Engine NO detectado: ${result.error ?? 'sin respuesta'}`,
+      )
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'La instalacion fallo')
+    } finally {
+      setInstallingEngine(false)
+    }
+  }
 
   async function handlePlay() {
     const item = buildTestItem(input)
@@ -142,7 +172,16 @@ export function AcestreamTest() {
       </div>
       <p className={engineOk ? styles.ok : styles.bad}>{engine}</p>
       <p className={styles.hint}>{engineMode}</p>
-      {!engineOk && (
+      {!engineOk && canInstallEngine && (
+        <button
+          className={styles.primary}
+          onClick={handleInstallEngine}
+          disabled={installingEngine}
+        >
+          {installingEngine ? 'Instalando engine (~250 MB)...' : 'Instalar engine (una vez, ~250 MB)'}
+        </button>
+      )}
+      {!engineOk && !canInstallEngine && (
         <p className={styles.hint}>
           Instala el engine (escucha en 127.0.0.1:6878): snap, AUR o instalador de
           acestream.org. Luego reabre con ?acestream.

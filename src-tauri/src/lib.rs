@@ -388,6 +388,7 @@ pub fn run() {
             crate::commands::acestream_engine::acestream_engine_ensure,
             crate::commands::acestream_engine::acestream_engine_status,
             crate::commands::acestream_engine::acestream_engine_release,
+            crate::commands::acestream_engine::acestream_engine_install,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application")

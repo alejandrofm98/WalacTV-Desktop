@@ -7,6 +7,7 @@ export interface AcestreamEngineStatus {
   mode: AcestreamEngineMode
   managed: boolean
   port: number
+  canInstall: boolean
 }
 
 /** Reutiliza el engine externo o lanza uno gestionado (puede tardar ~25s). */
@@ -21,4 +22,9 @@ export function getAcestreamEngineStatus(): Promise<AcestreamEngineStatus> {
 /** Detiene el engine solo si lo lanzamos nosotros. Best effort al cerrar. */
 export function releaseAcestreamEngine(): Promise<void> {
   return invoke<void>('acestream_engine_release')
+}
+
+/** Auto-instala el bundle user-space (Linux). Tarda minutos; con aviso. */
+export function installAcestreamEngine(): Promise<string> {
+  return invoke<string>('acestream_engine_install')
 }

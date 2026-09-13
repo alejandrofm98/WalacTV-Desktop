@@ -27,6 +27,14 @@ use std::net::{SocketAddr, TcpStream};
 use std::path::PathBuf;
 use std::process::{Child, Command, Stdio};
 use std::time::{Duration, Instant};
+#[allow(unused_imports)]
+use tauri::Manager;
+
+/// Script de auto-instalacion user-space (Linux). Ver scripts/.
+#[cfg(target_os = "linux")]
+const INSTALL_SCRIPT: &str = include_str!("../../../scripts/install-acestream-linux.sh");
+#[cfg(target_os = "linux")]
+const BUNDLE_MARKER: &str = "walactv-acestream-bundle-v1";
 
 /// Default engine HTTP API port. Kept in sync with src/acestream/acestream.ts.
 const ENGINE_PORT: u16 = 6878;
@@ -84,6 +92,8 @@ pub struct EngineStatus {
     pub mode: String,
     pub managed: bool,
     pub port: u16,
+    /// Linux: la app puede auto-instalar el bundle user-space.
+    pub can_install: bool,
 }
 
 fn port_open(port: u16) -> bool {
@@ -92,11 +102,13 @@ fn port_open(port: u16) -> bool {
 }
 
 fn status_of(state: &AcestreamEngineState) -> EngineStatus {
+    let can_install = cfg!(target_os = "linux");
     if state.managed_alive() {
         return EngineStatus {
             mode: "managed".to_string(),
             managed: true,
             port: ENGINE_PORT,
+            can_install,
         };
     }
     if port_open(ENGINE_PORT) {
@@ -104,12 +116,14 @@ fn status_of(state: &AcestreamEngineState) -> EngineStatus {
             mode: "external".to_string(),
             managed: false,
             port: ENGINE_PORT,
+            can_install,
         };
     }
     EngineStatus {
         mode: "off".to_string(),
         managed: false,
         port: ENGINE_PORT,
+        can_install,
     }
 }
 
@@ -175,6 +189,83 @@ fn candidate_exists(bin: &PathBuf) -> bool {
     })
 }
 
+/// Directorio del bundle user-space (Linux). None si no se puede resolver.
+#[cfg(target_os = "linux")]
+fn bundled_dir(app: &tauri::AppHandle) -> Option<PathBuf> {
+    app.path().app_data_dir().ok().map(|d| d.join("acestream"))
+}
+
+/// Bundle valido: binario + python portable + pylibs + marcador de version.
+#[cfg(target_os = "linux")]
+fn bundled_valid(dir: &PathBuf) -> bool {
+    if !dir.join("acestreamengine").is_file() { return false; }
+    if !dir.join("python/bin/python3").exists() { return false; }
+    if !dir.join("pylibs").is_dir() { return false; }
+    std::fs::read_to_string(dir.join(".walactv-bundle"))
+        .map(|s| s.contains(BUNDLE_MARKER))
+        .unwrap_or(false)
+}
+
+#[cfg(target_os = "linux")]
+fn bundled_state_dir(app: &tauri::AppHandle) -> Option<PathBuf> {
+    app.path()
+        .app_data_dir()
+        .ok()
+        .map(|d| d.join("acestream-state"))
+}
+
+/// Lanza un binario con env propio y espera a que abra el puerto.
+fn launch_and_wait(
+    bin: &PathBuf,
+    args: &[String],
+    extra_env: &[(String, String)],
+    state: &tauri::State<'_, AcestreamEngineState>,
+) -> Result<EngineStatus, String> {
+    log::info!("acestream-sidecar: lanzando {}", bin.display());
+    let mut cmd = Command::new(bin);
+    cmd.args(args)
+        .stdin(Stdio::null())
+        .stdout(Stdio::null())
+        .stderr(Stdio::null());
+    for (k, v) in extra_env {
+        cmd.env(k, v);
+    }
+    #[cfg(target_os = "windows")]
+    {
+        use std::os::windows::process::CommandExt;
+        // CREATE_NO_WINDOW: sin consola visible del engine.
+        cmd.creation_flags(0x08000000);
+    }
+    let mut child = cmd
+        .spawn()
+        .map_err(|e| format!("No se pudo lanzar {}: {e}", bin.display()))?;
+    let deadline = Instant::now() + STARTUP_TIMEOUT;
+    while Instant::now() < deadline {
+        if port_open(ENGINE_PORT) {
+            *state.inner.lock() = Some(child);
+            log::info!("acestream-sidecar: engine gestionado listo");
+            return Ok(status_of(state));
+        }
+        match child.try_wait() {
+            Ok(Some(status)) => {
+                return Err(format!(
+                    "El engine ({}) se cerro al arrancar (exit {}).",
+                    bin.display(),
+                    status
+                ));
+            }
+            Ok(None) => {}
+            Err(e) => {
+                let _ = child.kill();
+                return Err(format!("No se pudo supervisar el engine: {e}"));
+            }
+        }
+        std::thread::sleep(STARTUP_POLL);
+    }
+    let _ = child.kill();
+    Err("El engine tardo demasiado en arrancar (25s). Revisa firewall/antivirus.".to_string())
+}
+
 /// Ensure an engine is available: reuse external or spawn a managed child.
 /// Blocking command (up to STARTUP_TIMEOUT) so Tauri runs it off-thread.
 #[tauri::command]
@@ -207,7 +298,44 @@ pub fn acestream_engine_ensure(
             );
         }
     }
-    #[cfg(not(target_os = "windows"))]
+    // Linux: el bundle user-space (auto-instalable) va primero.
+    #[cfg(target_os = "linux")]
+    if let Some(dir) = bundled_dir(&app) {
+        if bundled_valid(&dir) {
+            let state_dir = bundled_state_dir(&app)
+                .map(|d| d.display().to_string())
+                .unwrap_or_default();
+            let lib = dir.join("lib").display().to_string();
+            let pylib = dir.join("python/lib").display().to_string();
+            let envs = vec![
+                (
+                    "LD_LIBRARY_PATH".to_string(),
+                    format!("{lib}:{pylib}"),
+                ),
+                (
+                    "PYTHONHOME".to_string(),
+                    dir.join("python").display().to_string(),
+                ),
+                (
+                    "PYTHONPATH".to_string(),
+                    dir.join("pylibs").display().to_string(),
+                ),
+            ];
+            let args: Vec<String> = [
+                "--lib-path",
+                &dir.display().to_string(),
+                "--disable-sentry",
+                "--client-console",
+                "--state-dir",
+                &state_dir,
+            ]
+            .iter()
+            .map(|s| s.to_string())
+            .collect();
+            return launch_and_wait(&dir.join("acestreamengine"), &args, &envs, &state);
+        }
+    }
+    #[cfg(not(any(target_os = "windows", target_os = "linux")))]
     let _ = &app;
 
     let mut tried: Vec<String> = Vec::new();
@@ -216,54 +344,14 @@ pub fn acestream_engine_ensure(
             continue;
         }
         tried.push(bin.display().to_string());
-        log::info!("acestream-sidecar: lanzando {}", bin.display());
-        let mut cmd = Command::new(&bin);
-        cmd.args(&args)
-            .stdin(Stdio::null())
-            .stdout(Stdio::null())
-            .stderr(Stdio::null());
-        #[cfg(target_os = "windows")]
-        {
-            use std::os::windows::process::CommandExt;
-            // CREATE_NO_WINDOW: sin consola visible del engine.
-            cmd.creation_flags(0x08000000);
-        }
-        match cmd.spawn() {
-            Ok(child) => {
-                let mut child = child;
-                // Nota: sin kill_on_drop (no disponible en este toolchain);
-                // el hijo se mata en release/timeout/close (ver stop_managed).
-                let deadline = Instant::now() + STARTUP_TIMEOUT;
-                while Instant::now() < deadline {
-                    if port_open(ENGINE_PORT) {
-                        *state.inner.lock() = Some(child);
-                        log::info!("acestream-sidecar: engine gestionado listo");
-                        return Ok(status_of(&state));
-                    }
-                    match child.try_wait() {
-                        Ok(Some(status)) => {
-                            return Err(format!(
-                                "El engine ({} ) se cerro al arrancar (exit {}).",
-                                bin.display(),
-                                status
-                            ));
-                        }
-                        Ok(None) => {}
-                        Err(e) => {
-                            let _ = child.kill();
-                            return Err(format!("No se pudo supervisar el engine: {e}"));
-                        }
-                    }
-                    std::thread::sleep(STARTUP_POLL);
-                }
-                let _ = child.kill();
-                return Err(
-                    "El engine tardo demasiado en arrancar (25s). Revisa firewall/antivirus."
-                        .to_string(),
-                );
-            }
+        match launch_and_wait(&bin, &args, &[], &state) {
+            Ok(status) => return Ok(status),
             Err(e) => {
-                log::warn!("acestream-sidecar: no se pudo lanzar {}: {e}", bin.display());
+                log::warn!("acestream-sidecar: fallo {}: {e}", bin.display());
+                // Si el puerto se abrio entre medias (otro engine), reusar.
+                if port_open(ENGINE_PORT) {
+                    return Ok(status_of(&state));
+                }
             }
         }
     }
@@ -278,8 +366,8 @@ pub fn acestream_engine_ensure(
         );
         #[cfg(target_os = "linux")]
         return Err(
-            "No hay engine Acestream instalado. Instala Ace Stream (snap en Linux:\n\
-             `sudo snap install acestreamplayer`) y reabre la app."
+            "No hay engine Acestream instalado. Puedes instalarlo con un clic\n\
+             desde el panel de prueba, o manual (`sudo snap install acestreamplayer`)."
                 .to_string(),
         );
         #[cfg(not(any(target_os = "windows", target_os = "linux")))]
@@ -302,4 +390,56 @@ pub fn acestream_engine_status(
 #[tauri::command]
 pub fn acestream_engine_release(state: tauri::State<'_, AcestreamEngineState>) {
     state.stop_managed();
+}
+
+fn tail_text(bytes: &[u8], max_chars: usize) -> String {
+    let s = String::from_utf8_lossy(bytes);
+    let chars: Vec<char> = s.chars().collect();
+    if chars.len() <= max_chars {
+        return s.into_owned();
+    }
+    chars[chars.len() - max_chars..].iter().collect()
+}
+
+/// Auto-instala el bundle user-space (Linux, ~250 MB en disco, ~110 MB de
+/// descarga). Bloqueante durante minutos: llamar solo bajo accion del usuario.
+#[tauri::command]
+pub fn acestream_engine_install(app: tauri::AppHandle) -> Result<String, String> {
+    #[cfg(not(target_os = "linux"))]
+    {
+        let _ = &app;
+        return Err("La auto-instalacion solo esta disponible en Linux.".to_string());
+    }
+    #[cfg(target_os = "linux")]
+    {
+        let dir = bundled_dir(&app)
+            .ok_or_else(|| "No se pudo resolver el directorio de datos.".to_string())?;
+        if bundled_valid(&dir) {
+            return Ok(dir.display().to_string());
+        }
+        std::fs::create_dir_all(&dir)
+            .map_err(|e| format!("No se pudo crear {}: {e}", dir.display()))?;
+        let script_path = std::env::temp_dir().join("walactv-install-acestream.sh");
+        std::fs::write(&script_path, INSTALL_SCRIPT)
+            .map_err(|e| format!("No se pudo preparar el instalador: {e}"))?;
+        log::info!("acestream-sidecar: instalando bundle en {}", dir.display());
+        let out = Command::new("bash")
+            .arg(&script_path)
+            .arg(&dir)
+            .stdin(Stdio::null())
+            .output()
+            .map_err(|e| format!("No se pudo ejecutar el instalador: {e}"))?;
+        let _ = std::fs::remove_file(&script_path);
+        if !out.status.success() {
+            return Err(format!(
+                "La instalacion fallo:\n{}",
+                tail_text(&out.stderr, 1500)
+            ));
+        }
+        if !bundled_valid(&dir) {
+            return Err("El instalador termino pero el bundle quedo incompleto.".to_string());
+        }
+        log::info!("acestream-sidecar: bundle instalado");
+        Ok(dir.display().to_string())
+    }
 }
