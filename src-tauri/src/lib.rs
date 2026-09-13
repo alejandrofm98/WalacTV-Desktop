@@ -330,8 +330,13 @@ pub fn run() {
                     eprintln!("GpuVideoSurface initial sync failed: {e}");
                 }
                 app.manage(surface);
+                app.manage(commands::player::NativeVideoMode::default());
 
-                // Keep the child GPU surface sized to the main window client area.
+                // Keep the child GPU surface aligned with the main window.
+                // In native wid mode (WALACTV_NATIVE_VIDEO=1) the surface must
+                // stay at HWND_TOP (show_native): syncing it to BOTTOM, as the
+                // canvas path does, hides it behind the opaque webview and the
+                // video goes blank on every move/resize.
                 let main_window = app.get_window("main").ok_or("Main window not found")?;
                 let app_clone = app.handle().clone();
                 main_window.on_window_event(move |event| {
@@ -346,7 +351,17 @@ pub fn run() {
                         if let Some(surface) = app_clone
                             .try_state::<std::sync::Arc<crate::mpv::gpu_surface::GpuVideoSurface>>()
                         {
-                            let _ = surface.sync();
+                            let native = app_clone
+                                .try_state::<commands::player::NativeVideoMode>()
+                                .is_some_and(|m| m.0.load(std::sync::atomic::Ordering::Acquire));
+                            let result = if native {
+                                surface.show_native()
+                            } else {
+                                surface.sync()
+                            };
+                            if let Err(e) = result {
+                                eprintln!("GpuVideoSurface resync failed: {e}");
+                            }
                         }
                     }
                 });

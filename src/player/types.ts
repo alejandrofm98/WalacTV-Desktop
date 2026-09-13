@@ -54,6 +54,8 @@ export interface MpvTimeUpdate {
   type: 'time-update'
   position: number
   duration: number
+  /** FPS estimados por mpv (-1 si no hay dato). */
+  estimatedFps?: number
 }
 
 export interface MpvStateChange {

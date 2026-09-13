@@ -407,14 +407,19 @@ export function Player() {
               className={styles.canvas}
               style={isWidMode ? { display: 'none' } : undefined}
             />
-            {(renderFps !== null || acestreamStats) && isPlaying && (
-              <div className={styles.fpsCounter}>
-                {renderFps !== null ? `${renderFps} fps` : ''}
-                {acestreamStats
-                  ? ` · ${acestreamStats.peers}p · ${formatAcestreamSpeed(acestreamStats.speedDown)} · ${acestreamHealth(acestreamStats).label}`
-                  : ''}
-              </div>
-            )}
+            {(isWidMode
+              ? isPlaying && service.getEstimatedFps() > 0
+              : renderFps !== null) &&
+              isPlaying && (
+                <div className={styles.fpsCounter}>
+                  {isWidMode
+                    ? `${Math.round(service.getEstimatedFps())} fps`
+                    : `${renderFps} fps`}
+                  {acestreamStats
+                    ? ` · ${acestreamStats.peers}p · ${formatAcestreamSpeed(acestreamStats.speedDown)} · ${acestreamHealth(acestreamStats).label}`
+                    : ''}
+                </div>
+              )}
             {/* Hidden video element for PiP API support only */}
             <video
               ref={setPipVideoRef}

@@ -94,6 +94,8 @@ export class PlayerService extends EventTarget {
   private _duration = 0
   private _isLive = false
   private _isPaused = true
+  /** FPS estimados por mpv (estimated-vf-fps; -1 si sin dato). */
+  private _estimatedFps = -1
   /**
    * Explicit user pause intent (via pause()/play() only — mpv-initiated
    * pauses such as cache stalls never touch this). Guards the file-loaded
@@ -644,6 +646,11 @@ export class PlayerService extends EventTarget {
     return this._duration
   }
 
+  /** FPS estimados por mpv (valido tambien en modo wid nativo). */
+  getEstimatedFps(): number {
+    return this._estimatedFps
+  }
+
   getSeekableRange(): { start: number; end: number } | null {
     if (this._duration <= 0) return null
     return { start: 0, end: this._duration }
@@ -949,6 +956,9 @@ export class PlayerService extends EventTarget {
       case 'time-update':
         this._currentTime = payload.position
         this._duration = payload.duration
+        if (typeof payload.estimatedFps === 'number') {
+          this._estimatedFps = payload.estimatedFps
+        }
         break
 
       case 'state-change':

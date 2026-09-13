@@ -36,6 +36,7 @@ const HEIGHT_ID: u64 = 12;
 const FULLSCREEN_ID: u64 = 13;
 const AUDIO_TRACK_ID: u64 = 14;
 const SUBTITLE_TRACK_ID: u64 = 15;
+const EST_FPS_ID: u64 = 16;
 
 // ---------------------------------------------------------------------------
 // Payload structs for Tauri events
@@ -233,6 +234,15 @@ pub unsafe fn mpv_event_loop(
         "height",
         mpv_format::MPV_FORMAT_INT64,
     );
+    // FPS reales entregados por el pipeline (util en wid nativo, donde no
+    // hay contador de canvas en el frontend).
+    observe(
+        &api,
+        event_client,
+        EST_FPS_ID,
+        "estimated-vf-fps",
+        mpv_format::MPV_FORMAT_DOUBLE,
+    );
     #[cfg(target_os = "windows")]
     observe(
         &api,
@@ -251,6 +261,7 @@ pub unsafe fn mpv_event_loop(
     let mut last_is_paused: bool = false;
     let mut last_is_buffering: bool = false;
     let mut last_demuxer_cache_time: f64 = 0.0;
+    let mut last_est_fps: f64 = 0.0;
     let mut end_file_emitted: bool = false;
     loop {
         if stop_flag.load(Ordering::Relaxed) {
@@ -330,6 +341,7 @@ pub unsafe fn mpv_event_loop(
                     last_buffered_pos,
                     false,
                     last_is_buffering,
+                    last_est_fps,
                 );
             }
 
@@ -488,6 +500,15 @@ pub unsafe fn mpv_event_loop(
                         // Could emit video-resolution if desired
                     }
 
+                    EST_FPS_ID => {
+                        if prop.format == mpv_format::MPV_FORMAT_DOUBLE && !value_ptr.is_null() {
+                            let fps = unsafe { *(value_ptr as *mut f64) };
+                            if fps.is_finite() && fps > 0.0 {
+                                last_est_fps = fps;
+                            }
+                        }
+                    }
+
                     #[cfg(target_os = "windows")]
                     FULLSCREEN_ID => {
                         if prop.format == mpv_format::MPV_FORMAT_FLAG && !value_ptr.is_null() {
@@ -513,6 +534,7 @@ pub unsafe fn mpv_event_loop(
                         last_buffered_pos,
                         !last_is_paused,
                         last_is_buffering,
+                        last_est_fps,
                     );
                 }
             }
@@ -665,6 +687,7 @@ fn compute_buffered_pos(time_pos: f64, duration: f64, cache_time: f64) -> f64 {
     buffered.max(safe_pos)
 }
 
+#[allow(clippy::too_many_arguments)]
 fn emit_progress(
     app_handle: &AppHandle,
     time_pos: f64,
@@ -672,6 +695,7 @@ fn emit_progress(
     buffered_pos: f64,
     is_playing: bool,
     is_buffering: bool,
+    est_fps: f64,
 ) {
     let safe_time_pos = sanitize_f64(time_pos);
     let safe_duration = sanitize_f64(duration);
@@ -695,6 +719,7 @@ fn emit_progress(
             "type": "time-update",
             "position": safe_time_pos,
             "duration": safe_duration,
+            "estimatedFps": if est_fps.is_finite() && est_fps > 0.0 { est_fps } else { -1.0 },
         }),
     );
 }

@@ -41,6 +41,19 @@ impl Default for PlayerState {
     }
 }
 
+/// Indicates whether the active Windows backend is native wid (`vo=gpu` in
+/// the TOP GPU surface) instead of the Render API canvas readback. Read by
+/// the window event handler in lib.rs: on move/resize, wid mode must raise
+/// the surface with `show_native()` (TOP), not `sync()` (BOTTOM) — syncing
+/// to BOTTOM hides the video behind the opaque webview (blank screen).
+pub struct NativeVideoMode(pub std::sync::atomic::AtomicBool);
+
+impl Default for NativeVideoMode {
+    fn default() -> Self {
+        NativeVideoMode(std::sync::atomic::AtomicBool::new(false))
+    }
+}
+
 // ---------------------------------------------------------------------------
 // Helper — run a closure with the locked player instance
 // ---------------------------------------------------------------------------
@@ -102,6 +115,14 @@ pub async fn mpv_init(
     let native_wid = std::env::var("WALACTV_NATIVE_VIDEO")
         .map(|v| v == "1" || v.eq_ignore_ascii_case("wid"))
         .unwrap_or(false);
+    // Publish the mode before touching the surface: the window event handler
+    // in lib.rs routes move/resize to show_native() or sync() based on it.
+    #[cfg(target_os = "windows")]
+    app.state::<NativeVideoMode>()
+        .0
+        .store(native_wid, std::sync::atomic::Ordering::Release);
+    #[cfg(not(target_os = "windows"))]
+    let _ = &app;
     #[cfg(target_os = "windows")]
     let gpu_surface = app.state::<Arc<crate::mpv::gpu_surface::GpuVideoSurface>>();
     #[cfg(target_os = "windows")]
