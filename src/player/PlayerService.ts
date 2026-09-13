@@ -64,9 +64,6 @@ function parseAcestreamOption(option: StreamOption): AcestreamRef | null {
   return null
 }
 
-/** Ms de buffering en directo antes de saltar al borde (estilo VLC). Spike. */
-const LIVE_STALL_RELOAD_MS = 8000
-
 /**
  * Singleton service that wraps libmpv via Tauri commands.
  * All playback interactions go through this class.
@@ -86,11 +83,6 @@ export class PlayerService extends EventTarget {
   private _activeTorrentSeeders: number | null = null
   /** command_url de la sesion Acestream activa (para method=stop). Spike. */
   private _activeAcestreamCommandUrl: string | null = null
-  /** Ref de la sesion Acestream activa (para re-resolver al borde). Spike. */
-  private _activeAcestreamRef: AcestreamRef | null = null
-  /** Watchdog de paron en directo (salto al borde estilo VLC). Spike. */
-  private _liveStallTimer: ReturnType<typeof setTimeout> | null = null
-  private _hasPlayedOnce = false
   private _alternativeAudioLoadedForUrl: string | null = null
   private _streamSwitchInProgress = false
   private _pendingExternalAudioTrack: AudioTrack | null = null
@@ -279,8 +271,6 @@ export class PlayerService extends EventTarget {
     this._pendingExternalAudioTrack = null
     this._trackStateInitialized = false
     this._trackPreferenceLoading = false
-    this._hasPlayedOnce = false
-    this._clearLiveStallWatchdog()
     this._lastAudioTrackId = null
     this._lastSubtitleTrackId = null
     this._isLive = item.kind === 'CHANNEL' || item.kind === 'EVENT'
@@ -434,8 +424,6 @@ export class PlayerService extends EventTarget {
     this._clearLoadingOsd()
     await this._stopActiveTorrent()
     await this._stopActiveAcestream()
-    this._hasPlayedOnce = false
-    this._clearLiveStallWatchdog()
     this._alternativeAudioLoadedForUrl = null
     this._streamSwitchInProgress = false
     this._pendingExternalAudioTrack = null
@@ -723,7 +711,6 @@ export class PlayerService extends EventTarget {
       }).catch(() => {})
       const session = await resolveAcestreamPlayback(ref)
       this._activeAcestreamCommandUrl = session.commandUrl
-      this._activeAcestreamRef = ref
       return session.playbackUrl
     }
     if (option.source === 'torrentio' || option.requiresResolution) {
@@ -794,58 +781,8 @@ export class PlayerService extends EventTarget {
   private async _stopActiveAcestream(): Promise<void> {
     const commandUrl = this._activeAcestreamCommandUrl
     this._activeAcestreamCommandUrl = null
-    this._activeAcestreamRef = null
     if (!commandUrl) return
     await stopAcestreamSession(commandUrl)
-  }
-
-  /**
-   * Salto al borde del directo tras un paron largo (spike, estilo VLC).
-   * mpv reanuda desde atras y acumula retraso; VLC salta al frame actual.
-   * Si el directo sigue en buffering pasados LIVE_STALL_RELOAD_MS, se
-   * re-resuelve Acestream (nueva sesion = borde actual) o se recarga la
-   * misma URL en directos IPTV (ffmpeg arranca en el borde del playlist).
-   */
-  private _syncLiveStallWatchdog(paused: boolean, buffering: boolean): void {
-    this._clearLiveStallWatchdog()
-    if (paused || !buffering) return
-    if (!this._isLive || !this._hasPlayedOnce || this._userPaused) return
-    if (!this._currentStreamUrl) return
-    this._liveStallTimer = setTimeout(() => {
-      this._liveStallTimer = null
-      const state = usePlayerStore.getState()
-      if (!this._isLive || this._userPaused || !state.isBuffering) return
-      void this._reloadLiveFromEdge()
-    }, LIVE_STALL_RELOAD_MS)
-  }
-
-  private _clearLiveStallWatchdog(): void {
-    if (this._liveStallTimer) {
-      clearTimeout(this._liveStallTimer)
-      this._liveStallTimer = null
-    }
-  }
-
-  private async _reloadLiveFromEdge(): Promise<void> {
-    const ref = this._activeAcestreamRef
-    if (!ref) {
-      if (this._currentStreamUrl) {
-        await invoke('mpv_loadfile', { url: this._currentStreamUrl, startPosition: null }).catch(() => {})
-      }
-      return
-    }
-    try {
-      devLog('[PlayerService] paron largo en directo: saltando al borde')
-      await this._stopActiveAcestream()
-      const session = await resolveAcestreamPlayback(ref)
-      if (!this._isLive || this._currentItemId == null) return
-      this._activeAcestreamCommandUrl = session.commandUrl
-      this._activeAcestreamRef = ref
-      this._currentStreamUrl = session.playbackUrl
-      await invoke('mpv_loadfile', { url: session.playbackUrl, startPosition: null })
-    } catch (err) {
-      devLog('[PlayerService] salto al borde fallo:', err)
-    }
   }
 
   /**
@@ -997,10 +934,8 @@ export class PlayerService extends EventTarget {
         } else {
           // Video is actually rendering: the torrent overlay's job is done.
           this._clearTorrentOverlay()
-          this._hasPlayedOnce = true
           this._setState('playing')
         }
-        this._syncLiveStallWatchdog(payload.pause, payload.buffering)
         break
 
       case 'tracks-changed':
@@ -1257,8 +1192,6 @@ export class PlayerService extends EventTarget {
     this._currentStreamUrl = null
     void this._stopActiveTorrent()
     void this._stopActiveAcestream()
-    this._hasPlayedOnce = false
-    this._clearLiveStallWatchdog()
     this._alternativeAudioLoadedForUrl = null
     this._streamSwitchInProgress = false
     this._pendingExternalAudioTrack = null
