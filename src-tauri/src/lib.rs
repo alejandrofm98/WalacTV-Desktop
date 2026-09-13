@@ -277,6 +277,23 @@ pub fn run() {
     tauri::Builder::default()
         .manage(PlayerState::new())
         .manage(TorrentState::new())
+        .manage(crate::commands::acestream_engine::AcestreamEngineState::new())
+        // Mata el engine SOLO si lo lanzamos nosotros (externo: intacto).
+        .on_window_event(|window, event| {
+            if window.label() != "main" {
+                return;
+            }
+            if matches!(
+                event,
+                tauri::WindowEvent::CloseRequested { .. } | tauri::WindowEvent::Destroyed
+            ) {
+                if let Some(state) = window.try_state::<
+                    crate::commands::acestream_engine::AcestreamEngineState,
+                >() {
+                    state.stop_managed();
+                }
+            }
+        })
         .setup(|app| {
             create_main_window(app)?;
 
@@ -368,6 +385,9 @@ pub fn run() {
             torrent_start,
             torrent_stop,
             torrent_stats,
+            crate::commands::acestream_engine::acestream_engine_ensure,
+            crate::commands::acestream_engine::acestream_engine_status,
+            crate::commands::acestream_engine::acestream_engine_release,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application")

@@ -7,6 +7,8 @@ import { API_URL } from '../config'
 import { getUsername, getPassword } from '../credentials'
 import { getTorrentMaxMb } from '../settings'
 import { getPlaybackTrackPreference, getPreferredLanguage, playbackSubtitle, playbackTitle, updatePlaybackTrackPreference } from '../api/client'
+import { parseAcestreamInput, resolveAcestreamPlayback, stopAcestreamSession } from '../acestream/acestream'
+import type { AcestreamRef } from '../acestream/acestream'
 import { devLog } from '../utils/logger'
 
 type PlayerServiceEvent = 'state' | 'error' | 'trackschanged' | 'fullscreenchange' | 'pipchange' | 'ended'
@@ -45,6 +47,27 @@ function externalAudioTitle(label: string): string | null {
 }
 
 /**
+ * Extrae la referencia Acestream de una StreamOption (spike): prefiere
+ * acestreamId, luego infoHash, y por ultimo intenta parsear rawUrl
+ * (por si el backend manda enlaces acestream:// tal cual).
+ */
+function parseAcestreamOption(option: StreamOption): AcestreamRef | null {
+  if (option.acestreamId?.trim()) {
+    return parseAcestreamInput(option.acestreamId)
+  }
+  if (option.infoHash?.trim()) {
+    return { kind: 'infohash', value: option.infoHash.trim().toLowerCase() }
+  }
+  if (option.rawUrl?.trim()) {
+    return parseAcestreamInput(option.rawUrl)
+  }
+  return null
+}
+
+/** Ms de buffering en directo antes de saltar al borde (estilo VLC). Spike. */
+const LIVE_STALL_RELOAD_MS = 8000
+
+/**
  * Singleton service that wraps libmpv via Tauri commands.
  * All playback interactions go through this class.
  */
@@ -61,6 +84,13 @@ export class PlayerService extends EventTarget {
   private _currentStreamUrl: string | null = null
   private _activeTorrentHash: string | null = null
   private _activeTorrentSeeders: number | null = null
+  /** command_url de la sesion Acestream activa (para method=stop). Spike. */
+  private _activeAcestreamCommandUrl: string | null = null
+  /** Ref de la sesion Acestream activa (para re-resolver al borde). Spike. */
+  private _activeAcestreamRef: AcestreamRef | null = null
+  /** Watchdog de paron en directo (salto al borde estilo VLC). Spike. */
+  private _liveStallTimer: ReturnType<typeof setTimeout> | null = null
+  private _hasPlayedOnce = false
   private _alternativeAudioLoadedForUrl: string | null = null
   private _streamSwitchInProgress = false
   private _pendingExternalAudioTrack: AudioTrack | null = null
@@ -195,6 +225,7 @@ export class PlayerService extends EventTarget {
     this._duration = 0
     this._currentStreamUrl = null
     await this._stopActiveTorrent()
+    await this._stopActiveAcestream()
     this._alternativeAudioLoadedForUrl = null
     this._streamSwitchInProgress = false
     this._pendingExternalAudioTrack = null
@@ -248,6 +279,8 @@ export class PlayerService extends EventTarget {
     this._pendingExternalAudioTrack = null
     this._trackStateInitialized = false
     this._trackPreferenceLoading = false
+    this._hasPlayedOnce = false
+    this._clearLiveStallWatchdog()
     this._lastAudioTrackId = null
     this._lastSubtitleTrackId = null
     this._isLive = item.kind === 'CHANNEL' || item.kind === 'EVENT'
@@ -400,6 +433,9 @@ export class PlayerService extends EventTarget {
     this._userPaused = false
     this._clearLoadingOsd()
     await this._stopActiveTorrent()
+    await this._stopActiveAcestream()
+    this._hasPlayedOnce = false
+    this._clearLiveStallWatchdog()
     this._alternativeAudioLoadedForUrl = null
     this._streamSwitchInProgress = false
     this._pendingExternalAudioTrack = null
@@ -667,6 +703,29 @@ export class PlayerService extends EventTarget {
   }
 
   private async _resolvePlaybackUrl(option: StreamOption): Promise<string> {
+    // Spike Acestream: resuelve content_id/infohash contra el engine local
+    // (127.0.0.1:6878) y devuelve la playback_url para libmpv.
+    if (option.source === 'acestream') {
+      const ref = parseAcestreamOption(option)
+      if (!ref) {
+        throw new Error('La opcion Acestream no contiene content_id ni infohash')
+      }
+      if (this._activeTorrentHash) {
+        await this._stopActiveTorrent()
+      }
+      await this._stopActiveAcestream()
+      // Spike: arrancar 1 segmento por detras del borde en vez de 3
+      // (default ffmpeg). Con segmentos de ~5s recorta ~10s de retraso
+      // frente al directo. Debe fijarse antes del loadfile.
+      await invoke('mpv_set_property', {
+        name: 'demuxer-lavf-o',
+        value: 'live_start_index=-1',
+      }).catch(() => {})
+      const session = await resolveAcestreamPlayback(ref)
+      this._activeAcestreamCommandUrl = session.commandUrl
+      this._activeAcestreamRef = ref
+      return session.playbackUrl
+    }
     if (option.source === 'torrentio' || option.requiresResolution) {
       if (!option.infoHash) {
         throw new Error('El stream Torrentio no contiene infoHash')
@@ -675,6 +734,7 @@ export class PlayerService extends EventTarget {
       if (this._activeTorrentHash && this._activeTorrentHash !== option.infoHash) {
         await this._stopActiveTorrent()
       }
+      await this._stopActiveAcestream()
 
       const result = await invoke<{ url: string; infoHash: string }>('torrent_start', {
         request: {
@@ -691,6 +751,7 @@ export class PlayerService extends EventTarget {
       return result.url
     }
     await this._stopActiveTorrent()
+    await this._stopActiveAcestream()
     return this._resolveStreamUrl(option)
   }
 
@@ -727,6 +788,64 @@ export class PlayerService extends EventTarget {
     this._activeTorrentSeeders = null
     if (!hash) return
     await invoke('torrent_stop', { infoHash: hash }).catch(() => {})
+  }
+
+  /** Libera la sesion Acestream activa en el engine (best effort). Spike. */
+  private async _stopActiveAcestream(): Promise<void> {
+    const commandUrl = this._activeAcestreamCommandUrl
+    this._activeAcestreamCommandUrl = null
+    this._activeAcestreamRef = null
+    if (!commandUrl) return
+    await stopAcestreamSession(commandUrl)
+  }
+
+  /**
+   * Salto al borde del directo tras un paron largo (spike, estilo VLC).
+   * mpv reanuda desde atras y acumula retraso; VLC salta al frame actual.
+   * Si el directo sigue en buffering pasados LIVE_STALL_RELOAD_MS, se
+   * re-resuelve Acestream (nueva sesion = borde actual) o se recarga la
+   * misma URL en directos IPTV (ffmpeg arranca en el borde del playlist).
+   */
+  private _syncLiveStallWatchdog(paused: boolean, buffering: boolean): void {
+    this._clearLiveStallWatchdog()
+    if (paused || !buffering) return
+    if (!this._isLive || !this._hasPlayedOnce || this._userPaused) return
+    if (!this._currentStreamUrl) return
+    this._liveStallTimer = setTimeout(() => {
+      this._liveStallTimer = null
+      const state = usePlayerStore.getState()
+      if (!this._isLive || this._userPaused || !state.isBuffering) return
+      void this._reloadLiveFromEdge()
+    }, LIVE_STALL_RELOAD_MS)
+  }
+
+  private _clearLiveStallWatchdog(): void {
+    if (this._liveStallTimer) {
+      clearTimeout(this._liveStallTimer)
+      this._liveStallTimer = null
+    }
+  }
+
+  private async _reloadLiveFromEdge(): Promise<void> {
+    const ref = this._activeAcestreamRef
+    if (!ref) {
+      if (this._currentStreamUrl) {
+        await invoke('mpv_loadfile', { url: this._currentStreamUrl, startPosition: null }).catch(() => {})
+      }
+      return
+    }
+    try {
+      devLog('[PlayerService] paron largo en directo: saltando al borde')
+      await this._stopActiveAcestream()
+      const session = await resolveAcestreamPlayback(ref)
+      if (!this._isLive || this._currentItemId == null) return
+      this._activeAcestreamCommandUrl = session.commandUrl
+      this._activeAcestreamRef = ref
+      this._currentStreamUrl = session.playbackUrl
+      await invoke('mpv_loadfile', { url: session.playbackUrl, startPosition: null })
+    } catch (err) {
+      devLog('[PlayerService] salto al borde fallo:', err)
+    }
   }
 
   /**
@@ -878,8 +997,10 @@ export class PlayerService extends EventTarget {
         } else {
           // Video is actually rendering: the torrent overlay's job is done.
           this._clearTorrentOverlay()
+          this._hasPlayedOnce = true
           this._setState('playing')
         }
+        this._syncLiveStallWatchdog(payload.pause, payload.buffering)
         break
 
       case 'tracks-changed':
@@ -1135,6 +1256,9 @@ export class PlayerService extends EventTarget {
     this._duration = 0
     this._currentStreamUrl = null
     void this._stopActiveTorrent()
+    void this._stopActiveAcestream()
+    this._hasPlayedOnce = false
+    this._clearLiveStallWatchdog()
     this._alternativeAudioLoadedForUrl = null
     this._streamSwitchInProgress = false
     this._pendingExternalAudioTrack = null

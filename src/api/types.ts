@@ -14,6 +14,8 @@ export interface StreamOption {
   playable?: boolean
   requiresResolution?: boolean
   infoHash?: string | null
+  /** Content ID de Acestream (lista de 40 hex o enlace acestream://). Spike. */
+  acestreamId?: string | null
   fileIdx?: number | null
   seeders?: number | null
   sizeBytes?: number | null

@@ -1,5 +1,6 @@
 //! Tauri command handlers for walactv-desktop.
 
+pub mod acestream_engine;
 pub mod credentials;
 pub mod debug;
 pub mod player;

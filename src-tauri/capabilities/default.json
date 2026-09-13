@@ -15,6 +15,9 @@
         },
         {
           "url": "https://torrentio.strem.fun"
+        },
+        {
+          "url": "http://127.0.0.1:6878"
         }
       ]
     },

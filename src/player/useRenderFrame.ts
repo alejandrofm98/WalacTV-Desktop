@@ -111,6 +111,7 @@ export function useRenderFrame(
   const rafId = useRef<number>(0)
   const lastSize = useRef({ w: 0, h: 0 })
   const fpsState = useRef({ count: 0, start: 0 })
+  const ctxRef = useRef<CanvasRenderingContext2D | null>(null)
   // Reusable ImageData sized to the current frame: avoids allocating and
   // copying an 8MB buffer on every frame (~100ms/s saved at 1080p).
   const imageDataRef = useRef<ImageData | null>(null)
@@ -148,66 +149,60 @@ export function useRenderFrame(
     reportSize()
 
     // ── Render loop ──
+    // Un solo roundtrip IPC por tick: el header del frame ya trae el
+    // counter, asi que no hace falta el invoke previo de
+    // mpv_get_frame_counter (a 50fps casi siempre hay frame nuevo y ese
+    // viaje extra solo sumaba latencia). Si el counter no avanzo, se
+    // salta el blit sin coste de dibujado.
     async function poll() {
       if (!running) return
 
       try {
-        // Cheap counter poll first: only fetch the full frame when a new one
-        // has been rendered. Avoids transferring frame bytes on every rAF
-        // while the Rust render loop only advances on new mpv frames.
-        const counter = (await invoke('mpv_get_frame_counter')) as number
-        if (counter === 0 || counter === lastCounter.current) {
-          rafId.current = requestAnimationFrame(poll)
-          return
-        }
-        lastCounter.current = counter
-
         // invoke returns ArrayBuffer when the Rust command returns Response,
         // but be tolerant (postMessage fallback may hand other shapes).
         const raw = (await invoke('mpv_get_render_frame')) as unknown
         const buf = toFrameBuffer(raw)
-        const { width, height } = parseHeader(buf)
-        const pixels = framePixels(buf, width, height)
+        const { width, height, counter } = parseHeader(buf)
 
-        const canvas = canvasRef.current
-        if (!canvas || !pixels) {
-          rafId.current = requestAnimationFrame(poll)
-          return
-        }
+        if (counter !== 0 && counter !== lastCounter.current) {
+          lastCounter.current = counter
+          const pixels = framePixels(buf, width, height)
 
-        const ctx = canvas.getContext('2d')
-        if (!ctx) {
-          rafId.current = requestAnimationFrame(poll)
-          return
-        }
+          const canvas = canvasRef.current
+          if (canvas && pixels) {
+            if (!ctxRef.current) {
+              ctxRef.current = canvas.getContext('2d', { desynchronized: true })
+            }
+            const ctx = ctxRef.current
+            if (ctx) {
+              // Resize canvas (and the reusable ImageData) if dimensions changed
+              if (width !== lastSize.current.w || height !== lastSize.current.h) {
+                canvas.width = width
+                canvas.height = height
+                lastSize.current = { w: width, h: height }
+                imageDataRef.current = new ImageData(width, height)
+              }
+              if (!imageDataRef.current) {
+                imageDataRef.current = new ImageData(width, height)
+              }
 
-        // Resize canvas (and the reusable ImageData) if dimensions changed
-        if (width !== lastSize.current.w || height !== lastSize.current.h) {
-          canvas.width = width
-          canvas.height = height
-          lastSize.current = { w: width, h: height }
-          imageDataRef.current = new ImageData(width, height)
-        }
-        if (!imageDataRef.current) {
-          imageDataRef.current = new ImageData(width, height)
-        }
+              // Copy into the reusable ImageData (single copy; no per-frame
+              // ArrayBuffer/ImageData allocation) and blit to the canvas.
+              const imageData = imageDataRef.current
+              imageData.data.set(pixels)
+              ctx.putImageData(imageData, 0, 0)
 
-        {
-          // Copy into the reusable ImageData (single copy; no per-frame
-          // ArrayBuffer/ImageData allocation) and blit to the canvas.
-          const imageData = imageDataRef.current
-          imageData.data.set(pixels)
-          ctx.putImageData(imageData, 0, 0)
-
-          // Report frames-per-second once per second to the caller.
-          const now = performance.now()
-          if (fpsState.current.start === 0) fpsState.current.start = now
-          fpsState.current.count += 1
-          if (onFps && now - fpsState.current.start >= 1000) {
-            const elapsed = (now - fpsState.current.start) / 1000
-            onFps(Math.round(fpsState.current.count / elapsed))
-            fpsState.current.count = 0
-            fpsState.current.start = now
+              // Report frames-per-second once per second to the caller.
+              const now = performance.now()
+              if (fpsState.current.start === 0) fpsState.current.start = now
+              fpsState.current.count += 1
+              if (onFps && now - fpsState.current.start >= 1000) {
+                const elapsed = (now - fpsState.current.start) / 1000
+                onFps(Math.round(fpsState.current.count / elapsed))
+                fpsState.current.count = 0
+                fpsState.current.start = now
+              }
+            }
           }
         }
       } catch (err) {
@@ -231,6 +226,7 @@ export function useRenderFrame(
       lastCounter.current = 0
       fpsState.current = { count: 0, start: 0 }
       imageDataRef.current = null
+      ctxRef.current = null
       if (observer && wrapperEl) {
         observer.unobserve(wrapperEl)
         observer.disconnect()

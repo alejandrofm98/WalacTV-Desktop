@@ -21,6 +21,8 @@ import { EventDetail } from './components/EventDetail'
 import { LoadingScreen } from './components/LoadingScreen'
 import { ErrorScreen } from './components/ErrorScreen'
 import { UpdateBanner } from './components/UpdateBanner/UpdateBanner'
+import { AcestreamTest } from './components/AcestreamTest/AcestreamTest'
+import { ensureAcestreamEngine, releaseAcestreamEngine } from './acestream/sidecar'
 import type { CatalogItem, WatchProgressItem } from './api/types'
 import styles from './App.module.css'
 
@@ -80,6 +82,17 @@ export default function App() {
     checkForUpdates()
       .then((info) => useAppStore.setState({ updateInfo: info }))
       .finally(() => useAppStore.setState({ updateChecking: false }))
+  }, [])
+
+  // Spike Acestream: asegura el engine (externo o hijo gestionado) sin
+  // bloquear el arranque. La parada real la garantiza Rust al cerrar.
+  useEffect(() => {
+    ensureAcestreamEngine().catch(() => {})
+    const onUnload = () => {
+      releaseAcestreamEngine().catch(() => {})
+    }
+    window.addEventListener('beforeunload', onUnload)
+    return () => window.removeEventListener('beforeunload', onUnload)
   }, [])
 
   // Shared CW map builder: sort desc by lastWatchedAt, group by cwGroupKey, keep first per key.
@@ -227,6 +240,11 @@ export default function App() {
   if (error) return <ErrorScreen message={error} onRetry={loadData} />
   if (playerItem) return <Player />
 
+  // Spike Acestream (solo worktree acestream-spike): panel flotante de prueba.
+  // En la rama del spike siempre visible (los builds RC no pueden pasar
+  // ?acestream ni env vars). No llevar a develop asi.
+  const showAcestreamTest = true
+
   return (
     <div className={styles.shell}>
       <UpdateBanner />
@@ -253,6 +271,7 @@ export default function App() {
           {mode === 'Settings' && <SettingsContent onSignOut={signOut} />}
         </main>
       </div>
+      {showAcestreamTest && <AcestreamTest />}
     </div>
   )
 }

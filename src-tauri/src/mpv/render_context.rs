@@ -1302,7 +1302,33 @@ impl OffscreenRenderContext {
                     let max_h = target_h.clamp(16, 1080);
 
                     let (render_w, render_h) = if dw > 0 && dh > 0 {
-                        cap_resolution(dw, dh, max_w, max_h)
+                        // Spike Acestream: contain-fit (permite reescalar hacia
+                        // arriba) para que mpv reescale a resolucion de pantalla
+                        // con sus filtros en vez de estirar en el navegador.
+                        // Tope adaptativo por fps de la fuente (el IPC aguanta
+                        // ~200MB/s): a 50fps el FBO 1080p (8.3MB) clava el
+                        // frontend en ~24fps; a 900p (5.8MB) llega a ~35fps.
+                        // Con fuentes <=30fps se permite hasta 1080p (1:1).
+                        // Desconocido (<=0) se trata como alto para proteger fps.
+                        let src_fps = read_mpv_property_f64(&api, mpv_handle, "video-params/avg-frame-rate");
+                        let src_fps = if src_fps > 0.0 {
+                            src_fps
+                        } else {
+                            read_mpv_property_f64(&api, mpv_handle, "container-fps")
+                        };
+                        let (cap_w, cap_h) = if src_fps > 30.0 || src_fps <= 0.0 {
+                            (max_w.min(1600), max_h.min(900))
+                        } else {
+                            (max_w, max_h)
+                        };
+                        // Nunca renderizar por debajo de la fuente (evita
+                        // degradar 1080p a 900p como hacia el tope fijo).
+                        let (cap_w, cap_h) = (cap_w.max(dw.min(max_w)), cap_h.max(dh.min(max_h)));
+                        if dw > cap_w || dh > cap_h {
+                            cap_resolution(dw, dh, cap_w, cap_h)
+                        } else {
+                            fit_resolution(dw, dh, cap_w, cap_h)
+                        }
                     } else {
                         (current_w, current_h)
                     };
@@ -1604,6 +1630,20 @@ fn cap_resolution(w: u32, h: u32, max_w: u32, max_h: u32) -> (u32, u32) {
     let capped_w = (w as f64 * scale) as u32;
     let capped_h = (h as f64 * scale) as u32;
     (capped_w.max(1), capped_h.max(1))
+}
+
+/// Contain-fit (w, h) into max_w × max_h preserving aspect ratio.
+/// Unlike cap_resolution, allows upscaling so mpv upscales to display
+/// resolution with its own filters (spike: fuentes 720p en pantalla 1080p).
+/// If w or h is 0, returns unchanged.
+fn fit_resolution(w: u32, h: u32, max_w: u32, max_h: u32) -> (u32, u32) {
+    if w == 0 || h == 0 {
+        return (w, h);
+    }
+    let scale = (max_w as f64 / w as f64).min(max_h as f64 / h as f64);
+    let fitted_w = (w as f64 * scale) as u32;
+    let fitted_h = (h as f64 * scale) as u32;
+    (fitted_w.max(1), fitted_h.max(1))
 }
 
 /// Read an mpv property as f64 (double). Returns 0.0 on failure.
