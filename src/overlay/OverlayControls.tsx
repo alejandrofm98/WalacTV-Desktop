@@ -1,8 +1,9 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
-import type { ChangeEvent, PointerEvent as ReactPointerEvent } from 'react'
+import type { ChangeEvent, CSSProperties, PointerEvent as ReactPointerEvent } from 'react'
 import {
   ChevronDown,
   ChevronUp,
+  ListVideo,
   Maximize,
   Pause,
   Play,
@@ -13,6 +14,7 @@ import {
 } from 'lucide-react'
 import { sendOverlayCtl, overlayTransport } from './useOverlayState'
 import type { OverlayPlaybackState } from './useOverlayState'
+import { OverlayGuide } from './OverlayGuide'
 import styles from './OverlayApp.module.css'
 
 const INACTIVITY_TIMEOUT_MS = 3000
@@ -41,9 +43,15 @@ export function OverlayControls({ state }: OverlayControlsProps) {
   const { item, isPlaying, isBuffering, time, duration, estFps, volume, muted } = state
   const isLive = item?.kind === 'CHANNEL' || item?.kind === 'EVENT'
   const [visible, setVisible] = useState(true)
+  const [guideOpen, setGuideOpen] = useState(false)
   const [dragFraction, setDragFraction] = useState<number | null>(null)
   const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const trackRef = useRef<HTMLDivElement | null>(null)
+  // La closure de teclado no se re-registra por guideOpen: espejo en ref.
+  const guideOpenRef = useRef(false)
+  useEffect(() => {
+    guideOpenRef.current = guideOpen
+  }, [guideOpen])
 
   const show = useCallback(() => {
     setVisible(true)
@@ -51,12 +59,12 @@ export function OverlayControls({ state }: OverlayControlsProps) {
     timerRef.current = setTimeout(() => setVisible(false), INACTIVITY_TIMEOUT_MS)
   }, [])
 
-  // Forzados visibles mientras carga o esta en pausa.
+  // Forzados visibles mientras carga, pausa o guia abierta.
   useEffect(() => {
-    if (!isPlaying || isBuffering) {
+    if (!isPlaying || isBuffering || guideOpen) {
       show()
     }
-  }, [isPlaying, isBuffering, show])
+  }, [isPlaying, isBuffering, guideOpen, show])
 
   useEffect(() => {
     const events = ['mousemove', 'keydown', 'click', 'wheel'] as const
@@ -114,7 +122,12 @@ export function OverlayControls({ state }: OverlayControlsProps) {
           break
         case 'Escape':
           e.preventDefault()
-          sendOverlayCtl({ action: 'escape' })
+          // La guia abierta se pliega primero; Escape del player despues.
+          if (guideOpenRef.current) {
+            setGuideOpen(false)
+          } else {
+            sendOverlayCtl({ action: 'escape' })
+          }
           break
       }
     }
@@ -192,6 +205,10 @@ export function OverlayControls({ state }: OverlayControlsProps) {
         <div className={styles.chip}>{Math.round(estFps)} fps</div>
       )}
 
+      {guideOpen && item && (
+        <OverlayGuide snapshot={item} onClose={() => setGuideOpen(false)} />
+      )}
+
       {isBuffering && (
         <div className={styles.center}>
           <div className={styles.spinner} />
@@ -260,6 +277,19 @@ export function OverlayControls({ state }: OverlayControlsProps) {
 
           <div className={styles.spacer} />
 
+          {isLive && (
+            <button
+              className={styles.btn}
+              onClick={() => setGuideOpen((v) => !v)}
+              aria-label={guideOpen
+                ? (item?.kind === 'CHANNEL' ? 'Ocultar guia de canales' : 'Ocultar fuentes')
+                : (item?.kind === 'CHANNEL' ? 'Mostrar guia de canales' : 'Mostrar fuentes')}
+              title={item?.kind === 'CHANNEL' ? 'Guia de canales' : 'Fuentes del evento'}
+            >
+              <ListVideo size={20} />
+            </button>
+          )}
+
           <button
             className={styles.btn}
             onClick={() => overlayTransport.setMuted(!muted)}
@@ -277,6 +307,7 @@ export function OverlayControls({ state }: OverlayControlsProps) {
             value={effectiveVolume}
             onChange={onVolumeInput}
             aria-label="Volumen"
+            style={{ '--volume-pct': `${effectiveVolume * 100}%` } as CSSProperties}
           />
 
           <button
