@@ -27,7 +27,6 @@ use std::net::{SocketAddr, TcpStream};
 use std::path::PathBuf;
 use std::process::{Child, Command, Stdio};
 use std::time::{Duration, Instant};
-#[allow(unused_imports)]
 use tauri::Manager;
 
 /// Script de auto-instalacion user-space (Linux). Ver scripts/.
