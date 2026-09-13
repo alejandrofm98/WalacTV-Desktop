@@ -55,16 +55,17 @@ export function Player() {
   const acestreamStats = usePlayerStore((s) => s.acestreamStats)
 
   // Draw mpv's offscreen frames onto the canvas while playing.
-  // Both Linux (EGL readback) and Windows (WGL FBO readback) deliver frames
-  // through `mpv_get_render_frame`; the native window is never shown.
-  // The canvas stays mounted on all OSes: on Windows the webview is opaque
-  // and would hide any native surface below it (airspace), so offscreen
-  // readback + canvas is the only working path (verified ~23fps prod).
+  // Render mode (Linux + Windows por defecto): EGL/WGL FBO readback via
+  // `mpv_get_render_frame`. Wid nativo (Windows con WALACTV_NATIVE_VIDEO=1):
+  // mpv renderiza directo en la superficie GPU (TOP) con su OSC propio, el
+  // canvas se oculta y no se sondea (cero IPC).
   const [renderFps, setRenderFps] = useState<number | null>(null)
+  const [initMode, setInitMode] = useState<string | null>(null)
+  const isWidMode = initMode === 'wid'
   useRenderFrame(
     canvasRef,
     playerItem?.stableId ?? null,
-    isPlaying,
+    isPlaying && !isWidMode,
     setRenderFps,
   )
 
@@ -216,6 +217,7 @@ export function Player() {
         // 1. Attach — llama a mpv_init() en Rust (no necesita elemento DOM)
         await service.attach()
         setNativeControls(service.getNativeControls())
+        setInitMode(service.getInitMode())
 
         if (cancelled) return
 
@@ -377,6 +379,7 @@ export function Player() {
     try {
       await service.attach()
       setNativeControls(service.getNativeControls())
+      setInitMode(service.getInitMode())
       const streamOptions = playerItem.streamOptions
       const preferredIndex = useAppStore.getState().playerStreamIndex
       const orderedStreams =
@@ -396,9 +399,14 @@ export function Player() {
       <div className={styles.body}>
         <div className={styles.stage}>
           <div className={styles.videoWrapper}>
-            {/* Canvas where mpv's offscreen frames are drawn (CPU readback).
-                Mounted on all OSes: Linux EGL + Windows WGL FBO readback. */}
-            <canvas ref={canvasRef} className={styles.canvas} />
+            {/* Canvas donde se dibujan los frames offscreen (readback CPU).
+                Solo en modo render; en wid nativo mpv muestra su superficie
+                GPU directamente y el canvas se oculta (cero IPC). */}
+            <canvas
+              ref={canvasRef}
+              className={styles.canvas}
+              style={isWidMode ? { display: 'none' } : undefined}
+            />
             {(renderFps !== null || acestreamStats) && isPlaying && (
               <div className={styles.fpsCounter}>
                 {renderFps !== null ? `${renderFps} fps` : ''}

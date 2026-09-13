@@ -47,6 +47,21 @@ impl GpuVideoSurface {
         windows::hide(self.video)
     }
 
+    /// Raw video child HWND as mpv `wid` (spike nativo WALACTV_NATIVE_VIDEO=1).
+    #[cfg(target_os = "windows")]
+    pub fn video_wid(&self) -> i64 {
+        self.video as i64
+    }
+
+    /// Place the video child on top and show it for native `wid` rendering.
+    /// Unlike `show()` (HWND_BOTTOM, hidden behind the opaque webview), this
+    /// brings the surface above the WebView2 child so mpv's direct GPU output
+    /// is visible with its native OSC. HTML overlay stays behind (spike).
+    #[cfg(target_os = "windows")]
+    pub fn show_native(&self) -> Result<(), String> {
+        windows::show_native(self.main, self.video)
+    }
+
     #[cfg(target_os = "windows")]
     pub fn create_gl_context(&self) -> Result<WindowsGlContext, String> {
         windows::create_gl_context(self.video)
@@ -106,7 +121,7 @@ mod windows {
     };
     use windows_sys::Win32::UI::WindowsAndMessaging::{
         CreateWindowExW, DefWindowProcW, GetClientRect, RegisterClassExW, SetWindowPos, ShowWindow,
-        CS_OWNDC, HWND_BOTTOM, SWP_NOACTIVATE, SW_HIDE, SW_SHOW, WNDCLASSEXW, WS_CHILD,
+        CS_OWNDC, HWND_BOTTOM, HWND_TOP, SWP_NOACTIVATE, SW_HIDE, SW_SHOW, WNDCLASSEXW, WS_CHILD,
         WS_CLIPCHILDREN, WS_CLIPSIBLINGS, WS_EX_NOACTIVATE,
     };
 
@@ -202,6 +217,33 @@ mod windows {
         unsafe { ShowWindow(video as HWND, SW_SHOW) };
         crate::mpv::platform::windows::diagnostic_log(format!(
             "GpuVideoSurface show video=0x{video:x}"
+        ));
+        Ok(())
+    }
+
+    /// Sync + show the surface above the webview for native wid rendering.
+    pub fn show_native(main: isize, video: isize) -> Result<(), String> {
+        unsafe {
+            let mut rect: RECT = std::mem::zeroed();
+            if GetClientRect(main as HWND, &mut rect) == 0 {
+                return Err(format!("GetClientRect failed: {}", GetLastError()));
+            }
+            if SetWindowPos(
+                video as HWND,
+                HWND_TOP,
+                0,
+                0,
+                rect.right - rect.left,
+                rect.bottom - rect.top,
+                SWP_NOACTIVATE,
+            ) == 0
+            {
+                return Err(format!("SetWindowPos failed: {}", GetLastError()));
+            }
+            ShowWindow(video as HWND, SW_SHOW);
+        }
+        crate::mpv::platform::windows::diagnostic_log(format!(
+            "GpuVideoSurface show_native (TOP) video=0x{video:x}"
         ));
         Ok(())
     }

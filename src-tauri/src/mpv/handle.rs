@@ -35,6 +35,11 @@ fn ensure_numeric_locale() {
 
 /// Options applied via mpv_set_option_string before mpv_initialize().
 ///
+/// Tuning (cache/red/live) applies to both render (canvas readback) and wid
+/// (native GPU) paths: larger demuxer cache + readahead absorbs HLS jitter
+/// from Acestream/IPTV without extra zap latency. Unknown options only log a
+/// warning (see `new`), so newer/older mpv builds keep working.
+///
 /// Platform-dependent options:
 /// - Linux with uosc: mpv keyboard enabled for mouse input.
 /// - Linux fallback (no compositor / WALACTV_PLAYER_OSC=1 / uosc unavailable): native OSC.
@@ -45,12 +50,55 @@ fn ensure_numeric_locale() {
 fn initial_options(
     _linux_use_custom: bool,
     uosc_available: bool,
+    render_api: bool,
 ) -> Vec<(&'static str, &'static str)> {
     let mut opts: Vec<(&'static str, &'static str)> = vec![
         ("ytdl", "no"),
         ("load-scripts", "yes"),
         ("keep-open", "yes"),
+        // Live/HLS resilience (Acestream via 127.0.0.1 + IPTV HLS): absorb
+        // network jitter with cache instead of stalling. 20s cap keeps zapping
+        // fast; failures only warn (see `new`).
+        ("cache", "yes"),
+        ("cache-secs", "20"),
+        ("demuxer-max-bytes", "64MiB"),
+        ("demuxer-max-back-bytes", "32MiB"),
+        ("demuxer-readahead-secs", "10"),
+        ("network-timeout", "30"),
+        ("stream-buffer-size", "4MiB"),
+        // Live HLS: stick to max rendition instead of ABR downshifting on
+        // every jitter spike (VLC-like stability).
+        ("hls-bitrate", "max"),
+        // Faster start of fragmented HLS without hurting stability.
+        ("demuxer-lavf-probesize", "5M"),
+        ("demuxer-lavf-analyzeduration", "5"),
+        // Decode: all threads, all common codecs for hwdec shortlist.
+        ("vd-lavc-threads", "0"),
+        ("hwdec-codecs", "h264,hevc,mpeg2video,vc1,vp9,av1"),
+        // Smoother pacing on 60Hz displays; cheap on both paths.
+        ("video-sync", "display-resample"),
+        // Keep audio device alive across cache stalls (no reinit clicks).
+        ("audio-buffer", "1"),
+        ("audio-stream-silence", "yes"),
+        ("initial-audio-sync", "yes"),
     ];
+
+    // Render (canvas readback) path is IPC/CPU bound: `profile=fast` saves GPU
+    // for the FBO+readback. Native wid path renders direct: `profile=gpu-hq`
+    // for VLC parity/better scaling.
+    if render_api {
+        opts.push(("profile", "fast"));
+        opts.push(("interpolation", "no"));
+    } else {
+        opts.push(("profile", "gpu-hq"));
+    }
+
+    #[cfg(target_os = "windows")]
+    {
+        // Zero-copy D3D11VA into the mpv renderer when the VO supports it;
+        // falls back to copy automatically on `vo=libmpv`.
+        opts.push(("d3d11va-zero-copy", "yes"));
+    }
 
     #[cfg(any(target_os = "windows", target_os = "macos"))]
     {
@@ -165,7 +213,7 @@ impl MpvInstance {
         let uosc_available = !render_api && uosc_main_path.is_some();
 
         // Set options before initialize
-        for (name, value) in initial_options(linux_use_custom, uosc_available) {
+        for (name, value) in initial_options(linux_use_custom, uosc_available, render_api) {
             if let Ok(c_name) = CString::new(name) {
                 if let Ok(c_value) = CString::new(value) {
                     let ret = unsafe {
@@ -438,6 +486,25 @@ impl MpvInstance {
     pub fn set_render_size(&self, width: u32, height: u32) {
         if let Some(renderer) = self.gpu_renderer.as_ref() {
             renderer.set_target_size(width, height);
+        }
+    }
+
+    /// True when this instance renders via the libmpv Render API (canvas
+    /// readback). False means native `wid` GPU embedding. Used by `mpv_init`
+    /// to detect a mode switch (e.g. WALACTV_NATIVE_VIDEO toggled) and
+    /// recreate instead of reusing the wrong backend.
+    pub fn is_render_mode(&self) -> bool {
+        #[cfg(target_os = "windows")]
+        {
+            self.gpu_renderer.is_some()
+        }
+        #[cfg(target_os = "linux")]
+        {
+            self.render_context.is_some()
+        }
+        #[cfg(not(any(target_os = "windows", target_os = "linux")))]
+        {
+            false
         }
     }
 

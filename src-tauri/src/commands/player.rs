@@ -80,10 +80,14 @@ pub struct MpvVersionInfo {
 
 /// Initialize the mpv player.
 ///
-/// 1. Loads libmpv dynamically (first call only, cached in state.api)
-/// 2. Shows and synchronizes the native GPU video surface.
-/// 3. Creates libmpv with `vo=libmpv` and no native input/OSC.
-/// 4. Starts the Render API and event-loop threads.
+/// Paths:
+/// - Default (all OS): Render API + canvas readback with React controls
+///   (`vo=libmpv`, `mode=render`, `useCustom=true`).
+/// - Spike opt-in on Windows (`WALACTV_NATIVE_VIDEO=1`): native `wid`
+///   embedding into the GPU child surface (`vo=gpu` + `d3d11va-zero-copy`,
+///   `mode=wid`, mpv native OSC). Full-res direct rendering, VLC parity.
+///   HTML overlay stays behind the TOP surface (spike tradeoff).
+/// - macOS: native wid embedding + uosc.
 ///
 /// Returns render mode with React controls enabled.
 #[tauri::command]
@@ -92,14 +96,23 @@ pub async fn mpv_init(
     state: State<'_, PlayerState>,
     window: tauri::Window,
 ) -> Result<serde_json::Value, String> {
-    // On Windows, sync/show the GPU surface used by the Render API backend
-    // (mpv renders into a GPU surface below the transparent overlay).
+    // Spike nativo Windows: render GPU directo en vez de readback+canvas.
+    // Opt-in via env (sin romper el path por defecto).
+    #[cfg(target_os = "windows")]
+    let native_wid = std::env::var("WALACTV_NATIVE_VIDEO")
+        .map(|v| v == "1" || v.eq_ignore_ascii_case("wid"))
+        .unwrap_or(false);
     #[cfg(target_os = "windows")]
     let gpu_surface = app.state::<Arc<crate::mpv::gpu_surface::GpuVideoSurface>>();
     #[cfg(target_os = "windows")]
     {
-        gpu_surface.sync()?;
-        gpu_surface.show()?;
+        if native_wid {
+            gpu_surface.sync()?;
+            gpu_surface.show_native()?;
+        } else {
+            gpu_surface.sync()?;
+            gpu_surface.show()?;
+        }
     }
 
     #[cfg(not(target_os = "macos"))]
@@ -157,20 +170,34 @@ pub async fn mpv_init(
     // before the previous instance has been torn down.
     let mut player_guard = state.inner.lock();
 
-    // Keep the Windows mpv context alive for the lifetime of the app. Reuse the
-    // Render API context and show its GPU surface when the player opens again.
+    // Keep the Windows mpv context alive for the lifetime of the app. Reuse
+    // only when the backend mode matches (render vs native wid); on a mode
+    // switch (WALACTV_NATIVE_VIDEO toggled) destroy and recreate below.
     #[cfg(target_os = "windows")]
     if let Some(instance) = player_guard.as_ref() {
-        let _ = instance.set_property_str("force-media-title", "");
-        gpu_surface.sync()?;
-        gpu_surface.show()?;
+        let same_mode = instance.is_render_mode() != native_wid;
+        if same_mode {
+            let _ = instance.set_property_str("force-media-title", "");
+            if native_wid {
+                gpu_surface.sync()?;
+                gpu_surface.show_native()?;
+                return Ok(serde_json::json!({
+                    "mode": "wid",
+                    "os": std::env::consts::OS,
+                    "useCustom": false,
+                    "nativeControls": true,
+                }));
+            }
+            gpu_surface.sync()?;
+            gpu_surface.show()?;
 
-        return Ok(serde_json::json!({
-            "mode": "render",
-            "os": std::env::consts::OS,
-            "useCustom": true,
-            "nativeControls": false,
-        }));
+            return Ok(serde_json::json!({
+                "mode": "render",
+                "os": std::env::consts::OS,
+                "useCustom": true,
+                "nativeControls": false,
+            }));
+        }
     }
 
     if let Some(previous) = player_guard.take() {
@@ -184,7 +211,10 @@ pub async fn mpv_init(
     // The Render API backend is used on Windows (GPU surface) and Linux
     // (offscreen EGL with CPU readback). Both enable React custom controls
     // (`useCustom: true`). macOS uses native wid embedding + uosc.
-    #[cfg(any(target_os = "windows", target_os = "linux"))]
+    // Windows spike (WALACTV_NATIVE_VIDEO=1) forces the native wid path.
+    #[cfg(target_os = "windows")]
+    let use_custom = !native_wid;
+    #[cfg(target_os = "linux")]
     let use_custom = true;
     #[cfg(not(any(target_os = "windows", target_os = "linux")))]
     let use_custom = false;
@@ -216,14 +246,26 @@ pub async fn mpv_init(
         #[cfg(not(any(target_os = "windows", target_os = "linux")))]
         unreachable!("use_custom is only true on Windows and Linux")
     } else {
-        // Native wid + uosc path (macOS).
+        // Native wid path (macOS always; Windows only via spike).
+        #[cfg(target_os = "windows")]
+        {
+            let wid = gpu_surface.video_wid();
+            if wid <= 0 {
+                return Err("Superficie de video nativa no disponible".to_string());
+            }
+            // render_api=false: vo=gpu + native OSC (see initial_options) con
+            // HTML overlay oculto en el frontend (nativeControls=true).
+            MpvInstance::new(api, wid, app.clone(), false, None, None, false)?
+        }
         #[cfg(target_os = "macos")]
         {
             let wid = platform::get_mpv_wid(&window)?;
             MpvInstance::new(api, wid, app.clone(), false, None, None, false)?
         }
-        #[cfg(not(target_os = "macos"))]
-        unreachable!("wid path is only available on macOS")
+        #[cfg(target_os = "linux")]
+        {
+            unreachable!("wid path is not available on Linux (offscreen readback only)")
+        }
     };
 
     // Start event loop, then keep the player in app state.
