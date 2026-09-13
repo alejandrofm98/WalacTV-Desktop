@@ -63,7 +63,6 @@ export interface MpvStateChange {
 }
 
 // ── Torrent (overlay de carga estilo Android) ────────────────────────
-
 /** Espejo de TorrentStatsDto en src-tauri/src/commands/torrent.rs */
 export interface TorrentStats {
   ready: boolean
@@ -109,3 +108,17 @@ export interface MpvErrorEvent {
 }
 
 export type MpvEvent = MpvTimeUpdate | MpvStateChange | MpvTracksChanged | MpvEndFile | MpvFileLoaded | MpvPlaybackRestart | MpvErrorEvent
+
+// ── Acestream (salud del canal P2P, spike) ──────────────────────────
+
+/** Stats de /ace/stat del engine para decidir si el canal rinde o cambiar. */
+export interface AcestreamStats {
+  peers: number
+  /** KB/s de bajada reportados por el engine. */
+  speedDown: number
+  /** KB/s de subida. */
+  speedUp: number
+  /** Estado del engine: "dl", etc. */
+  status: string
+  downloadedBytes: number
+}

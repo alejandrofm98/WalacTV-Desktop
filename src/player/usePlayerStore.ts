@@ -1,5 +1,5 @@
 import { create } from 'zustand'
-import type { PlayerError, PlayerQuality, TorrentOverlayInfo, TorrentStats } from './types'
+import type { AcestreamStats, PlayerError, PlayerQuality, TorrentOverlayInfo, TorrentStats } from './types'
 
 interface PlayerState {
   currentItemId: string | null
@@ -17,6 +17,7 @@ interface PlayerState {
   quality: PlayerQuality
   torrentInfo: TorrentOverlayInfo | null
   torrentStats: TorrentStats | null
+  acestreamStats: AcestreamStats | null
 }
 
 interface PlayerActions {
@@ -35,6 +36,7 @@ interface PlayerActions {
   setQuality: (q: PlayerQuality) => void
   setTorrentInfo: (info: TorrentOverlayInfo | null) => void
   setTorrentStats: (stats: TorrentStats | null) => void
+  setAcestreamStats: (stats: AcestreamStats | null) => void
   reset: () => void
 }
 
@@ -55,6 +57,7 @@ const initial: PlayerState = {
   quality: 'auto',
   torrentInfo: null,
   torrentStats: null,
+  acestreamStats: null,
 }
 
 export const usePlayerStore = create<PlayerStore>()((set) => ({
@@ -75,6 +78,7 @@ export const usePlayerStore = create<PlayerStore>()((set) => ({
   setQuality: (quality) => set({ quality }),
   setTorrentInfo: (torrentInfo) => set({ torrentInfo }),
   setTorrentStats: (torrentStats) => set({ torrentStats }),
+  setAcestreamStats: (acestreamStats) => set({ acestreamStats }),
   reset: () => set({ ...initial }),
 }))
 
@@ -92,3 +96,4 @@ export const selectIsOpening = (s: PlayerStore) => s.isOpening
 export const selectQuality = (s: PlayerStore) => s.quality
 export const selectTorrentInfo = (s: PlayerStore) => s.torrentInfo
 export const selectTorrentStats = (s: PlayerStore) => s.torrentStats
+export const selectAcestreamStats = (s: PlayerStore) => s.acestreamStats

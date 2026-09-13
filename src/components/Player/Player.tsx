@@ -18,6 +18,7 @@ import { PlayerIntroSkip } from './PlayerIntroSkip'
 import { PlayerErrorState } from './PlayerErrorState'
 import { PlayerLoadingState } from './PlayerLoadingState'
 import { TorrentLoadingOverlay } from './TorrentLoadingOverlay'
+import { acestreamHealth, formatAcestreamSpeed } from '../../acestream/acestream'
 import styles from './Player.module.css'
 
 /**
@@ -51,6 +52,7 @@ export function Player() {
   const isPlaying = usePlayerStore((s) => s.isPlaying)
   const torrentInfo = usePlayerStore((s) => s.torrentInfo)
   const torrentStats = usePlayerStore((s) => s.torrentStats)
+  const acestreamStats = usePlayerStore((s) => s.acestreamStats)
 
   // Draw mpv's offscreen frames onto the canvas while playing.
   // Both Linux (EGL readback) and Windows (WGL FBO readback) deliver frames
@@ -397,8 +399,13 @@ export function Player() {
             {/* Canvas where mpv's offscreen frames are drawn (CPU readback).
                 Mounted on all OSes: Linux EGL + Windows WGL FBO readback. */}
             <canvas ref={canvasRef} className={styles.canvas} />
-            {renderFps !== null && isPlaying && (
-              <div className={styles.fpsCounter}>{renderFps} fps</div>
+            {(renderFps !== null || acestreamStats) && isPlaying && (
+              <div className={styles.fpsCounter}>
+                {renderFps !== null ? `${renderFps} fps` : ''}
+                {acestreamStats
+                  ? ` · ${acestreamStats.peers}p · ${formatAcestreamSpeed(acestreamStats.speedDown)} · ${acestreamHealth(acestreamStats).label}`
+                  : ''}
+              </div>
             )}
             {/* Hidden video element for PiP API support only */}
             <video

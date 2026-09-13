@@ -7,7 +7,7 @@ import { API_URL } from '../config'
 import { getUsername, getPassword } from '../credentials'
 import { getTorrentMaxMb } from '../settings'
 import { getPlaybackTrackPreference, getPreferredLanguage, playbackSubtitle, playbackTitle, updatePlaybackTrackPreference } from '../api/client'
-import { parseAcestreamInput, resolveAcestreamPlayback, stopAcestreamSession } from '../acestream/acestream'
+import { fetchAcestreamStats, parseAcestreamInput, resolveAcestreamPlayback, stopAcestreamSession } from '../acestream/acestream'
 import type { AcestreamRef } from '../acestream/acestream'
 import { devLog } from '../utils/logger'
 
@@ -90,6 +90,8 @@ export class PlayerService extends EventTarget {
   private _activeTorrentSeeders: number | null = null
   /** command_url de la sesion Acestream activa (para method=stop). Spike. */
   private _activeAcestreamCommandUrl: string | null = null
+  private _activeAcestreamStatUrl: string | null = null
+  private _acestreamStatsTimer: ReturnType<typeof setInterval> | null = null
   /** Watchdog de paron en directo (salto solo-hacia-delante). Spike. */
   private _stallTimer: ReturnType<typeof setTimeout> | null = null
   private _hasPlayedOnce = false
@@ -301,6 +303,7 @@ export class PlayerService extends EventTarget {
     usePlayerStore.getState().setError(null)
     usePlayerStore.getState().setTorrentInfo(null)
     usePlayerStore.getState().setTorrentStats(null)
+    usePlayerStore.getState().setAcestreamStats(null)
     this._userPaused = false
     this._setState('loading')
 
@@ -729,6 +732,8 @@ export class PlayerService extends EventTarget {
       }).catch(() => {})
       const session = await resolveAcestreamPlayback(ref)
       this._activeAcestreamCommandUrl = session.commandUrl
+      this._activeAcestreamStatUrl = session.statUrl
+      this._startAcestreamStatsPolling(session.statUrl)
       return session.playbackUrl
     }
     if (option.source === 'torrentio' || option.requiresResolution) {
@@ -797,10 +802,33 @@ export class PlayerService extends EventTarget {
 
   /** Libera la sesion Acestream activa en el engine (best effort). Spike. */
   private async _stopActiveAcestream(): Promise<void> {
+    this._stopAcestreamStatsPolling()
+    usePlayerStore.getState().setAcestreamStats(null)
     const commandUrl = this._activeAcestreamCommandUrl
     this._activeAcestreamCommandUrl = null
+    this._activeAcestreamStatUrl = null
     if (!commandUrl) return
     await stopAcestreamSession(commandUrl)
+  }
+
+  /** Sondea /ace/stat mientras hay sesion Acestream (veredicto de canal). */
+  private _startAcestreamStatsPolling(statUrl: string | null): void {
+    this._stopAcestreamStatsPolling()
+    if (!statUrl) return
+    const tick = () => {
+      fetchAcestreamStats(statUrl)
+        .then((stats) => usePlayerStore.getState().setAcestreamStats(stats))
+        .catch(() => {})
+    }
+    tick()
+    this._acestreamStatsTimer = setInterval(tick, 2500)
+  }
+
+  private _stopAcestreamStatsPolling(): void {
+    if (this._acestreamStatsTimer) {
+      clearInterval(this._acestreamStatsTimer)
+      this._acestreamStatsTimer = null
+    }
   }
 
   /**

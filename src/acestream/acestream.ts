@@ -152,3 +152,76 @@ export async function stopAcestreamSession(commandUrl: string): Promise<void> {
     // El engine limpia sesiones inactivas solo; ignorar errores aqui.
   }
 }
+
+export interface AcestreamStatsSnapshot {
+  peers: number
+  /** KB/s de bajada. */
+  speedDown: number
+  /** KB/s de subida. */
+  speedUp: number
+  status: string
+  downloadedBytes: number
+}
+
+interface StatJsonResponse {
+  response?: {
+    peers?: number
+    speed_down?: number
+    speed_up?: number
+    status?: string
+    downloaded?: number
+  }
+}
+
+/** Lee /ace/stat una vez. Lanza si el engine no responde o no hay sesion. */
+export async function fetchAcestreamStats(
+  statUrl: string,
+  timeoutMs = 5000,
+): Promise<AcestreamStatsSnapshot> {
+  const controller = new AbortController()
+  const timer = setTimeout(() => controller.abort(), timeoutMs)
+  try {
+    const response = await fetch(statUrl, {
+      headers: { Accept: 'application/json' },
+      signal: controller.signal,
+    } as unknown as RequestInit)
+    if (!response.ok) {
+      throw new Error(`stat respondio ${response.status}`)
+    }
+    const data = (await response.json()) as StatJsonResponse
+    const resp = data?.response
+    if (!resp) throw new Error('stat sin respuesta')
+    return {
+      peers: resp.peers ?? 0,
+      speedDown: resp.speed_down ?? 0,
+      speedUp: resp.speed_up ?? 0,
+      status: resp.status ?? '',
+      downloadedBytes: resp.downloaded ?? 0,
+    }
+  } finally {
+    clearTimeout(timer)
+  }
+}
+
+/**
+ * Veredicto rapido para decidir si cambiar de canal (spike).
+ * Umbrales empiricos: <3 peers o <300 KB/s sostenidos = parones seguros.
+ */
+export function acestreamHealth(stats: AcestreamStatsSnapshot): {
+  ok: boolean
+  label: string
+} {
+  if (stats.peers >= 5 && stats.speedDown >= 800) {
+    return { ok: true, label: 'Saludable' }
+  }
+  if (stats.peers >= 3 || stats.speedDown >= 300) {
+    return { ok: true, label: 'Justo' }
+  }
+  return { ok: false, label: 'Debil: cambia de canal' }
+}
+
+/** Formatea KB/s a "850 KB/s" o "1.2 MB/s". */
+export function formatAcestreamSpeed(kbPerSec: number): string {
+  if (kbPerSec >= 1024) return `${(kbPerSec / 1024).toFixed(1)} MB/s`
+  return `${Math.round(kbPerSec)} KB/s`
+}
